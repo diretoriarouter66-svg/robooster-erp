@@ -1,0 +1,56 @@
+{
+  "name": "ImportItem",
+  "type": "object",
+  "properties": {
+    "import_process_id": {
+      "type": "string",
+      "description": "ID do processo de importa\u00e7\u00e3o"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "ID do produto"
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Nome do produto"
+    },
+    "product_sku": {
+      "type": "string",
+      "description": "SKU do produto"
+    },
+    "quantity": {
+      "type": "number",
+      "description": "Quantidade"
+    },
+    "unit_price_fob": {
+      "type": "number",
+      "description": "Pre\u00e7o unit\u00e1rio FOB na moeda original"
+    },
+    "total_fob": {
+      "type": "number",
+      "description": "Total FOB na moeda original"
+    },
+    "unit_cost_landed_brl": {
+      "type": "number",
+      "description": "Custo unit\u00e1rio landed em BRL"
+    },
+    "total_landed_brl": {
+      "type": "number",
+      "description": "Total landed em BRL"
+    },
+    "ncm": {
+      "type": "string",
+      "description": "NCM do item"
+    },
+    "weight_kg": {
+      "type": "number",
+      "description": "Peso total em KG"
+    }
+  },
+  "required": [
+    "import_process_id",
+    "product_name",
+    "quantity",
+    "unit_price_fob"
+  ]
+}

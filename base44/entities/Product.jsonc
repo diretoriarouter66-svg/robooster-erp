@@ -1,0 +1,106 @@
+{
+  "name": "Product",
+  "type": "object",
+  "properties": {
+    "sku": {
+      "type": "string",
+      "description": "C\u00f3digo SKU interno"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome do produto"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do produto"
+    },
+    "brand": {
+      "type": "string",
+      "description": "Marca"
+    },
+    "category": {
+      "type": "string",
+      "description": "Categoria"
+    },
+    "ncm": {
+      "type": "string",
+      "description": "NCM - Nomenclatura Comum do Mercosul"
+    },
+    "origin_country": {
+      "type": "string",
+      "description": "Pa\u00eds de origem"
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "UN",
+        "KG",
+        "CX",
+        "PC",
+        "MT",
+        "LT",
+        "PAR"
+      ],
+      "default": "UN"
+    },
+    "weight_kg": {
+      "type": "number",
+      "description": "Peso em KG"
+    },
+    "cost_fob_usd": {
+      "type": "number",
+      "description": "Custo FOB em USD"
+    },
+    "cost_landed_brl": {
+      "type": "number",
+      "description": "Custo landed em BRL (calculado)"
+    },
+    "sale_price": {
+      "type": "number",
+      "description": "Pre\u00e7o de venda em BRL"
+    },
+    "markup_percent": {
+      "type": "number",
+      "description": "Markup percentual"
+    },
+    "stock_quantity": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantidade em estoque"
+    },
+    "min_stock": {
+      "type": "number",
+      "default": 0,
+      "description": "Estoque m\u00ednimo"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "URL da imagem do produto"
+    },
+    "barcode": {
+      "type": "string",
+      "description": "C\u00f3digo de barras EAN/GTIN"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "discontinued"
+      ],
+      "default": "active"
+    },
+    "supplier_id": {
+      "type": "string",
+      "description": "ID do fornecedor principal"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "name",
+    "sku"
+  ]
+}

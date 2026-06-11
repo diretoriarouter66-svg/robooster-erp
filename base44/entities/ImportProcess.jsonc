@@ -1,0 +1,203 @@
+{
+  "name": "ImportProcess",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "type": "string",
+      "description": "Refer\u00eancia/n\u00famero do processo"
+    },
+    "supplier_id": {
+      "type": "string",
+      "description": "ID do fornecedor"
+    },
+    "supplier_name": {
+      "type": "string",
+      "description": "Nome do fornecedor"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "proforma",
+        "shipped",
+        "customs",
+        "released",
+        "delivered",
+        "completed"
+      ],
+      "default": "draft"
+    },
+    "incoterm": {
+      "type": "string",
+      "enum": [
+        "FOB",
+        "CIF",
+        "EXW",
+        "CFR",
+        "DDP"
+      ],
+      "default": "FOB"
+    },
+    "origin_country": {
+      "type": "string",
+      "description": "Pa\u00eds de origem"
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "USD",
+        "EUR",
+        "CNY"
+      ],
+      "default": "USD"
+    },
+    "exchange_rate": {
+      "type": "number",
+      "description": "Cota\u00e7\u00e3o do c\u00e2mbio no fechamento"
+    },
+    "total_fob_usd": {
+      "type": "number",
+      "description": "Total FOB em moeda estrangeira"
+    },
+    "total_fob_brl": {
+      "type": "number",
+      "description": "Total FOB convertido em BRL"
+    },
+    "freight_international": {
+      "type": "number",
+      "description": "Frete internacional em BRL"
+    },
+    "insurance": {
+      "type": "number",
+      "description": "Seguro em BRL"
+    },
+    "cif_value_brl": {
+      "type": "number",
+      "description": "Valor CIF em BRL"
+    },
+    "ii_rate": {
+      "type": "number",
+      "description": "Al\u00edquota II (%)"
+    },
+    "ii_value": {
+      "type": "number",
+      "description": "Valor Imposto de Importa\u00e7\u00e3o"
+    },
+    "ipi_rate": {
+      "type": "number",
+      "description": "Al\u00edquota IPI (%)"
+    },
+    "ipi_value": {
+      "type": "number",
+      "description": "Valor IPI"
+    },
+    "pis_rate": {
+      "type": "number",
+      "default": 2.1,
+      "description": "Al\u00edquota PIS (%)"
+    },
+    "pis_value": {
+      "type": "number",
+      "description": "Valor PIS"
+    },
+    "cofins_rate": {
+      "type": "number",
+      "default": 9.65,
+      "description": "Al\u00edquota COFINS (%)"
+    },
+    "cofins_value": {
+      "type": "number",
+      "description": "Valor COFINS"
+    },
+    "icms_rate": {
+      "type": "number",
+      "description": "Al\u00edquota ICMS (%)"
+    },
+    "icms_value": {
+      "type": "number",
+      "description": "Valor ICMS"
+    },
+    "afrmm_value": {
+      "type": "number",
+      "description": "Valor AFRMM (25% frete mar\u00edtimo)"
+    },
+    "siscomex_fee": {
+      "type": "number",
+      "description": "Taxa SISCOMEX"
+    },
+    "customs_broker_fee": {
+      "type": "number",
+      "description": "Honor\u00e1rios despachante"
+    },
+    "storage_fee": {
+      "type": "number",
+      "description": "Armazenagem"
+    },
+    "inland_freight": {
+      "type": "number",
+      "description": "Frete interno"
+    },
+    "other_expenses": {
+      "type": "number",
+      "description": "Outras despesas"
+    },
+    "total_taxes": {
+      "type": "number",
+      "description": "Total de impostos"
+    },
+    "total_expenses": {
+      "type": "number",
+      "description": "Total de despesas acess\u00f3rias"
+    },
+    "total_landed_cost": {
+      "type": "number",
+      "description": "Custo total landed"
+    },
+    "fiscal_benefit_type": {
+      "type": "string",
+      "enum": [
+        "none",
+        "ex_tarifario",
+        "acordo_comercial",
+        "regime_especial",
+        "drawback",
+        "other"
+      ],
+      "default": "none"
+    },
+    "fiscal_benefit_description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do benef\u00edcio fiscal"
+    },
+    "fiscal_benefit_discount": {
+      "type": "number",
+      "description": "Desconto do benef\u00edcio fiscal em BRL"
+    },
+    "di_number": {
+      "type": "string",
+      "description": "N\u00famero da DI"
+    },
+    "di_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de registro da DI"
+    },
+    "estimated_arrival": {
+      "type": "string",
+      "format": "date",
+      "description": "Previs\u00e3o de chegada"
+    },
+    "actual_arrival": {
+      "type": "string",
+      "format": "date",
+      "description": "Data real de chegada"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "reference"
+  ]
+}

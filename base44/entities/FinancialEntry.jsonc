@@ -1,0 +1,86 @@
+{
+  "name": "FinancialEntry",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "receivable",
+        "payable"
+      ],
+      "description": "Tipo: a receber ou a pagar"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "sale",
+        "import",
+        "freight",
+        "tax",
+        "salary",
+        "rent",
+        "supplier",
+        "marketplace_fee",
+        "other"
+      ],
+      "default": "other"
+    },
+    "reference_id": {
+      "type": "string",
+      "description": "ID de refer\u00eancia (pedido, importa\u00e7\u00e3o, etc)"
+    },
+    "reference_type": {
+      "type": "string",
+      "description": "Tipo de refer\u00eancia"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Valor"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de vencimento"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de pagamento"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "paid",
+        "overdue",
+        "cancelled"
+      ],
+      "default": "pending"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "pix",
+        "boleto",
+        "credit_card",
+        "transfer",
+        "cash",
+        "other"
+      ],
+      "default": "pix"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "type",
+    "description",
+    "amount"
+  ]
+}

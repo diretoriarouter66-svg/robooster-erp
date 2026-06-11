@@ -1,0 +1,83 @@
+{
+  "name": "Supplier",
+  "type": "object",
+  "properties": {
+    "company_name": {
+      "type": "string",
+      "description": "Raz\u00e3o social / Nome da empresa"
+    },
+    "trade_name": {
+      "type": "string",
+      "description": "Nome fantasia"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "international",
+        "national"
+      ],
+      "default": "international"
+    },
+    "document": {
+      "type": "string",
+      "description": "CNPJ ou Tax ID"
+    },
+    "country": {
+      "type": "string",
+      "description": "Pa\u00eds"
+    },
+    "city": {
+      "type": "string",
+      "description": "Cidade"
+    },
+    "address": {
+      "type": "string",
+      "description": "Endere\u00e7o completo"
+    },
+    "contact_name": {
+      "type": "string",
+      "description": "Nome do contato"
+    },
+    "email": {
+      "type": "string",
+      "description": "Email"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Telefone"
+    },
+    "whatsapp": {
+      "type": "string",
+      "description": "WhatsApp"
+    },
+    "payment_terms": {
+      "type": "string",
+      "description": "Condi\u00e7\u00f5es de pagamento"
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "USD",
+        "EUR",
+        "CNY",
+        "BRL"
+      ],
+      "default": "USD"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "company_name"
+  ]
+}

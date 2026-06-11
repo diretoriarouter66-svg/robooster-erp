@@ -1,0 +1,67 @@
+{
+  "name": "StockMovement",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "ID do produto"
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Nome do produto"
+    },
+    "product_sku": {
+      "type": "string",
+      "description": "SKU do produto"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "entry",
+        "exit",
+        "adjustment"
+      ],
+      "description": "Tipo de movimenta\u00e7\u00e3o"
+    },
+    "quantity": {
+      "type": "number",
+      "description": "Quantidade movimentada"
+    },
+    "previous_stock": {
+      "type": "number",
+      "description": "Estoque anterior"
+    },
+    "new_stock": {
+      "type": "number",
+      "description": "Novo estoque"
+    },
+    "reference_type": {
+      "type": "string",
+      "enum": [
+        "import",
+        "sale",
+        "return",
+        "adjustment",
+        "other"
+      ],
+      "default": "other"
+    },
+    "reference_id": {
+      "type": "string",
+      "description": "ID de refer\u00eancia"
+    },
+    "unit_cost": {
+      "type": "number",
+      "description": "Custo unit\u00e1rio na movimenta\u00e7\u00e3o"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "product_id",
+    "type",
+    "quantity"
+  ]
+}
