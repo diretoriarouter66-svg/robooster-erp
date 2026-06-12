@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Package, Users, Truck, Ship, ShoppingCart,
-  FileText, DollarSign, BarChart3, Calculator, ChevronDown,
+  FileText, DollarSign, BarChart3, Tag, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse } from
 "lucide-react";
 import { base44 } from "@/api/base44Client";
@@ -26,7 +26,7 @@ const menuGroups = [
   label: "Importação",
   items: [
   { icon: Ship, label: "Processos", path: "/imports" },
-  { icon: Calculator, label: "Precificador", path: "/pricing" }]
+  { icon: Tag, label: "Categorias", path: "/product-categories" }]
 
 },
 {

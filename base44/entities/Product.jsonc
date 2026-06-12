@@ -18,9 +18,13 @@
       "type": "string",
       "description": "Marca"
     },
-    "category": {
+    "category_id": {
       "type": "string",
-      "description": "Categoria"
+      "description": "ID da categoria"
+    },
+    "category_name": {
+      "type": "string",
+      "description": "Nome da categoria"
     },
     "ncm": {
       "type": "string",
@@ -47,6 +51,18 @@
       "type": "number",
       "description": "Peso em KG"
     },
+    "height_cm": {
+      "type": "number",
+      "description": "Altura em CM"
+    },
+    "width_cm": {
+      "type": "number",
+      "description": "Largura em CM"
+    },
+    "length_cm": {
+      "type": "number",
+      "description": "Comprimento em CM"
+    },
     "cost_fob_usd": {
       "type": "number",
       "description": "Custo FOB em USD"
@@ -63,6 +79,28 @@
       "type": "number",
       "description": "Markup percentual"
     },
+    "ii_rate": {
+      "type": "number",
+      "description": "Al\u00edquota II (%)"
+    },
+    "ipi_rate": {
+      "type": "number",
+      "description": "Al\u00edquota IPI (%)"
+    },
+    "pis_rate": {
+      "type": "number",
+      "description": "Al\u00edquota PIS (%)",
+      "default": 2.1
+    },
+    "cofins_rate": {
+      "type": "number",
+      "description": "Al\u00edquota COFINS (%)",
+      "default": 9.65
+    },
+    "icms_rate": {
+      "type": "number",
+      "description": "Al\u00edquota ICMS (%)"
+    },
     "stock_quantity": {
       "type": "number",
       "default": 0,
@@ -75,7 +113,18 @@
     },
     "image_url": {
       "type": "string",
-      "description": "URL da imagem do produto"
+      "description": "URL da imagem principal"
+    },
+    "images": {
+      "type": "array",
+      "description": "URLs de imagens adicionais",
+      "items": {
+        "type": "string"
+      }
+    },
+    "video_url": {
+      "type": "string",
+      "description": "Link externo de v\u00eddeo"
     },
     "barcode": {
       "type": "string",
