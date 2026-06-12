@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Package, Users, Truck, Ship, ShoppingCart,
-  FileText, DollarSign, BarChart3, Tag, ChevronDown,
+  LayoutDashboard, Package, Users, Truck, ShoppingCart,
+  FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse } from
 "lucide-react";
 import { base44 } from "@/api/base44Client";
@@ -22,13 +22,7 @@ const menuGroups = [
   { icon: Users, label: "Clientes", path: "/customers" }]
 
 },
-{
-  label: "Importação",
-  items: [
-  { icon: Ship, label: "Processos", path: "/imports" },
-  { icon: Tag, label: "Categorias", path: "/product-categories" }]
 
-},
 {
   label: "Comercial",
   items: [
