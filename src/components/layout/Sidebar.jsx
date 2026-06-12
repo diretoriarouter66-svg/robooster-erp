@@ -3,48 +3,48 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Package, Users, Truck, Ship, ShoppingCart,
   FileText, DollarSign, BarChart3, Calculator, ChevronDown,
-  ChevronRight, Settings, LogOut, Menu, X, Warehouse
-} from "lucide-react";
+  ChevronRight, Settings, LogOut, Menu, X, Warehouse } from
+"lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const menuGroups = [
-  {
-    label: "Principal",
-    items: [
-      { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-    ]
-  },
-  {
-    label: "Cadastros",
-    items: [
-      { icon: Package, label: "Produtos", path: "/products" },
-      { icon: Truck, label: "Fornecedores", path: "/suppliers" },
-      { icon: Users, label: "Clientes", path: "/customers" },
-    ]
-  },
-  {
-    label: "Importação",
-    items: [
-      { icon: Ship, label: "Processos", path: "/imports" },
-      { icon: Calculator, label: "Precificador", path: "/pricing" },
-    ]
-  },
-  {
-    label: "Comercial",
-    items: [
-      { icon: FileText, label: "Pedidos de Compra", path: "/purchase-orders" },
-      { icon: ShoppingCart, label: "Pedidos de Venda", path: "/sale-orders" },
-      { icon: Warehouse, label: "Estoque", path: "/stock" },
-    ]
-  },
-  {
-    label: "Financeiro",
-    items: [
-      { icon: DollarSign, label: "Financeiro", path: "/financial" },
-      { icon: BarChart3, label: "Relatórios", path: "/reports" },
-    ]
-  },
-];
+{
+  label: "Principal",
+  items: [
+  { icon: LayoutDashboard, label: "Dashboard", path: "/" }]
+
+},
+{
+  label: "Cadastros",
+  items: [
+  { icon: Package, label: "Produtos", path: "/products" },
+  { icon: Truck, label: "Fornecedores", path: "/suppliers" },
+  { icon: Users, label: "Clientes", path: "/customers" }]
+
+},
+{
+  label: "Importação",
+  items: [
+  { icon: Ship, label: "Processos", path: "/imports" },
+  { icon: Calculator, label: "Precificador", path: "/pricing" }]
+
+},
+{
+  label: "Comercial",
+  items: [
+  { icon: FileText, label: "Pedidos de Compra", path: "/purchase-orders" },
+  { icon: ShoppingCart, label: "Pedidos de Venda", path: "/sale-orders" },
+  { icon: Warehouse, label: "Estoque", path: "/stock" }]
+
+},
+{
+  label: "Financeiro",
+  items: [
+  { icon: DollarSign, label: "Financeiro", path: "/financial" },
+  { icon: BarChart3, label: "Relatórios", path: "/reports" }]
+
+}];
+
 
 export default function Sidebar() {
   const location = useLocation();
@@ -55,128 +55,128 @@ export default function Sidebar() {
   );
 
   const toggleGroup = (label) => {
-    setExpandedGroups(prev => ({ ...prev, [label]: !prev[label] }));
+    setExpandedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
   const handleLogout = () => {
     base44.auth.logout("/login");
   };
 
-  const navContent = (
-    <div className="flex flex-col h-full">
+  const navContent =
+  <div className="flex flex-col h-full">
       <div className="p-4 flex items-center gap-3 border-b border-sidebar-border">
         <div className="w-9 h-9 rounded-lg bg-sidebar-primary flex items-center justify-center">
           <Ship className="w-5 h-5 text-sidebar-primary-foreground" />
         </div>
-        {!collapsed && (
-          <div>
-            <h1 className="font-heading font-bold text-sm text-sidebar-foreground">ImportERP</h1>
+        {!collapsed &&
+      <div>
+            <h1 className="font-heading font-bold text-sm text-sidebar-foreground">ERP Robooster</h1>
             <p className="text-[10px] text-sidebar-foreground/50">Gestão de Importação</p>
           </div>
-        )}
+      }
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-        {menuGroups.map((group) => (
-          <div key={group.label}>
-            {!collapsed && (
-              <button
-                onClick={() => toggleGroup(group.label)}
-                className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 hover:text-sidebar-foreground/60 transition-colors"
-              >
+        {menuGroups.map((group) =>
+      <div key={group.label}>
+            {!collapsed &&
+        <button
+          onClick={() => toggleGroup(group.label)}
+          className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 hover:text-sidebar-foreground/60 transition-colors">
+          
                 {group.label}
-                {expandedGroups[group.label] ? (
-                  <ChevronDown className="w-3 h-3" />
-                ) : (
-                  <ChevronRight className="w-3 h-3" />
-                )}
+                {expandedGroups[group.label] ?
+          <ChevronDown className="w-3 h-3" /> :
+
+          <ChevronRight className="w-3 h-3" />
+          }
               </button>
-            )}
-            {(collapsed || expandedGroups[group.label]) && (
-              <div className="space-y-0.5">
+        }
+            {(collapsed || expandedGroups[group.label]) &&
+        <div className="space-y-0.5">
                 {group.items.map((item) => {
-                  const isActive = location.pathname === item.path;
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setMobileOpen(false)}
-                      className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-all duration-150 ${
-                        isActive
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium shadow-sm"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                      }`}
-                      title={collapsed ? item.label : undefined}
-                    >
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setMobileOpen(false)}
+                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-all duration-150 ${
+                isActive ?
+                "bg-sidebar-primary text-sidebar-primary-foreground font-medium shadow-sm" :
+                "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"}`
+                }
+                title={collapsed ? item.label : undefined}>
+                
                       <item.icon className="w-4 h-4 flex-shrink-0" />
                       {!collapsed && <span>{item.label}</span>}
-                    </Link>
-                  );
-                })}
+                    </Link>);
+
+          })}
               </div>
-            )}
+        }
           </div>
-        ))}
+      )}
       </nav>
 
       <div className="p-2 border-t border-sidebar-border space-y-0.5">
         <Link
-          to="/settings"
-          className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-        >
+        to="/settings"
+        className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
+        
           <Settings className="w-4 h-4" />
           {!collapsed && <span>Configurações</span>}
         </Link>
         <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-destructive/20 hover:text-destructive transition-colors"
-        >
+        onClick={handleLogout}
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-destructive/20 hover:text-destructive transition-colors">
+        
           <LogOut className="w-4 h-4" />
           {!collapsed && <span>Sair</span>}
         </button>
       </div>
-    </div>
-  );
+    </div>;
+
 
   return (
     <>
       <button
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-card shadow-md border border-border"
-      >
+        className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-card shadow-md border border-border">
+        
         <Menu className="w-5 h-5" />
       </button>
 
-      {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMobileOpen(false)}>
+      {mobileOpen &&
+      <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMobileOpen(false)}>
           <div
-            className="w-64 h-full bg-sidebar"
-            onClick={(e) => e.stopPropagation()}
-          >
+          className="w-64 h-full bg-sidebar"
+          onClick={(e) => e.stopPropagation()}>
+          
             <button
-              onClick={() => setMobileOpen(false)}
-              className="absolute top-3 right-3 p-1 text-sidebar-foreground/50 hover:text-sidebar-foreground"
-            >
+            onClick={() => setMobileOpen(false)}
+            className="absolute top-3 right-3 p-1 text-sidebar-foreground/50 hover:text-sidebar-foreground">
+            
               <X className="w-5 h-5" />
             </button>
             {navContent}
           </div>
         </div>
-      )}
+      }
 
       <aside
         className={`hidden lg:flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-200 ${
-          collapsed ? "w-16" : "w-60"
-        }`}
-      >
+        collapsed ? "w-16" : "w-60"}`
+        }>
+        
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-7 z-10 w-6 h-6 rounded-full bg-card border border-border shadow-sm flex items-center justify-center hover:bg-accent transition-colors"
-        >
+          className="absolute -right-3 top-7 z-10 w-6 h-6 rounded-full bg-card border border-border shadow-sm flex items-center justify-center hover:bg-accent transition-colors">
+          
           {collapsed ? <ChevronRight className="w-3 h-3" /> : <Menu className="w-3 h-3" />}
         </button>
         {navContent}
       </aside>
-    </>
-  );
+    </>);
+
 }
