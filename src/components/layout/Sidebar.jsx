@@ -70,7 +70,7 @@ export default function Sidebar() {
         </div>
         {!collapsed &&
       <div>
-            <h1 className="font-heading font-bold text-sm text-sidebar-foreground">ERP Robooster</h1>
+            <h1 className="font-heading font-bold text-sm text-sidebar-foreground">Gestor Robooster</h1>
             <p className="text-[10px] text-sidebar-foreground/50">Gestão de Negócio</p>
           </div>
       }
