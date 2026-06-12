@@ -14,19 +14,17 @@ export default function Reports() {
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [products, orders, imports, financial] = await Promise.all([
+    const [products, orders, financial] = await Promise.all([
       base44.entities.Product.list("-created_date", 200),
       base44.entities.SaleOrder.list("-created_date", 200),
-      base44.entities.ImportProcess.list("-created_date", 200),
       base44.entities.FinancialEntry.list("-created_date", 200),
     ]);
 
     const totalSales = orders.reduce((s, o) => s + (o.total || 0), 0);
-    const totalImportCost = imports.reduce((s, i) => s + (i.total_landed_cost || 0), 0);
     const totalInventoryValue = products.reduce((s, p) => s + ((p.stock_quantity || 0) * (p.cost_landed_brl || 0)), 0);
     const totalPaid = financial.filter(f => f.status === "paid" && f.type === "payable").reduce((s, f) => s + (f.amount || 0), 0);
+    const totalReceived = financial.filter(f => f.status === "paid" && f.type === "receivable").reduce((s, f) => s + (f.amount || 0), 0);
 
-    // Sales by channel
     const channels = {};
     orders.forEach(o => {
       const ch = o.channel || "direct";
@@ -34,7 +32,6 @@ export default function Reports() {
     });
     const salesByChannel = Object.entries(channels).map(([name, value]) => ({ name, value: Math.round(value) }));
 
-    // Top products by sale orders
     const productSales = {};
     orders.forEach(o => {
       (o.items || []).forEach(item => {
@@ -47,19 +44,7 @@ export default function Reports() {
       .sort((a, b) => b.value - a.value)
       .slice(0, 10);
 
-    // Import status distribution
-    const importStatus = {};
-    imports.forEach(i => {
-      const s = i.status || "draft";
-      importStatus[s] = (importStatus[s] || 0) + 1;
-    });
-    const importsByStatus = Object.entries(importStatus).map(([name, value]) => ({ name, value }));
-
-    setData({
-      totalSales, totalImportCost, totalInventoryValue, totalPaid,
-      salesByChannel, topProducts, importsByStatus,
-      ordersCount: orders.length, importsCount: imports.length,
-    });
+    setData({ totalSales, totalInventoryValue, totalPaid, totalReceived, salesByChannel, topProducts, ordersCount: orders.length });
     setLoading(false);
   };
 
@@ -75,7 +60,7 @@ export default function Reports() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <StatCard icon={TrendingUp} label="Total Vendas" value={formatCurrency(data.totalSales)} color="success" />
-        <StatCard icon={DollarSign} label="Custo Importações" value={formatCurrency(data.totalImportCost)} color="warning" />
+        <StatCard icon={DollarSign} label="Total Recebido" value={formatCurrency(data.totalReceived)} color="success" />
         <StatCard icon={Package} label="Valor em Estoque" value={formatCurrency(data.totalInventoryValue)} color="primary" />
         <StatCard icon={DollarSign} label="Total Pago" value={formatCurrency(data.totalPaid)} color="destructive" />
       </div>
@@ -111,23 +96,6 @@ export default function Reports() {
             </ResponsiveContainer>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-8">Sem dados de vendas ainda</p>
-          )}
-        </div>
-
-        <div className="bg-card rounded-xl border border-border p-4 lg:col-span-2">
-          <h3 className="font-heading font-semibold mb-4">Importações por Status</h3>
-          {data.importsByStatus?.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={data.importsByStatus}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" fill="hsl(160,60%,45%)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">Sem processos de importação ainda</p>
           )}
         </div>
       </div>
