@@ -18,20 +18,17 @@ export default function Products() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
   const [suppliers, setSuppliers] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [prods, supps, cats] = await Promise.all([
+    const [prods, supps] = await Promise.all([
       base44.entities.Product.list("-created_date", 200),
       base44.entities.Supplier.list("-created_date", 200),
-      base44.entities.ProductCategory.list("-created_date", 200),
     ]);
     setProducts(prods);
     setSuppliers(supps);
-    setCategories(cats);
     setLoading(false);
   };
 
@@ -67,15 +64,6 @@ export default function Products() {
     const { file_url } = await base44.integrations.Core.UploadFile({ file });
     setForm(prev => ({ ...prev, image_url: file_url }));
     setUploadingImage(false);
-  };
-
-  const handleCategoryChange = (categoryId) => {
-    if (categoryId === "none") {
-      setForm({ ...form, category_id: "", category_name: "" });
-      return;
-    }
-    const cat = categories.find(c => c.id === categoryId);
-    setForm({ ...form, category_id: categoryId, category_name: cat?.name || "" });
   };
 
   const filtered = products.filter(p =>
@@ -225,15 +213,7 @@ export default function Products() {
               </div>
               <div>
                 <Label>Categoria</Label>
-                <Select value={form.category_id || "none"} onValueChange={handleCategoryChange}>
-                  <SelectTrigger><SelectValue placeholder="Selecione a categoria" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sem categoria</SelectItem>
-                    {categories.map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input value={form.category_name || ""} onChange={f("category_name")} placeholder="Nome da categoria" />
               </div>
               <div>
                 <Label>NCM</Label>
