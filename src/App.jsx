@@ -15,6 +15,7 @@ import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
 import Suppliers from './pages/Suppliers';
 import Customers from './pages/Customers';
+import SalesChannels from './pages/SalesChannels';
 
 import PurchaseOrders from './pages/PurchaseOrders';
 import SaleOrders from './pages/SaleOrders';
@@ -58,6 +59,7 @@ const AuthenticatedApp = () => {
           <Route path="/products" element={<Products />} />
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/customers" element={<Customers />} />
+          <Route path="/sales-channels" element={<SalesChannels />} />
 
           <Route path="/purchase-orders" element={<PurchaseOrders />} />
           <Route path="/sale-orders" element={<SaleOrders />} />

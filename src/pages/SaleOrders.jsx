@@ -10,6 +10,13 @@ import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import EmptyState from "../components/shared/EmptyState";
 
+const CHANNEL_TYPE_MAP = {
+  direct: "venda_direta",
+  mercado_livre: "mercado_livre_classico",
+  woocommerce: "site_woocommerce",
+  other: "outro",
+};
+
 export default function SaleOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,19 +26,25 @@ export default function SaleOrders() {
   const [form, setForm] = useState({});
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [pricings, setPricings] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [o, c, p] = await Promise.all([
+    const [o, c, p, ch, pr] = await Promise.all([
       base44.entities.SaleOrder.list("-created_date", 200),
       base44.entities.Customer.list("-created_date", 200),
       base44.entities.Product.list("-created_date", 200),
+      base44.entities.SalesChannel.list("-created_date", 50),
+      base44.entities.ProductPricing.list("-created_date", 500),
     ]);
     setOrders(o);
     setCustomers(c);
     setProducts(p);
+    setChannels(ch);
+    setPricings(pr);
     setLoading(false);
   };
 
@@ -49,6 +62,15 @@ export default function SaleOrders() {
     setDialogOpen(true);
   };
 
+  const getChannelPrice = (productId, orderChannel) => {
+    const channelType = CHANNEL_TYPE_MAP[orderChannel];
+    if (!channelType) return null;
+    const channel = channels.find(c => c.type === channelType && c.active);
+    if (!channel) return null;
+    const pricing = pricings.find(p => p.product_id === productId && p.channel_id === channel.id);
+    return pricing?.price || null;
+  };
+
   const updateOrderItem = (idx, field, value) => {
     const updated = [...orderItems];
     updated[idx] = { ...updated[idx], [field]: value };
@@ -57,10 +79,20 @@ export default function SaleOrders() {
       if (p) {
         updated[idx].name = p.name;
         updated[idx].sku = p.sku;
-        updated[idx].unit_price = p.sale_price || 0;
+        const channelPrice = getChannelPrice(value, form.channel);
+        updated[idx].unit_price = channelPrice ?? 0;
       }
     }
     setOrderItems(updated);
+  };
+
+  const handleChannelChange = (newChannel) => {
+    setForm(prev => ({ ...prev, channel: newChannel }));
+    setOrderItems(prev => prev.map(item => {
+      if (!item.product_id) return item;
+      const price = getChannelPrice(item.product_id, newChannel);
+      return { ...item, unit_price: price ?? 0 };
+    }));
   };
 
   const calcTotal = () => {
@@ -174,7 +206,7 @@ export default function SaleOrders() {
             </div>
             <div>
               <Label>Canal</Label>
-              <Select value={form.channel || "direct"} onValueChange={v => setForm({...form, channel: v})}>
+              <Select value={form.channel || "direct"} onValueChange={v => handleChannelChange(v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="direct">Direto</SelectItem>

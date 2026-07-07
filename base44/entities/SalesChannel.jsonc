@@ -1,0 +1,39 @@
+{
+  "name": "SalesChannel",
+  "properties": {
+    "active": {
+      "default": true,
+      "type": "boolean"
+    },
+    "commission_percent": {
+      "default": 0,
+      "description": "Comiss\u00e3o do canal (%)",
+      "type": "number"
+    },
+    "fixed_fee": {
+      "default": 0,
+      "description": "Taxa fixa por venda (R$)",
+      "type": "number"
+    },
+    "name": {
+      "description": "Nome do canal (ex: Venda Direta, ML Cl\u00e1ssico, ML Premium, Site)",
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "venda_direta",
+        "mercado_livre_classico",
+        "mercado_livre_premium",
+        "site_woocommerce",
+        "amazon",
+        "outro"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "type"
+  ],
+  "type": "object"
+}

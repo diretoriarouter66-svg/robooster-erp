@@ -1,0 +1,30 @@
+{
+  "name": "ProductPricing",
+  "properties": {
+    "channel_id": {
+      "description": "ID do SalesChannel",
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "price": {
+      "description": "Pre\u00e7o de venda neste canal (R$)",
+      "type": "number"
+    },
+    "price_promotional": {
+      "description": "Pre\u00e7o promocional (R$), quando houver",
+      "type": "number"
+    },
+    "product_id": {
+      "description": "ID do Product",
+      "type": "string"
+    }
+  },
+  "required": [
+    "product_id",
+    "channel_id",
+    "price"
+  ],
+  "type": "object"
+}

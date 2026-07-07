@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import EmptyState from "../components/shared/EmptyState";
+import ProductPricingSection from "../components/products/ProductPricingSection";
 
 export default function Products() {
   const [products, setProducts] = useState([]);
@@ -18,17 +19,26 @@ export default function Products() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
   const [suppliers, setSuppliers] = useState([]);
+  const [vdPriceMap, setVdPriceMap] = useState({});
   const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [prods, supps] = await Promise.all([
+    const [prods, supps, chans, allPricings] = await Promise.all([
       base44.entities.Product.list("-created_date", 200),
       base44.entities.Supplier.list("-created_date", 200),
+      base44.entities.SalesChannel.list("-created_date", 50),
+      base44.entities.ProductPricing.list("-created_date", 500),
     ]);
+    const vdChannel = chans.find(c => c.type === "venda_direta");
+    const vdMap = {};
+    if (vdChannel) {
+      allPricings.filter(p => p.channel_id === vdChannel.id).forEach(p => { vdMap[p.product_id] = p.price; });
+    }
     setProducts(prods);
     setSuppliers(supps);
+    setVdPriceMap(vdMap);
     setLoading(false);
   };
 
@@ -143,7 +153,7 @@ export default function Products() {
                         {product.stock_quantity || 0}
                       </td>
                       <td className="px-4 py-3 text-right hidden lg:table-cell">{formatCurrency(product.cost_landed_brl)}</td>
-                      <td className="px-4 py-3 text-right font-medium">{formatCurrency(product.sale_price)}</td>
+                      <td className="px-4 py-3 text-right font-medium">{formatCurrency(vdPriceMap[product.id])}</td>
                       <td className="px-4 py-3 text-center"><StatusBadge status={product.status} /></td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -298,10 +308,10 @@ export default function Products() {
             </div>
           </div>
 
-          {/* PREÇOS */}
+          {/* PREÇOS E ESTOQUE */}
           <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Preços</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Preços e Estoque</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <Label>Custo FOB (USD)</Label>
                 <Input type="number" step="0.01" value={form.cost_fob_usd || ""} onChange={f("cost_fob_usd")} />
@@ -309,14 +319,6 @@ export default function Products() {
               <div>
                 <Label>Custo Landed (BRL)</Label>
                 <Input type="number" step="0.01" value={form.cost_landed_brl || ""} onChange={f("cost_landed_brl")} />
-              </div>
-              <div>
-                <Label>Preço de Venda (BRL)</Label>
-                <Input type="number" step="0.01" value={form.sale_price || ""} onChange={f("sale_price")} />
-              </div>
-              <div>
-                <Label>Markup (%)</Label>
-                <Input type="number" step="0.1" value={form.markup_percent || ""} onChange={f("markup_percent")} />
               </div>
               <div>
                 <Label>Estoque Atual</Label>
@@ -382,6 +384,14 @@ export default function Products() {
               onChange={e => setForm({...form, notes: e.target.value})}
             />
           </div>
+
+          {/* PREÇOS POR CANAL */}
+          {editing?.id && (
+            <div className="mt-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Preços por Canal</p>
+              <ProductPricingSection productId={editing.id} costLandedBrl={form.cost_landed_brl} />
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
