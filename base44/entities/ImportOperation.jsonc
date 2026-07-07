@@ -1,0 +1,99 @@
+{
+  "name": "ImportOperation",
+  "properties": {
+    "cambio": {
+      "description": "C\u00e2mbio USD/BRL da opera\u00e7\u00e3o",
+      "type": "number"
+    },
+    "comissao_perc": {
+      "default": 0,
+      "description": "Comiss\u00e3o de venda (%)",
+      "type": "number"
+    },
+    "container_tipo": {
+      "description": "Tipo de container (20ft, 40ft, 40HC, LCL)",
+      "type": "string"
+    },
+    "data": {
+      "format": "date",
+      "type": "string"
+    },
+    "despesas_locais_usd": {
+      "description": "Despesas locais de importa\u00e7\u00e3o em USD",
+      "type": "number"
+    },
+    "frete_container_usd": {
+      "default": 0,
+      "description": "Frete do container em USD",
+      "type": "number"
+    },
+    "frete_internacional_usd": {
+      "type": "number"
+    },
+    "itens": {
+      "description": "Mix de produtos: cada item referencia product_id do cadastro unificado + quantidade",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "nome": {
+      "type": "string"
+    },
+    "prazo_venda_meses": {
+      "default": 3,
+      "description": "Prazo estimado para vender o lote (meses)",
+      "type": "number"
+    },
+    "purchase_order_id": {
+      "description": "ID da PO vinculada (quando a simula\u00e7\u00e3o vira compra real)",
+      "type": "string"
+    },
+    "resultado_cubagem": {
+      "description": "Resultado calculado da cubagem do container",
+      "type": "object"
+    },
+    "resultado_importacao": {
+      "description": "Resultado calculado: custo landed por produto",
+      "type": "object"
+    },
+    "resultado_venda": {
+      "description": "Resultado calculado do cen\u00e1rio de venda",
+      "type": "object"
+    },
+    "seguro_usd": {
+      "default": 0,
+      "type": "number"
+    },
+    "status": {
+      "default": "simulacao",
+      "enum": [
+        "simulacao",
+        "aprovada",
+        "em_transito",
+        "realizada"
+      ],
+      "type": "string"
+    },
+    "tipo_venda": {
+      "default": "interna",
+      "enum": [
+        "interna",
+        "interestadual",
+        "mista"
+      ],
+      "type": "string"
+    },
+    "vendas": {
+      "description": "Cen\u00e1rio de vendas: pre\u00e7os e quantidades por produto",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "nome"
+  ],
+  "type": "object"
+}

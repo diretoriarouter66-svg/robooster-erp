@@ -22,6 +22,9 @@ import Stock from './pages/Stock';
 import Financial from './pages/Financial';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import ImportSimulator from './pages/ImportSimulator';
+import DRE from './pages/DRE';
+import ConfigTributaria from './pages/ConfigTributaria';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -61,6 +64,9 @@ const AuthenticatedApp = () => {
           <Route path="/stock" element={<Stock />} />
           <Route path="/financial" element={<Financial />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/import-simulator" element={<ImportSimulator />} />
+          <Route path="/dre" element={<DRE />} />
+          <Route path="/config-tributaria" element={<ConfigTributaria />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Route>

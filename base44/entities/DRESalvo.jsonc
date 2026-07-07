@@ -1,0 +1,47 @@
+{
+  "name": "DRESalvo",
+  "properties": {
+    "comissao": {
+      "default": 0,
+      "description": "Comiss\u00e3o (%)",
+      "type": "number"
+    },
+    "meses_venda": {
+      "default": 3,
+      "description": "Meses para escoar o lote",
+      "type": "number"
+    },
+    "mix_geo": {
+      "description": "Mix geogr\u00e1fico de vendas (interna x interestadual)",
+      "type": "object"
+    },
+    "nome": {
+      "type": "string"
+    },
+    "operacao_id": {
+      "description": "ID da ImportOperation vinculada",
+      "type": "string"
+    },
+    "operacao_nome": {
+      "type": "string"
+    },
+    "preco_overrides": {
+      "description": "Pre\u00e7os de venda ajustados manualmente por produto",
+      "type": "object"
+    },
+    "resultado": {
+      "description": "DRE completo calculado (Lucro Presumido)",
+      "type": "object"
+    },
+    "saldo_credor_icms": {
+      "default": 0,
+      "description": "Saldo credor de ICMS inicial (R$)",
+      "type": "number"
+    }
+  },
+  "required": [
+    "nome",
+    "operacao_id"
+  ],
+  "type": "object"
+}

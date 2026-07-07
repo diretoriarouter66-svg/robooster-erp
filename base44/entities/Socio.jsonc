@@ -1,0 +1,22 @@
+{
+  "name": "Socio",
+  "properties": {
+    "nome": {
+      "type": "string"
+    },
+    "percentual_participacao": {
+      "description": "Participa\u00e7\u00e3o societ\u00e1ria (%)",
+      "type": "number"
+    },
+    "residente_fiscal_brasil": {
+      "default": true,
+      "description": "S\u00f3cio \u00e9 residente fiscal no Brasil",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "nome",
+    "percentual_participacao"
+  ],
+  "type": "object"
+}
