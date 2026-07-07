@@ -52,7 +52,10 @@ export default function ProductPricingSection({ productId, costLandedBrl }) {
     }
   };
 
+  const hasCostLanded = costLandedBrl != null && costLandedBrl > 0;
+
   const calcMargin = (price, channel) => {
+    if (!hasCostLanded) return null;
     if (!price || price <= 0) return null;
     const commission = price * (channel.commission_percent || 0) / 100;
     const cost = (costLandedBrl || 0) + commission + (channel.fixed_fee || 0);
@@ -62,6 +65,49 @@ export default function ProductPricingSection({ productId, costLandedBrl }) {
   if (loading) return <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>;
 
   if (!channels.length) return <p className="text-sm text-muted-foreground text-center py-4">Nenhum canal de venda ativo. Cadastre canais na página "Canais de Venda".</p>;
+
+  if (!hasCostLanded) {
+    return (
+      <div className="border border-border rounded-lg p-4">
+        <div className="overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Canal</th>
+                <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs">Preço (R$)</th>
+                <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs hidden sm:table-cell">Promocional</th>
+                <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs hidden sm:table-cell">Margem</th>
+              </tr>
+            </thead>
+            <tbody>
+              {channels.map(ch => {
+                const pricing = getPricing(ch.id) || {};
+                const price = pricing.price || 0;
+                return (
+                  <tr key={ch.id} className="border-b border-border last:border-0">
+                    <td className="px-3 py-2">
+                      <p className="font-medium text-xs">{ch.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{ch.commission_percent || 0}% comiss{ch.fixed_fee ? ` + ${formatBRL(ch.fixed_fee)}` : ""}</p>
+                    </td>
+                    <td className="px-3 py-2">
+                      <Input type="number" step="0.01" className="h-8 w-28 text-right text-xs ml-auto" value={price || ""} onChange={e => handleFieldChange(ch.id, "price", parseFloat(e.target.value) || 0)} onBlur={() => saveField(ch.id)} placeholder="0,00" />
+                    </td>
+                    <td className="px-3 py-2 hidden sm:table-cell">
+                      <Input type="number" step="0.01" className="h-8 w-28 text-right text-xs ml-auto" value={pricing.price_promotional || ""} onChange={e => handleFieldChange(ch.id, "price_promotional", parseFloat(e.target.value) || 0)} onBlur={() => saveField(ch.id)} placeholder="0,00" />
+                    </td>
+                    <td className="px-3 py-2 text-right hidden sm:table-cell">
+                      <span className="text-xs text-muted-foreground">—</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] text-muted-foreground text-center mt-2">Margem disponível após a primeira importação realizada</p>
+      </div>
+    );
+  }
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">

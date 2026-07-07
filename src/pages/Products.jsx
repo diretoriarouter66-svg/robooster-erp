@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Plus, Search, Package, Edit, Trash2, Upload, ExternalLink, X } from "lucide-react";
+import { Plus, Search, Package, Edit, Trash2, Upload, ExternalLink, X, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,16 +18,17 @@ export default function Products() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
-  const [suppliers, setSuppliers] = useState([]);
+  const [categorias, setCategorias] = useState([]);
   const [vdPriceMap, setVdPriceMap] = useState({});
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showTech, setShowTech] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [prods, supps, chans, allPricings] = await Promise.all([
+    const [prods, cats, chans, allPricings] = await Promise.all([
       base44.entities.Product.list("-created_date", 200),
-      base44.entities.Supplier.list("-created_date", 200),
+      base44.entities.Categoria.list("-created_date", 200),
       base44.entities.SalesChannel.list("-created_date", 50),
       base44.entities.ProductPricing.list("-created_date", 500),
     ]);
@@ -37,20 +38,22 @@ export default function Products() {
       allPricings.filter(p => p.channel_id === vdChannel.id).forEach(p => { vdMap[p.product_id] = p.price; });
     }
     setProducts(prods);
-    setSuppliers(supps);
+    setCategorias(cats);
     setVdPriceMap(vdMap);
     setLoading(false);
   };
 
   const openNew = () => {
     setEditing(null);
-    setForm({ status: "active", unit: "UN", pis_rate: 2.1, cofins_rate: 9.65 });
+    setForm({ status: "active", unit: "UN", pis_rate: 2.1, cofins_rate: 9.65, origin_country: "China", empilhavel: true, pode_deitar: false, beneficio_5291: false, ex_tarifario: false, ipi_recuperavel: true });
+    setShowTech(false);
     setDialogOpen(true);
   };
 
   const openEdit = (product) => {
     setEditing(product);
     setForm({ ...product });
+    setShowTech(false);
     setDialogOpen(true);
   };
 
@@ -92,6 +95,8 @@ export default function Products() {
     const val = e.target.type === "number" ? (parseFloat(e.target.value) || 0) : e.target.value;
     setForm(prev => ({ ...prev, [field]: val }));
   };
+
+  const categoriasAtivas = categorias.filter(c => c.ativa !== false);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -180,74 +185,63 @@ export default function Products() {
             <DialogTitle>{editing ? "Editar Produto" : "Novo Produto"}</DialogTitle>
           </DialogHeader>
 
-          {/* FOTO PRINCIPAL */}
+          {/* === DADOS BÁSICOS === */}
           <div className="mt-2">
-            <Label>Foto Principal</Label>
-            <div className="mt-1 flex items-center gap-3">
-              {form.image_url ? (
-                <div className="relative">
-                  <img src={form.image_url} alt="Produto" className="w-20 h-20 rounded-lg object-cover border border-border" />
-                  <button onClick={() => setForm(prev => ({ ...prev, image_url: "" }))} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center">
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <div className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-muted/30">
-                  <Package className="w-7 h-7 text-muted-foreground" />
-                </div>
-              )}
-              <label className="cursor-pointer">
-                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                <Button variant="outline" size="sm" disabled={uploadingImage} asChild>
-                  <span><Upload className="w-4 h-4 mr-1" />{uploadingImage ? "Enviando..." : "Upload de Foto"}</span>
-                </Button>
-              </label>
-            </div>
-          </div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Dados Básicos</p>
 
-          {/* IDENTIFICAÇÃO */}
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Identificação</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label>SKU *</Label>
-                <Input value={form.sku || ""} onChange={f("sku")} placeholder="SKU-001" />
+            {/* FOTO PRINCIPAL */}
+            <div className="mb-4">
+              <Label>Foto Principal</Label>
+              <div className="mt-1 flex items-center gap-3">
+                {form.image_url ? (
+                  <div className="relative">
+                    <img src={form.image_url} alt="Produto" className="w-20 h-20 rounded-lg object-cover border border-border" />
+                    <button onClick={() => setForm(prev => ({ ...prev, image_url: "" }))} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-muted/30">
+                    <Package className="w-7 h-7 text-muted-foreground" />
+                  </div>
+                )}
+                <label className="cursor-pointer">
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                  <Button variant="outline" size="sm" disabled={uploadingImage} asChild>
+                    <span><Upload className="w-4 h-4 mr-1" />{uploadingImage ? "Enviando..." : "Enviar Foto"}</span>
+                  </Button>
+                </label>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Nome *</Label>
                 <Input value={form.name || ""} onChange={f("name")} placeholder="Nome do produto" />
               </div>
               <div>
-                <Label>Marca</Label>
-                <Input value={form.brand || ""} onChange={f("brand")} />
+                <Label>SKU *</Label>
+                <Input value={form.sku || ""} onChange={f("sku")} placeholder="SKU-001" />
+              </div>
+              <div>
+                <Label>Modelo</Label>
+                <Input value={form.model || ""} onChange={f("model")} placeholder="Ex: WF-802, DW-3600" />
               </div>
               <div>
                 <Label>Categoria</Label>
-                <Input value={form.category_name || ""} onChange={f("category_name")} placeholder="Nome da categoria" />
-              </div>
-              <div>
-                <Label>NCM</Label>
-                <Input value={form.ncm || ""} onChange={f("ncm")} placeholder="0000.00.00" />
-              </div>
-              <div>
-                <Label>País de Origem</Label>
-                <Input value={form.origin_country || ""} onChange={f("origin_country")} placeholder="China" />
-              </div>
-              <div>
-                <Label>Código de Barras (EAN)</Label>
-                <Input value={form.barcode || ""} onChange={f("barcode")} />
-              </div>
-              <div>
-                <Label>Fornecedor</Label>
-                <Select value={form.supplier_id || "none"} onValueChange={v => setForm({...form, supplier_id: v === "none" ? "" : v})}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <Select value={form.category_id || "none"} onValueChange={v => {
+                  const cat = categoriasAtivas.find(c => c.id === v);
+                  setForm(prev => ({ ...prev, category_id: v === "none" ? "" : v, category_name: cat?.nome || "" }));
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a categoria" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Nenhum</SelectItem>
-                    {suppliers.map(s => (
-                      <SelectItem key={s.id} value={s.id}>{s.company_name}</SelectItem>
+                    <SelectItem value="none">Sem categoria</SelectItem>
+                    {categoriasAtivas.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {categoriasAtivas.length === 0 && <p className="text-[10px] text-muted-foreground mt-1">Nenhuma categoria ativa. Cadastre em "Categorias".</p>}
               </div>
               <div>
                 <Label>Unidade</Label>
@@ -261,6 +255,18 @@ export default function Products() {
                 </Select>
               </div>
               <div>
+                <Label>Código de Barras (EAN)</Label>
+                <Input value={form.barcode || ""} onChange={f("barcode")} placeholder="Código de barras" />
+              </div>
+              <div>
+                <Label>Estoque Atual</Label>
+                <Input type="number" value={form.stock_quantity || ""} onChange={f("stock_quantity")} placeholder="0" />
+              </div>
+              <div>
+                <Label>Estoque Mínimo</Label>
+                <Input type="number" value={form.min_stock || ""} onChange={f("min_stock")} placeholder="0" />
+              </div>
+              <div>
                 <Label>Status</Label>
                 <Select value={form.status || "active"} onValueChange={v => setForm({...form, status: v})}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -272,96 +278,20 @@ export default function Products() {
                 </Select>
               </div>
             </div>
-          </div>
 
-          {/* DESCRIÇÃO */}
-          <div className="mt-4">
-            <Label>Descrição</Label>
-            <textarea
-              className="w-full min-h-[120px] mt-1 px-3 py-2 rounded-lg border border-input bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-              value={form.description || ""}
-              onChange={e => setForm({...form, description: e.target.value})}
-              placeholder="Descrição detalhada do produto..."
-            />
-          </div>
-
-          {/* DIMENSÕES E PESO */}
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Dimensões e Peso</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <Label>Altura (cm)</Label>
-                <Input type="number" step="0.1" value={form.height_cm || ""} onChange={f("height_cm")} placeholder="0" />
-              </div>
-              <div>
-                <Label>Largura (cm)</Label>
-                <Input type="number" step="0.1" value={form.width_cm || ""} onChange={f("width_cm")} placeholder="0" />
-              </div>
-              <div>
-                <Label>Comprimento (cm)</Label>
-                <Input type="number" step="0.1" value={form.length_cm || ""} onChange={f("length_cm")} placeholder="0" />
-              </div>
-              <div>
-                <Label>Peso (KG)</Label>
-                <Input type="number" step="0.001" value={form.weight_kg || ""} onChange={f("weight_kg")} placeholder="0" />
-              </div>
+            {/* DESCRIÇÃO */}
+            <div className="mt-3">
+              <Label>Descrição</Label>
+              <textarea
+                className="w-full min-h-[100px] mt-1 px-3 py-2 rounded-lg border border-input bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                value={form.description || ""}
+                onChange={e => setForm({...form, description: e.target.value})}
+                placeholder="Descrição do produto..."
+              />
             </div>
-          </div>
 
-          {/* PREÇOS E ESTOQUE */}
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Preços e Estoque</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <Label>Custo FOB (USD)</Label>
-                <Input type="number" step="0.01" value={form.cost_fob_usd || ""} onChange={f("cost_fob_usd")} />
-              </div>
-              <div>
-                <Label>Custo Landed (BRL)</Label>
-                <Input type="number" step="0.01" value={form.cost_landed_brl || ""} onChange={f("cost_landed_brl")} />
-              </div>
-              <div>
-                <Label>Estoque Atual</Label>
-                <Input type="number" value={form.stock_quantity || ""} onChange={f("stock_quantity")} />
-              </div>
-              <div>
-                <Label>Estoque Mínimo</Label>
-                <Input type="number" value={form.min_stock || ""} onChange={f("min_stock")} />
-              </div>
-            </div>
-          </div>
-
-          {/* IMPOSTOS */}
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Alíquotas de Impostos</p>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <div>
-                <Label>II (%)</Label>
-                <Input type="number" step="0.01" value={form.ii_rate || ""} onChange={f("ii_rate")} placeholder="0" />
-              </div>
-              <div>
-                <Label>IPI (%)</Label>
-                <Input type="number" step="0.01" value={form.ipi_rate || ""} onChange={f("ipi_rate")} placeholder="0" />
-              </div>
-              <div>
-                <Label>PIS (%)</Label>
-                <Input type="number" step="0.01" value={form.pis_rate ?? 2.1} onChange={f("pis_rate")} placeholder="2.10" />
-              </div>
-              <div>
-                <Label>COFINS (%)</Label>
-                <Input type="number" step="0.01" value={form.cofins_rate ?? 9.65} onChange={f("cofins_rate")} placeholder="9.65" />
-              </div>
-              <div>
-                <Label>ICMS (%)</Label>
-                <Input type="number" step="0.01" value={form.icms_rate || ""} onChange={f("icms_rate")} placeholder="0" />
-              </div>
-            </div>
-          </div>
-
-          {/* MÍDIA */}
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Mídia</p>
-            <div>
+            {/* LINK DE VÍDEO */}
+            <div className="mt-3">
               <Label>Link de Vídeo</Label>
               <div className="relative">
                 <ExternalLink className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -373,16 +303,169 @@ export default function Products() {
                 </a>
               )}
             </div>
+
+            {/* CUSTO LANDED SOMENTE LEITURA */}
+            <div className="mt-3">
+              <Label>Custo Landed (BRL)</Label>
+              <Input readOnly value={form.cost_landed_brl ? formatCurrency(form.cost_landed_brl) : ""} className="bg-muted" placeholder="—" />
+              <p className="text-[10px] text-muted-foreground mt-1">Calculado automaticamente pela importação realizada — não é digitado</p>
+            </div>
           </div>
 
-          {/* OBSERVAÇÕES */}
-          <div className="mt-4">
-            <Label>Observações</Label>
-            <textarea
-              className="w-full min-h-[60px] mt-1 px-3 py-2 rounded-lg border border-input bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-              value={form.notes || ""}
-              onChange={e => setForm({...form, notes: e.target.value})}
-            />
+          {/* === DADOS TÉCNICOS DE IMPORTAÇÃO === */}
+          <div className="mt-4 border border-border rounded-lg overflow-hidden">
+            <button
+              onClick={() => setShowTech(!showTech)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dados Técnicos de Importação — preenchimento pelo responsável</span>
+              {showTech ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+            </button>
+
+            {showTech && (
+              <div className="p-4 space-y-4">
+                {/* IDENTIFICAÇÃO FISCAL */}
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-2">Identificação Fiscal</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label>NCM</Label>
+                      <Input value={form.ncm || ""} onChange={f("ncm")} placeholder="0000.00.00" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Código fiscal do produto na importação (8 dígitos)</p>
+                    </div>
+                    <div>
+                      <Label>País de Origem</Label>
+                      <Input value={form.origin_country || ""} onChange={f("origin_country")} placeholder="China" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">País de fabricação do produto</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CUSTO FOB */}
+                <div>
+                  <Label>Custo FOB (USD)</Label>
+                  <Input type="number" step="0.01" value={form.cost_fob_usd || ""} onChange={f("cost_fob_usd")} placeholder="0.00" />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Preço de compra do produto no fornecedor, em dólares</p>
+                </div>
+
+                {/* ALÍQUOTAS */}
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-2">Alíquotas de Impostos</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div>
+                      <Label>II (%)</Label>
+                      <Input type="number" step="0.01" value={form.ii_rate || ""} onChange={f("ii_rate")} placeholder="0" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Imposto de Importação</p>
+                    </div>
+                    <div>
+                      <Label>IPI (%)</Label>
+                      <Input type="number" step="0.01" value={form.ipi_rate || ""} onChange={f("ipi_rate")} placeholder="0" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Imposto sobre Produtos Industrializados</p>
+                    </div>
+                    <div>
+                      <Label>PIS (%)</Label>
+                      <Input type="number" step="0.01" value={form.pis_rate ?? 2.1} onChange={f("pis_rate")} placeholder="2.10" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">PIS sobre importação</p>
+                    </div>
+                    <div>
+                      <Label>COFINS (%)</Label>
+                      <Input type="number" step="0.01" value={form.cofins_rate ?? 9.65} onChange={f("cofins_rate")} placeholder="9.65" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">COFINS sobre importação</p>
+                    </div>
+                    <div>
+                      <Label>ICMS (%)</Label>
+                      <Input type="number" step="0.01" value={form.icms_rate || ""} onChange={f("icms_rate")} placeholder="0" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">ICMS de destino da mercadoria</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* BENEFÍCIOS FISCAIS */}
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-2">Benefícios Fiscais</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setForm(prev => ({ ...prev, beneficio_5291: !prev.beneficio_5291 }))}
+                        className={`px-2 py-1 rounded text-xs font-medium ${form.beneficio_5291 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        {form.beneficio_5291 ? "Ativo" : "Inativo"}
+                      </button>
+                      <div>
+                        <Label className="cursor-pointer" onClick={() => setForm(prev => ({ ...prev, beneficio_5291: !prev.beneficio_5291 }))}>Benefício 5.2.91</Label>
+                        <p className="text-[10px] text-muted-foreground">Reduz a base de cálculo do ICMS na importação</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setForm(prev => ({ ...prev, ex_tarifario: !prev.ex_tarifario }))}
+                        className={`px-2 py-1 rounded text-xs font-medium ${form.ex_tarifario ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        {form.ex_tarifario ? "Ativo" : "Inativo"}
+                      </button>
+                      <div>
+                        <Label className="cursor-pointer" onClick={() => setForm(prev => ({ ...prev, ex_tarifario: !prev.ex_tarifario }))}>Ex-Tarifário</Label>
+                        <p className="text-[10px] text-muted-foreground">Isenção de II para bens sem similar nacional</p>
+                      </div>
+                    </div>
+                  </div>
+                  {form.ex_tarifario && (
+                    <div className="mt-2">
+                      <Label>Validade do Ex-Tarifário</Label>
+                      <Input type="date" value={form.ex_tarifario_validade || ""} onChange={f("ex_tarifario_validade")} />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Data de vencimento do benefício</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* IPI RECUPERÁVEL */}
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setForm(prev => ({ ...prev, ipi_recuperavel: !prev.ipi_recuperavel }))}
+                    className={`px-2 py-1 rounded text-xs font-medium ${form.ipi_recuperavel ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                    {form.ipi_recuperavel ? "Sim" : "Não"}
+                  </button>
+                  <div>
+                    <Label className="cursor-pointer" onClick={() => setForm(prev => ({ ...prev, ipi_recuperavel: !prev.ipi_recuperavel }))}>IPI Recuperável</Label>
+                    <p className="text-[10px] text-muted-foreground">Indica se o IPI pode ser recuperado como crédito</p>
+                  </div>
+                </div>
+
+                {/* DIMENSÕES E PESO */}
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-2">Dimensões e Peso da Embalagem</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <Label>Comprimento (cm)</Label>
+                      <Input type="number" step="0.1" value={form.length_cm || ""} onChange={f("length_cm")} placeholder="0" />
+                    </div>
+                    <div>
+                      <Label>Largura (cm)</Label>
+                      <Input type="number" step="0.1" value={form.width_cm || ""} onChange={f("width_cm")} placeholder="0" />
+                    </div>
+                    <div>
+                      <Label>Altura (cm)</Label>
+                      <Input type="number" step="0.1" value={form.height_cm || ""} onChange={f("height_cm")} placeholder="0" />
+                    </div>
+                    <div>
+                      <Label>Peso Bruto (KG)</Label>
+                      <Input type="number" step="0.001" value={form.weight_kg || ""} onChange={f("weight_kg")} placeholder="0" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setForm(prev => ({ ...prev, empilhavel: !prev.empilhavel }))}
+                        className={`px-2 py-1 rounded text-xs font-medium ${form.empilhavel ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        {form.empilhavel ? "Sim" : "Não"}
+                      </button>
+                      <Label className="cursor-pointer" onClick={() => setForm(prev => ({ ...prev, empilhavel: !prev.empilhavel }))}>Empilhável</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setForm(prev => ({ ...prev, pode_deitar: !prev.pode_deitar }))}
+                        className={`px-2 py-1 rounded text-xs font-medium ${form.pode_deitar ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        {form.pode_deitar ? "Sim" : "Não"}
+                      </button>
+                      <Label className="cursor-pointer" onClick={() => setForm(prev => ({ ...prev, pode_deitar: !prev.pode_deitar }))}>Pode Deitar</Label>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Dimensões da caixa/embalagem usadas no cálculo de cubagem do container</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* PREÇOS POR CANAL */}

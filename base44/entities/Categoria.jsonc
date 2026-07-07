@@ -1,0 +1,20 @@
+{
+  "name": "Categoria",
+  "properties": {
+    "ativa": {
+      "default": true,
+      "type": "boolean"
+    },
+    "descricao": {
+      "type": "string"
+    },
+    "nome": {
+      "description": "Nome da categoria",
+      "type": "string"
+    }
+  },
+  "required": [
+    "nome"
+  ],
+  "type": "object"
+}
