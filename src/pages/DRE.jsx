@@ -20,6 +20,7 @@ export default function DRE() {
   const [savedDREs, setSavedDREs] = useState([]);
   const [operations, setOperations] = useState([]);
   const [socios, setSocios] = useState([]);
+  const [vendaDiretaPrices, setVendaDiretaPrices] = useState({});
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("list");
