@@ -119,24 +119,34 @@ export default function DRE() {
     });
   };
 
-  const dreResult = useMemo(() => {
-    if (!form.operacao_id || !form.vendas?.length || !config) return null;
+  const [dreResult, setDreResult] = useState(null);
+  const [dreError, setDreError] = useState(null);
+
+  const handleMontarDRE = () => {
+    setDreError(null);
+    setDreResult(null);
+    if (!form.operacao_id) { setDreError("Selecione uma operação de importação."); return; }
+    if (!form.vendas?.length) { setDreError("A operação não tem produtos carregados. Reabra o cenário ou selecione a operação novamente."); return; }
+    if (!config) { setDreError("Configuração tributária não carregada. Recarregue a página."); return; }
     const op = operations.find(o => o.id === form.operacao_id);
-    if (!op?.resultado_importacao?.resultados) return null;
+    if (!op?.resultado_importacao?.resultados) { setDreError("A operação selecionada não tem resultado calculado — abra o Simulador, clique em Calcular e depois em Salvar."); return; }
+    const mixSoma = (form.mix_geo?.pct_sp || 0) + (form.mix_geo?.pct_sul_sudeste || 0) + (form.mix_geo?.pct_norte_ne_co_es || 0);
+    if (mixSoma !== 100) { setDreError(`O Mix Geográfico soma ${mixSoma}% — ajuste para totalizar 100%.`); return; }
 
     const configMotor = configParaMotor(config);
     const importacao = op.resultado_importacao;
 
     const vendas = form.vendas.map(v => {
       const resultado = importacao.resultados.find(r => r.produto.id === v.product_id);
+      if (!resultado) return null;
       return {
         produto: resultado.produto,
         quantidade: v.qty,
-        preco_unitario: v.preco_venda
+        preco_unitario: Number(v.preco_venda) || 0
       };
-    }).filter(v => v.produto && v.preco_venda > 0);
+    }).filter(v => v && v.preco_unitario > 0);
 
-    if (!vendas.length) return null;
+    if (!vendas.length) { setDreError("Defina pelo menos um preço de venda maior que zero na tabela de produtos."); return; }
 
     const mixGeografico = form.mix_geo ? {
       pct_sp: (form.mix_geo.pct_sp || 0) / 100,
@@ -164,7 +174,7 @@ export default function DRE() {
       return anual > 600000;
     });
 
-    return {
+    setDreResult({
       ...dreBase,
       despesas_fixas_mensais: despesasFixasMensais,
       despesas_fixas_total: despesasFixasTotal,
@@ -174,8 +184,8 @@ export default function DRE() {
       alerta_despesas_fixas: alertaDespesasFixas,
       alerta_distribuicao_anual: alertaDistribuicaoAnual,
       meses_venda: meses
-    };
-  }, [form, operations, config, socios]);
+    });
+  };
 
   const handleSave = async () => {
     setSaving(true);
