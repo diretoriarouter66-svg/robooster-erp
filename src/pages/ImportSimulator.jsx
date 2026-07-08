@@ -8,9 +8,12 @@ import { Plus, Search, Ship, ArrowLeft, Trash2, Calculator, Save, Loader2, Packa
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import EmptyState from "@/components/shared/EmptyState";
-import CubagePanel from "@/components/import/CubagePanel";
-import LandedCostPanel from "@/components/import/LandedCostPanel";
-import { calcCubage, calcLandedCost, CONTAINER_TYPES, formatBRL, formatUSD } from "@/lib/importCalc";
+import ImportResults from "@/components/import/ImportResults";
+import CubageResults from "@/components/import/CubageResults";
+import {
+  calcularOperacaoImportacao, calcularCubagem, produtoFromProduct,
+  configParaMotor, CONTAINERS_PADRAO
+} from "@/lib/simportEngine";
 
 const STATUS_OPTIONS = [
   { value: "simulacao", label: "Simulação" },
@@ -18,6 +21,9 @@ const STATUS_OPTIONS = [
   { value: "em_transito", label: "Em Trânsito" },
   { value: "realizada", label: "Realizada" }
 ];
+
+const fmtBRL = (v) => v != null ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v) : "—";
+const fmtUSD = (v) => v != null ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v) : "—";
 
 export default function ImportSimulator() {
   const [operations, setOperations] = useState([]);
@@ -29,8 +35,8 @@ export default function ImportSimulator() {
   const [form, setForm] = useState({});
   const [search, setSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
-  const [cubage, setCubage] = useState(null);
-  const [landed, setLanded] = useState(null);
+  const [importResult, setImportResult] = useState(null);
+  const [cubageResult, setCubageResult] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { loadData(); }, []);
@@ -51,20 +57,20 @@ export default function ImportSimulator() {
     setEditing(null);
     setForm({
       nome: "", data: new Date().toISOString().slice(0, 10),
-      cambio: config?.cambio_usd || 5.3, container_tipo: "40HC",
+      cambio: config?.cambio_usd || 5.3, container_tipo: "40' High Cube",
       frete_internacional_usd: 0, seguro_usd: 0, despesas_locais_usd: 0,
-      frete_container_usd: 0, itens: [], status: "simulacao"
+      itens: [], status: "simulacao"
     });
-    setCubage(null);
-    setLanded(null);
+    setImportResult(null);
+    setCubageResult(null);
     setView("editor");
   };
 
   const openEdit = (op) => {
     setEditing(op);
     setForm({ ...op, itens: op.itens || [] });
-    setCubage(op.resultado_cubagem || null);
-    setLanded(op.resultado_importacao || null);
+    setImportResult(op.resultado_importacao || null);
+    setCubageResult(op.resultado_cubagem || null);
     setView("editor");
   };
 
@@ -76,10 +82,7 @@ export default function ImportSimulator() {
   const addProduct = (product) => {
     setForm(prev => ({
       ...prev,
-      itens: [...(prev.itens || []), {
-        product_id: product.id, product_name: product.name, sku: product.sku, qty: 1,
-        beneficio_5291: false, ex_tarifario: false, ipi_recuperavel: false
-      }]
+      itens: [...(prev.itens || []), { product_id: product.id, product_name: product.name, sku: product.sku, qty: 1 }]
     }));
     setProductSearch("");
   };
@@ -92,29 +95,50 @@ export default function ImportSimulator() {
     setForm(prev => ({ ...prev, itens: prev.itens.filter((_, idx) => idx !== i) }));
   };
 
+  const buildEngineItems = () => {
+    return (form.itens || []).map(it => {
+      const product = products.find(p => p.id === it.product_id);
+      return { produto: produtoFromProduct(product || { id: it.product_id, name: it.product_name }), quantidade: it.qty };
+    }).filter(it => it.produto && it.quantidade > 0);
+  };
+
   const handleCalculate = () => {
-    const c = calcCubage(form.itens, products, form.container_tipo);
-    const l = calcLandedCost(form, products, config);
-    setCubage(c);
-    setLanded(l);
+    const engineItems = buildEngineItems();
+    if (!engineItems.length) return;
+
+    const configMotor = configParaMotor(config);
+    const operacaoEngine = {
+      cambio: form.cambio || config?.cambio_usd || 5.3,
+      frete_internacional_usd: form.frete_internacional_usd || 0,
+      despesas_locais_usd: form.despesas_locais_usd || 0,
+      seguro_usd: form.seguro_usd || 0,
+    };
+
+    const result = calcularOperacaoImportacao(engineItems, operacaoEngine, configMotor, form.data || "2026-01-01");
+    setImportResult(result);
+
+    const container = CONTAINERS_PADRAO.find(c => c.nome === form.container_tipo) || CONTAINERS_PADRAO[2];
+    const cubage = calcularCubagem(engineItems, container);
+    setCubageResult(cubage);
   };
 
   const handleSave = async () => {
     setSaving(true);
     const data = {
       ...form,
-      resultado_cubagem: cubage,
-      resultado_importacao: landed,
+      resultado_cubagem: cubageResult,
+      resultado_importacao: importResult,
       cambio: form.cambio || config?.cambio_usd
     };
 
-    // Se status mudou para realizada, atualizar cost_landed_brl dos produtos
     const wasRealizada = editing?.status === "realizada";
     const isRealizada = form.status === "realizada";
 
-    if (isRealizada && !wasRealizada && landed?.itens) {
+    if (isRealizada && !wasRealizada && importResult?.resultados) {
       await base44.entities.Product.bulkUpdate(
-        landed.itens.map(it => ({ id: it.product_id, cost_landed_brl: it.unit_landed_cost }))
+        importResult.resultados
+          .filter(r => r.produto?.id)
+          .map(r => ({ id: r.produto.id, cost_landed_brl: r.custo_unitario_formacao }))
       );
     }
 
@@ -162,7 +186,7 @@ export default function ImportSimulator() {
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Data</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Container</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Itens</th>
-                    <th className="text-right px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Custo Total</th>
+                    <th className="text-right px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Custo Formação</th>
                     <th className="text-center px-4 py-3 font-medium text-muted-foreground">Status</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Ações</th>
                   </tr>
@@ -172,9 +196,9 @@ export default function ImportSimulator() {
                     <tr key={op.id} className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer transition-colors" onClick={() => openEdit(op)}>
                       <td className="px-4 py-3 font-medium">{op.nome || "Sem nome"}</td>
                       <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">{op.data ? new Date(op.data).toLocaleDateString("pt-BR") : "—"}</td>
-                      <td className="px-4 py-3 hidden sm:table-cell">{CONTAINER_TYPES[op.container_tipo]?.label || op.container_tipo || "—"}</td>
+                      <td className="px-4 py-3 hidden sm:table-cell">{op.container_tipo || "—"}</td>
                       <td className="px-4 py-3 text-right hidden sm:table-cell">{op.itens?.length || 0}</td>
-                      <td className="px-4 py-3 text-right hidden lg:table-cell font-medium">{op.resultado_importacao?.total_landed ? formatBRL(op.resultado_importacao.total_landed) : "—"}</td>
+                      <td className="px-4 py-3 text-right hidden lg:table-cell font-medium">{op.resultado_importacao?.totais?.custo_formacao_preco ? fmtBRL(op.resultado_importacao.totais.custo_formacao_preco) : "—"}</td>
                       <td className="px-4 py-3 text-center"><StatusBadge status={op.status} /></td>
                       <td className="px-4 py-3 text-right">
                         <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEdit(op); }}>Abrir</Button>
@@ -190,18 +214,14 @@ export default function ImportSimulator() {
     </div>
   );
 
-  // EDITOR VIEW
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
         <Button variant="ghost" size="sm" onClick={() => setView("list")}><ArrowLeft className="w-4 h-4 mr-1" /> Voltar</Button>
-        <div>
-          <h1 className="text-xl font-heading font-bold">{editing ? "Editar Operação" : "Nova Operação"}</h1>
-        </div>
+        <h1 className="text-xl font-heading font-bold">{editing ? "Editar Operação" : "Nova Operação"}</h1>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* LEFT: Operation params */}
         <div className="space-y-4">
           <div className="bg-card rounded-xl border border-border p-4">
             <h3 className="font-heading font-semibold text-sm mb-3">Dados da Operação</h3>
@@ -216,9 +236,9 @@ export default function ImportSimulator() {
               </div>
               <div><Label>Câmbio USD (R$)</Label><Input type="number" step="0.01" value={form.cambio ?? ""} onChange={f("cambio")} /></div>
               <div><Label>Container</Label>
-                <Select value={form.container_tipo || "40HC"} onValueChange={v => setForm({ ...form, container_tipo: v })}>
+                <Select value={form.container_tipo || "40' High Cube"} onValueChange={v => setForm({ ...form, container_tipo: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{Object.entries(CONTAINER_TYPES).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}</SelectContent>
+                  <SelectContent>{CONTAINERS_PADRAO.map(c => <SelectItem key={c.nome} value={c.nome}>{c.nome}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
@@ -230,7 +250,6 @@ export default function ImportSimulator() {
               <div><Label>Frete Internacional (USD)</Label><Input type="number" step="0.01" value={form.frete_internacional_usd ?? ""} onChange={f("frete_internacional_usd")} /></div>
               <div><Label>Seguro (USD)</Label><Input type="number" step="0.01" value={form.seguro_usd ?? ""} onChange={f("seguro_usd")} /></div>
               <div><Label>Despesas Locais (USD)</Label><Input type="number" step="0.01" value={form.despesas_locais_usd ?? ""} onChange={f("despesas_locais_usd")} /></div>
-              <div><Label>Frete Container (USD)</Label><Input type="number" step="0.01" value={form.frete_container_usd ?? ""} onChange={f("frete_container_usd")} /></div>
             </div>
           </div>
 
@@ -242,9 +261,11 @@ export default function ImportSimulator() {
               {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />} Salvar
             </Button>
           </div>
+          {form.status === "realizada" && importResult?.resultados && (
+            <p className="text-xs text-primary text-center">Ao salvar, o custo landed será gravado em cada produto do mix.</p>
+          )}
         </div>
 
-        {/* MIDDLE: Product selection + items */}
         <div className="space-y-4">
           <div className="bg-card rounded-xl border border-border p-4">
             <h3 className="font-heading font-semibold text-sm mb-3">Adicionar Produtos</h3>
@@ -258,7 +279,7 @@ export default function ImportSimulator() {
                   <Package className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate">{p.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{p.sku} · {formatUSD(p.cost_fob_usd)}</p>
+                    <p className="text-[10px] text-muted-foreground">{p.sku} · {fmtUSD(p.cost_fob_usd)}</p>
                   </div>
                   <Plus className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                 </button>
@@ -281,11 +302,6 @@ export default function ImportSimulator() {
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <Input type="number" min="1" value={item.qty || ""} onChange={e => updateItem(i, "qty", parseInt(e.target.value) || 0)} className="h-7 w-20 text-sm" placeholder="Qtd" />
-                    <div className="flex gap-1 flex-wrap">
-                      <button onClick={() => updateItem(i, "beneficio_5291", !item.beneficio_5291)} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${item.beneficio_5291 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>5291</button>
-                      <button onClick={() => updateItem(i, "ex_tarifario", !item.ex_tarifario)} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${item.ex_tarifario ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>Ex-Tarif</button>
-                      <button onClick={() => updateItem(i, "ipi_recuperavel", !item.ipi_recuperavel)} className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${item.ipi_recuperavel ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>Créd IPI</button>
-                    </div>
                   </div>
                 </div>
               ))}
@@ -294,11 +310,10 @@ export default function ImportSimulator() {
           </div>
         </div>
 
-        {/* RIGHT: Results */}
         <div className="space-y-4">
-          {cubage && <CubagePanel cubage={cubage} />}
-          {landed && <LandedCostPanel result={landed} />}
-          {!cubage && !landed && (
+          {cubageResult && <CubageResults result={cubageResult} />}
+          {importResult && <ImportResults result={importResult} />}
+          {!cubageResult && !importResult && (
             <div className="bg-card rounded-xl border border-border p-8 text-center">
               <Calculator className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">Adicione produtos e clique em <strong>Calcular</strong> para ver a cubagem e o custo de importação.</p>
