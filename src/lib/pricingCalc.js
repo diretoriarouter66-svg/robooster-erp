@@ -37,6 +37,20 @@ export function calcMasterPriceFromMargin(targetMargemLiquidaPct, custo, imposto
   return (custo * (1 + indiceCustoFixo) + frete) / denom;
 }
 
+/**
+ * Markup sobre o Custo (%) — fórmula fiel ao Precificador original (MasterPricingCockpit):
+ * denominator = 1 - T - CC - ((1 - T) * SC)
+ * idealPrice = (PC * (1 + markup) + CF + S) / denominator
+ */
+export function calcMasterPriceFromMarkup(markupPct, custo, impostosPctTotal, channelCommissionPct, channelFixedFee, sellerCommissionPct, frete) {
+  const T = impostosPctTotal / 100;
+  const CC = (channelCommissionPct || 0) / 100;
+  const SC = (sellerCommissionPct || 0) / 100;
+  const denom = 1 - T - CC - (1 - T) * SC;
+  if (denom <= 0) return 0;
+  return (custo * (1 + markupPct / 100) + (channelFixedFee || 0) + (frete || 0)) / denom;
+}
+
 export function calcChannelPrice(margemBrutaAlvo, channel, custo, impostosPctTotal, sellerCommissionRs, frete) {
   const denom = 1 - impostosPctTotal / 100 - (channel.commission_percent || 0) / 100;
   if (denom <= 0) return 0;
