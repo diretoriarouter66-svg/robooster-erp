@@ -156,7 +156,10 @@ export default function DRE() {
 
     const meses = form.meses_venda || 1;
 
-    const dreBase = montarDRE(importacao, vendas, configMotor, socios, form.saldo_credor_icms || 0, form.comissao || 0, mixGeografico);
+    // Crédito de ICMS da própria importação é somado automaticamente ao saldo credor inicial (igual ao app original)
+    const saldoCredorTotal = (form.saldo_credor_icms || 0) + (importacao.totais?.credito_icms || 0);
+
+    const dreBase = montarDRE(importacao, vendas, configMotor, socios, saldoCredorTotal, form.comissao || 0, mixGeografico);
 
     const despesasFixas = config.despesas_fixas?.length ? config.despesas_fixas : DESPESAS_FIXAS_PADRAO;
     const despesasFixasMensais = despesasFixas.reduce((s, d) => s + (d.valor || 0), 0);
@@ -358,7 +361,11 @@ export default function DRE() {
                 <Input type="number" step="0.1" value={form.comissao ?? 0} onChange={f("comissao")} />
                 <p className="text-[10px] text-muted-foreground mt-1">Pré-carregada da Config. Tributária (Comissão Padrão Vendedor). Aplicada sobre o lucro operacional do cenário — ajuste se este lote tiver comissão diferente.</p>
               </div>
-              <div><Label>Saldo Credor ICMS Inicial (R$)</Label><Input type="number" step="0.01" value={form.saldo_credor_icms ?? 0} onChange={f("saldo_credor_icms")} /></div>
+              <div>
+                <Label>Saldo Credor ICMS Inicial (R$)</Label>
+                <Input type="number" step="0.01" value={form.saldo_credor_icms ?? 0} onChange={f("saldo_credor_icms")} />
+                <p className="text-[10px] text-muted-foreground mt-1">Primeira operação? Deixe 0. O crédito de ICMS desta importação é somado automaticamente.</p>
+              </div>
             </div>
           </div>
 
