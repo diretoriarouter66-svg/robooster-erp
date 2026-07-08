@@ -1,0 +1,653 @@
+/**
+ * ROBOOSTER ERP — Motor de Cálculo de Importação e Revenda (Lucro Presumido 2026)
+ * Portado integralmente do app SimPort/Lucro Presumido (calcEngine.js validado).
+ * NÃO ALTERAR A MATEMÁTICA DESTE ARQUIVO — é a fonte única de verdade dos cálculos.
+ *
+ * Inclui adaptadores no final: produtoFromProduct() e configParaMotor()
+ * para converter as entidades do ERP (Product, ConfigTributaria) ao formato do motor.
+ */
+
+// ============================================================
+// A) CUSTO DE IMPORTAÇÃO
+// ============================================================
+
+export function calcularCustoImportacao(produto, quantidade, operacao, rateio, config, dataCompetencia = "2026-01-01", pctDeclarado = 1.0) {
+  const regime = selecionarRegime(dataCompetencia);
+  if (regime === 'CBS') {
+    return calcularCustoImportacaoCBS(produto, quantidade, operacao, rateio, config);
+  }
+
+  const cambio = operacao.cambio;
+
+  // FOB total em BRL — valor REAL (base de custo, inalterado)
+  const fob_total_usd = produto.fob_unitario_usd * quantidade;
+  const fob_total_brl = fob_total_usd * cambio;
+
+  // Frete e seguro rateados em BRL
+  const frete_rateado_brl = rateio.frete_rateado_usd * cambio;
+  const seguro_rateado_brl = (rateio.seguro_rateado_usd || 0) * cambio;
+
+  // Valor Aduaneiro DECLARADO = VA real × pctDeclarado
+  const va_real = fob_total_brl + frete_rateado_brl + seguro_rateado_brl;
+  const va = va_real * pctDeclarado;
+
+  // II — zerado se ex-tarifário vigente
+  const exTarifarioVigente = produto.ex_tarifario && isExTarifarioValido(produto.ex_tarifario_validade, dataCompetencia);
+  const aliq_ii = exTarifarioVigente ? 0 : produto.aliq_ii / 100;
+  const ii = va * aliq_ii;
+
+  // IPI
+  const aliq_ipi = produto.aliq_ipi / 100;
+  const ipi = (va + ii) * aliq_ipi;
+
+  // PIS/COFINS importação — base = VA somente (Lei 10.865/2004)
+  const aliq_pis_imp = produto.aliq_pis_imp / 100;
+  const aliq_cofins_imp = produto.aliq_cofins_imp / 100;
+  const pis_imp = va * aliq_pis_imp;
+  const cofins_imp = va * aliq_cofins_imp;
+
+  // Despesas aduaneiras rateadas em BRL
+  const despesas_brl = rateio.despesas_rateadas_usd * cambio;
+
+  // ICMS importação — base NÃO inclui despesas aduaneiras
+  const aliq_icms_efetiva = produto.beneficio_5291 ? 0.088 : produto.aliq_icms / 100;
+  const base_icms_antes = va + ii + ipi + pis_imp + cofins_imp;
+  const base_icms = base_icms_antes / (1 - aliq_icms_efetiva);
+  const icms_imp = base_icms * aliq_icms_efetiva;
+
+  // CUSTO_FORMACAO_PRECO usa VA REAL, impostos calculados sobre VA declarado
+  const ipi_no_custo = produto.ipi_recuperavel ? 0 : ipi;
+  const custo_formacao_preco = va_real + ii + ipi_no_custo + pis_imp + cofins_imp + despesas_brl;
+
+  // DESEMBOLSO_CAIXA = CUSTO_FORMACAO_PRECO + ICMS_imp + [IPI se recuperável]
+  const ipi_desembolso = produto.ipi_recuperavel ? ipi : 0;
+  const desembolso_caixa = custo_formacao_preco + icms_imp + ipi_desembolso;
+
+  // Créditos gerados
+  const credito_icms = icms_imp;
+  const credito_ipi = produto.ipi_recuperavel ? ipi : 0;
+
+  // Economia de ex-tarifário
+  let economia_ex_tarifario = null;
+  if (exTarifarioVigente) {
+    const ii_cheio = va * (produto.aliq_ii / 100);
+    const base_icms_cheio_antes = va + ii_cheio + ipi + pis_imp + cofins_imp;
+    const base_icms_cheio = base_icms_cheio_antes / (1 - aliq_icms_efetiva);
+    const icms_cheio = base_icms_cheio * aliq_icms_efetiva;
+    const economia_ii = ii_cheio;
+    const economia_icms = icms_cheio - icms_imp;
+    economia_ex_tarifario = {
+      economia_ii: arred(economia_ii),
+      economia_icms: arred(economia_icms),
+      economia_total: arred(economia_ii + economia_icms),
+    };
+  }
+
+  return {
+    quantidade,
+    fob_total_usd: arred(fob_total_usd),
+    fob_total_brl: arred(fob_total_brl),
+    frete_rateado_brl: arred(frete_rateado_brl),
+    seguro_rateado_brl: arred(seguro_rateado_brl),
+    va_real: arred(va_real),
+    va: arred(va),
+    pct_declarado: pctDeclarado,
+    ii: arred(ii),
+    ipi: arred(ipi),
+    pis_imp: arred(pis_imp),
+    cofins_imp: arred(cofins_imp),
+    despesas_brl: arred(despesas_brl),
+    aliq_icms_efetiva,
+    base_icms: arred(base_icms),
+    icms_imp: arred(icms_imp),
+    custo_formacao_preco: arred(custo_formacao_preco),
+    desembolso_caixa: arred(desembolso_caixa),
+    custo_unitario_formacao: arred(custo_formacao_preco / quantidade),
+    custo_unitario_desembolso: arred(desembolso_caixa / quantidade),
+    credito_icms: arred(credito_icms),
+    credito_ipi: arred(credito_ipi),
+    ex_tarifario_vigente: exTarifarioVigente,
+    economia_ex_tarifario,
+  };
+}
+
+/**
+ * Rateios: frete por volume (m³); despesas locais e seguro por valor FOB.
+ */
+export function calcularRateios(itens, operacao) {
+  const totalFobUsd = itens.reduce((s, i) => s + i.produto.fob_unitario_usd * i.quantidade, 0);
+  const totalVolM3 = itens.reduce((s, i) => {
+    const vol = (i.produto.caixa_c_mm * i.produto.caixa_l_mm * i.produto.caixa_a_mm) / 1e9 * i.quantidade;
+    return s + vol;
+  }, 0);
+
+  return itens.map(item => {
+    const fobUsd = item.produto.fob_unitario_usd * item.quantidade;
+    const volM3 = (item.produto.caixa_c_mm * item.produto.caixa_l_mm * item.produto.caixa_a_mm) / 1e9 * item.quantidade;
+
+    const frete_rateado_usd = totalVolM3 > 0
+      ? (operacao.frete_internacional_usd * volM3 / totalVolM3)
+      : 0;
+    const despesas_rateadas_usd = totalFobUsd > 0
+      ? (operacao.despesas_locais_usd * fobUsd / totalFobUsd)
+      : 0;
+    const seguro_rateado_usd = totalFobUsd > 0
+      ? ((operacao.seguro_usd || 0) * fobUsd / totalFobUsd)
+      : 0;
+
+    return {
+      produto_id: item.produto.id || item.produto.nome,
+      frete_rateado_usd,
+      despesas_rateadas_usd,
+      seguro_rateado_usd,
+    };
+  });
+}
+
+export function calcularOperacaoImportacao(itens, operacao, config, dataCompetencia = "2026-01-01", pctDeclarado = 1.0) {
+  const rateios = calcularRateios(itens, operacao);
+
+  const resultados = itens.map((item, idx) => {
+    const resultado = calcularCustoImportacao(
+      item.produto, item.quantidade, operacao, rateios[idx], config, dataCompetencia, pctDeclarado
+    );
+    return { ...resultado, produto: item.produto };
+  });
+
+  const totais = {
+    fob_total_brl: somarCampo(resultados, 'fob_total_brl'),
+    va: somarCampo(resultados, 'va'),
+    ii: somarCampo(resultados, 'ii'),
+    ipi: somarCampo(resultados, 'ipi'),
+    pis_imp: somarCampo(resultados, 'pis_imp'),
+    cofins_imp: somarCampo(resultados, 'cofins_imp'),
+    despesas_brl: somarCampo(resultados, 'despesas_brl'),
+    icms_imp: somarCampo(resultados, 'icms_imp'),
+    custo_formacao_preco: somarCampo(resultados, 'custo_formacao_preco'),
+    desembolso_caixa: somarCampo(resultados, 'desembolso_caixa'),
+    credito_icms: somarCampo(resultados, 'credito_icms'),
+    credito_ipi: somarCampo(resultados, 'credito_ipi'),
+  };
+
+  const economia_total = resultados.reduce((s, r) => {
+    if (r.economia_ex_tarifario) return s + r.economia_ex_tarifario.economia_total;
+    return s;
+  }, 0);
+
+  return { resultados, totais, economia_ex_tarifario_total: arred(economia_total) };
+}
+
+// ============================================================
+// B) IMPOSTOS SOBRE A VENDA
+// ============================================================
+
+export function calcularImpostosVenda(vendas, config, saldoCredorIcms = 0, saldoCredorIpi = 0, dataCompetencia = "2026-01-01", mixGeografico = null) {
+  const regime = selecionarRegime(dataCompetencia);
+  if (regime === 'CBS') {
+    return calcularImpostosVendaCBS(vendas, config, saldoCredorIcms, saldoCredorIpi);
+  }
+
+  const receita = vendas.reduce((s, v) => s + v.preco_unitario * v.quantidade, 0);
+
+  const pis_venda = receita * config.pis_venda;
+  const cofins_venda = receita * config.cofins_venda;
+
+  let icms_debito = 0;
+  let detalheIcms = [];
+  let detalheIcmsPorFaixa = null;
+
+  if (mixGeografico) {
+    const { pct_sp, pct_sul_sudeste, pct_norte_ne_co_es } = mixGeografico;
+
+    let debito_sp = 0, debito_ss = 0, debito_nne = 0;
+    let difal_sp = 0, difal_ss = 0, difal_nne = 0;
+
+    detalheIcms = vendas.map(v => {
+      const rec = v.preco_unitario * v.quantidade;
+      const exVigente = v.produto.ex_tarifario && isExTarifarioValido(v.produto.ex_tarifario_validade, dataCompetencia);
+
+      const aliq_sp = v.produto.beneficio_5291 ? 0.088 : v.produto.aliq_icms / 100;
+      let aliq_ss, aliq_nne;
+      if (exVigente) {
+        aliq_ss  = 0.088;   // 12% × carga reduzida Conv. 52/91 → 8,8%
+        aliq_nne = 0.0514;  // 7% × carga reduzida Conv. 52/91 → 5,14%
+      } else {
+        aliq_ss  = config.icms_interestadual_importado; // 0.04
+        aliq_nne = config.icms_interestadual_importado; // 0.04
+      }
+
+      const d_sp  = rec * pct_sp  * aliq_sp;
+      const d_ss  = rec * pct_sul_sudeste  * aliq_ss;
+      const d_nne = rec * pct_norte_ne_co_es * aliq_nne;
+
+      debito_sp  += d_sp;
+      debito_ss  += d_ss;
+      debito_nne += d_nne;
+
+      const difal_aliq_sp  = 0;
+      const difal_aliq_ss  = exVigente ? 0 : 0.048;
+      const difal_aliq_nne = exVigente ? 0.0366 : 0.048;
+      const df_sp  = rec * pct_sp  * difal_aliq_sp;
+      const df_ss  = rec * pct_sul_sudeste  * difal_aliq_ss;
+      const df_nne = rec * pct_norte_ne_co_es * difal_aliq_nne;
+      difal_sp  += df_sp;
+      difal_ss  += df_ss;
+      difal_nne += df_nne;
+
+      return {
+        produto_nome: v.produto.nome,
+        ex_tarifario_vigente: exVigente,
+        receita: arred(rec),
+        debito_sp: arred(d_sp), aliq_sp,
+        debito_sul_sudeste: arred(d_ss), aliq_sul_sudeste: aliq_ss,
+        debito_norte_ne_co_es: arred(d_nne), aliq_norte_ne_co_es: aliq_nne,
+        difal_sul_sudeste: arred(df_ss),
+        difal_norte_ne_co_es: arred(df_nne),
+      };
+    });
+
+    icms_debito = debito_sp + debito_ss + debito_nne;
+
+    detalheIcmsPorFaixa = {
+      sp:  { pct: pct_sp,  debito: arred(debito_sp),  difal: arred(difal_sp) },
+      sul_sudeste:  { pct: pct_sul_sudeste, debito: arred(debito_ss), difal: arred(difal_ss) },
+      norte_ne_co_es: { pct: pct_norte_ne_co_es, debito: arred(debito_nne), difal: arred(difal_nne) },
+    };
+
+  } else {
+    detalheIcms = vendas.map(v => {
+      let aliq;
+      if (v.tipo === 'interestadual') {
+        aliq = config.icms_interestadual_importado;
+      } else {
+        aliq = v.produto.beneficio_5291 ? 0.088 : v.produto.aliq_icms / 100;
+      }
+      const debito = v.preco_unitario * v.quantidade * aliq;
+      icms_debito += debito;
+      return {
+        produto_nome: v.produto.nome,
+        tipo: v.tipo,
+        aliq,
+        receita: arred(v.preco_unitario * v.quantidade),
+        debito: arred(debito),
+      };
+    });
+  }
+
+  const icms_a_pagar = Math.max(0, icms_debito - saldoCredorIcms);
+  const saldo_credor_icms_remanescente = Math.max(0, saldoCredorIcms - icms_debito);
+
+  const irpj_csll = calcularIrpjCsll(receita, config);
+
+  const total_impostos = pis_venda + cofins_venda + icms_a_pagar + irpj_csll.irpj + irpj_csll.adicional_irpj + irpj_csll.csll;
+
+  return {
+    receita: arred(receita),
+    pis_venda: arred(pis_venda),
+    cofins_venda: arred(cofins_venda),
+    icms_debito: arred(icms_debito),
+    icms_credito_utilizado: arred(Math.min(saldoCredorIcms, icms_debito)),
+    icms_a_pagar: arred(icms_a_pagar),
+    saldo_credor_icms_remanescente: arred(saldo_credor_icms_remanescente),
+    detalhe_icms: detalheIcms,
+    detalhe_icms_por_faixa: detalheIcmsPorFaixa,
+    ...irpj_csll,
+    total_impostos: arred(total_impostos),
+    alerta_acumulo_credito: saldo_credor_icms_remanescente > 0,
+  };
+}
+
+/**
+ * IRPJ e CSLL trimestrais com LC 224/2025.
+ */
+export function calcularIrpjCsll(receitaTrimestral, config) {
+  const limiteTrimestreIrpj = (config.lc224_limite_anual || 5000000) / 4;
+
+  const presuncaoIrpj = config.presuncao_irpj;
+  const presuncaoIrpjMajorada = presuncaoIrpj * 1.1;
+  let baseIrpj;
+  if (receitaTrimestral <= limiteTrimestreIrpj) {
+    baseIrpj = receitaTrimestral * presuncaoIrpj;
+  } else {
+    baseIrpj = limiteTrimestreIrpj * presuncaoIrpj + (receitaTrimestral - limiteTrimestreIrpj) * presuncaoIrpjMajorada;
+  }
+  const irpj = baseIrpj * config.aliq_irpj;
+  const adicional_irpj = Math.max(0, baseIrpj - config.adicional_irpj_limite) * config.adicional_irpj_aliq;
+
+  const presuncaoCsll = config.presuncao_csll;
+  const presuncaoCsllMajorada = presuncaoCsll * 1.1;
+  let baseCsll;
+  if (receitaTrimestral <= limiteTrimestreIrpj) {
+    baseCsll = receitaTrimestral * presuncaoCsll;
+  } else {
+    baseCsll = limiteTrimestreIrpj * presuncaoCsll + (receitaTrimestral - limiteTrimestreIrpj) * presuncaoCsllMajorada;
+  }
+  const csll = baseCsll * config.aliq_csll;
+
+  return {
+    base_irpj: arred(baseIrpj),
+    irpj: arred(irpj),
+    adicional_irpj: arred(adicional_irpj),
+    base_csll: arred(baseCsll),
+    csll: arred(csll),
+  };
+}
+
+// ============================================================
+// C) DISTRIBUIÇÃO DE RESULTADOS
+// ============================================================
+
+/**
+ * IRRF sobre dividendos (Lei 15.270/2025).
+ * Residente: parcela mensal > R$ 50.000 → IRRF = 10% sobre o TOTAL do mês.
+ * Não-residente: 10% sobre qualquer valor, sem piso.
+ */
+export function calcularDistribuicao(lucroDistribuivel, socios, config, meses = 1) {
+  const pisoResidente = config.irrf_piso_residente || 50000;
+  const aliqIrrf = config.irrf_dividendos || 0.10;
+
+  return socios.map(socio => {
+    const distribuicaoBruta = lucroDistribuivel * (socio.percentual_participacao / 100);
+    let irrf = 0;
+    if (!socio.residente_fiscal_brasil) {
+      irrf = distribuicaoBruta * aliqIrrf;
+    } else {
+      const distribuicaoMensal = distribuicaoBruta / meses;
+      if (distribuicaoMensal > pisoResidente) {
+        irrf = distribuicaoBruta * aliqIrrf;
+      }
+    }
+    return {
+      nome: socio.nome,
+      participacao: socio.percentual_participacao,
+      distribuicao_bruta: arred(distribuicaoBruta),
+      irrf: arred(irrf),
+      distribuicao_liquida: arred(distribuicaoBruta - irrf),
+      residente: socio.residente_fiscal_brasil,
+    };
+  });
+}
+
+/**
+ * Meses mínimos para IRRF zero por sócio residente.
+ */
+export function sugerirMesesIrrf(lucroDistribuivel, socios, config) {
+  const piso = config.irrf_piso_residente || 50000;
+  return socios
+    .filter(s => s.residente_fiscal_brasil)
+    .map(socio => {
+      const bruta = lucroDistribuivel * (socio.percentual_participacao / 100);
+      const mesesMinimos = bruta > piso ? Math.ceil(bruta / piso) : 1;
+      return {
+        nome: socio.nome,
+        distribuicao_bruta: arred(bruta),
+        meses_minimos: mesesMinimos,
+        parcela_mensal_otima: arred(bruta / mesesMinimos),
+      };
+    });
+}
+
+// ============================================================
+// D) DRE DO CENÁRIO
+// ============================================================
+
+export function montarDRE(importacao, vendas, config, socios, saldoCredorIcms = 0, comissaoPerc = 0, mixGeografico = null) {
+  const impostos = calcularImpostosVenda(vendas, config, saldoCredorIcms, 0, "2026-01-01", mixGeografico);
+
+  const receita = impostos.receita;
+  const cmv = importacao.totais.custo_formacao_preco;
+  const lucro_bruto = receita - cmv;
+
+  const lucro_operacional = lucro_bruto - impostos.total_impostos;
+
+  const comissoes = lucro_operacional * (comissaoPerc / 100);
+  const lucro_distribuivel = lucro_operacional - comissoes;
+
+  const distribuicao = calcularDistribuicao(lucro_distribuivel, socios, config);
+  const total_irrf = distribuicao.reduce((s, d) => s + d.irrf, 0);
+  const liquido_final = lucro_distribuivel - total_irrf;
+
+  return {
+    receita: arred(receita),
+    cmv: arred(cmv),
+    lucro_bruto: arred(lucro_bruto),
+    pis_venda: impostos.pis_venda,
+    cofins_venda: impostos.cofins_venda,
+    icms_debito: impostos.icms_debito,
+    icms_credito_utilizado: impostos.icms_credito_utilizado,
+    icms_a_pagar: impostos.icms_a_pagar,
+    saldo_credor_icms_remanescente: impostos.saldo_credor_icms_remanescente,
+    detalhe_icms_por_faixa: impostos.detalhe_icms_por_faixa,
+    irpj: impostos.irpj,
+    adicional_irpj: impostos.adicional_irpj,
+    csll: impostos.csll,
+    total_impostos: impostos.total_impostos,
+    lucro_operacional: arred(lucro_operacional),
+    comissoes: arred(comissoes),
+    lucro_distribuivel: arred(lucro_distribuivel),
+    distribuicao,
+    total_irrf: arred(total_irrf),
+    liquido_final: arred(liquido_final),
+  };
+}
+
+// ============================================================
+// E) CUBAGEM DE CONTAINER
+// ============================================================
+
+export function calcularCubagem(itens, container) {
+  const { comprimento_mm, largura_mm, altura_mm } = container;
+  let comprimentoUsado = 0;
+  const detalhe = [];
+
+  for (const item of itens) {
+    const { produto, quantidade } = item;
+    const c = produto.caixa_c_mm;
+    const l = produto.caixa_l_mm;
+    const a = produto.caixa_a_mm;
+
+    let empilha;
+    if (produto.empilhavel) {
+      empilha = Math.floor(altura_mm / a);
+    } else {
+      empilha = 1;
+    }
+
+    let ladoALado = Math.floor(largura_mm / l);
+    let caixaC = c;
+
+    if (produto.pode_deitar) {
+      const ladoALadoGirado = Math.floor(largura_mm / c);
+      if (ladoALadoGirado * empilha > ladoALado * empilha) {
+        ladoALado = ladoALadoGirado;
+        caixaC = l;
+      }
+    }
+
+    const unidadesPorFileira = empilha * ladoALado;
+
+    if (unidadesPorFileira === 0) {
+      detalhe.push({
+        produto_nome: produto.nome,
+        quantidade,
+        empilha: 0,
+        lado_a_lado: 0,
+        unidades_por_fileira: 0,
+        fileiras: 0,
+        comprimento_usado: 0,
+        cabe: false,
+        motivo: 'Caixa não cabe na seção do container'
+      });
+      comprimentoUsado = comprimento_mm + 1;
+      continue;
+    }
+
+    const fileiras = Math.ceil(quantidade / unidadesPorFileira);
+    const compUsado = fileiras * caixaC;
+    comprimentoUsado += compUsado;
+
+    detalhe.push({
+      produto_nome: produto.nome,
+      quantidade,
+      empilha,
+      lado_a_lado: ladoALado,
+      unidades_por_fileira: unidadesPorFileira,
+      fileiras,
+      comprimento_usado: compUsado,
+      caixa_c_usado: caixaC,
+    });
+  }
+
+  const cabe = comprimentoUsado <= comprimento_mm;
+  const folga = comprimento_mm - comprimentoUsado;
+  const ocupacao_perc = Math.min(100, (comprimentoUsado / comprimento_mm) * 100);
+
+  return {
+    container_nome: container.nome,
+    comprimento_total: comprimento_mm,
+    comprimento_usado: comprimentoUsado,
+    folga,
+    cabe,
+    ocupacao_perc: arred(ocupacao_perc),
+    detalhe,
+  };
+}
+
+export function maxUnidadesContainer(produto, container) {
+  const { comprimento_mm, largura_mm, altura_mm } = container;
+  const empilha = produto.empilhavel ? Math.floor(altura_mm / produto.caixa_a_mm) : 1;
+  let ladoALado = Math.floor(largura_mm / produto.caixa_l_mm);
+  let caixaC = produto.caixa_c_mm;
+
+  if (produto.pode_deitar) {
+    const ladoGirado = Math.floor(largura_mm / produto.caixa_c_mm);
+    if (ladoGirado * empilha > ladoALado * empilha) {
+      ladoALado = ladoGirado;
+      caixaC = produto.caixa_l_mm;
+    }
+  }
+
+  const unidadesPorFileira = empilha * ladoALado;
+  if (unidadesPorFileira === 0) return 0;
+  const fileiras = Math.floor(comprimento_mm / caixaC);
+  return fileiras * unidadesPorFileira;
+}
+
+// ============================================================
+// F) STUBS PARA CBS 2027
+// ============================================================
+
+function selecionarRegime(dataCompetencia) {
+  const ano = parseInt(dataCompetencia.substring(0, 4), 10);
+  if (ano >= 2027) return 'CBS';
+  return 'PRESUMIDO_2026';
+}
+
+function calcularCustoImportacaoCBS() {
+  throw new Error('RegimeCBS2027: módulo em preparação. Alíquota CBS configurável com creditamento amplo.');
+}
+
+function calcularImpostosVendaCBS() {
+  throw new Error('RegimeCBS2027: módulo em preparação.');
+}
+
+// ============================================================
+// UTILITÁRIOS
+// ============================================================
+
+function arred(v) {
+  return Math.round(v * 100) / 100;
+}
+
+function somarCampo(arr, campo) {
+  return arred(arr.reduce((s, r) => s + r[campo], 0));
+}
+
+function isExTarifarioValido(validade, dataRef) {
+  if (!validade) return true;
+  return new Date(dataRef) <= new Date(validade);
+}
+
+// ============================================================
+// G) ADAPTADORES — ENTIDADES DO ROBOOSTER ERP → FORMATO DO MOTOR
+// ============================================================
+
+/**
+ * Converte um registro Product (ERP) para o formato de produto do motor.
+ * Dimensões do cadastro estão em CM → motor usa MM.
+ */
+export function produtoFromProduct(p) {
+  return {
+    id: p.id,
+    nome: p.name,
+    fob_unitario_usd: p.cost_fob_usd || 0,
+    aliq_ii: p.ii_rate ?? 0,
+    aliq_ipi: p.ipi_rate ?? 0,
+    aliq_pis_imp: p.pis_rate ?? 2.1,
+    aliq_cofins_imp: p.cofins_rate ?? 9.65,
+    aliq_icms: p.icms_rate ?? 18,
+    beneficio_5291: !!p.beneficio_5291,
+    ex_tarifario: !!p.ex_tarifario,
+    ex_tarifario_validade: p.ex_tarifario_validade || null,
+    ipi_recuperavel: p.ipi_recuperavel !== false,
+    caixa_c_mm: (p.length_cm || 0) * 10,
+    caixa_l_mm: (p.width_cm || 0) * 10,
+    caixa_a_mm: (p.height_cm || 0) * 10,
+    pode_deitar: !!p.pode_deitar,
+    empilhavel: p.empilhavel !== false,
+    peso_kg: p.weight_kg || 0,
+  };
+}
+
+export const CONFIG_DEFAULTS = {
+  cambio_usd: 5.30,
+  pis_venda: 0.65,
+  cofins_venda: 3.0,
+  presuncao_irpj: 8,
+  presuncao_csll: 12,
+  aliq_irpj: 15,
+  aliq_csll: 9,
+  adicional_irpj_limite: 60000,
+  adicional_irpj_aliq: 10,
+  lc224_limite_anual: 5000000,
+  icms_interestadual_importado: 4,
+  irrf_dividendos: 10,
+  irrf_piso_residente: 50000,
+};
+
+export const DESPESAS_FIXAS_PADRAO = [
+  { nome: 'Galpão / Aluguel', valor: 5000 },
+  { nome: 'Utilidades (água, luz, internet)', valor: 1500 },
+  { nome: 'Contador', valor: 2000 },
+  { nome: 'Marketing', valor: 3000 },
+  { nome: 'Folha de pagamento', valor: 8000 },
+  { nome: 'Outros', valor: 1000 },
+];
+
+/**
+ * Converte a entidade ConfigTributaria (valores em %) para o formato do motor (decimais).
+ */
+export function configParaMotor(dbConfig) {
+  const c = dbConfig || {};
+  return {
+    cambio_usd: c.cambio_usd || CONFIG_DEFAULTS.cambio_usd,
+    pis_venda: (c.pis_venda ?? CONFIG_DEFAULTS.pis_venda) / 100,
+    cofins_venda: (c.cofins_venda ?? CONFIG_DEFAULTS.cofins_venda) / 100,
+    presuncao_irpj: (c.presuncao_irpj ?? CONFIG_DEFAULTS.presuncao_irpj) / 100,
+    presuncao_csll: (c.presuncao_csll ?? CONFIG_DEFAULTS.presuncao_csll) / 100,
+    aliq_irpj: (c.aliq_irpj ?? CONFIG_DEFAULTS.aliq_irpj) / 100,
+    aliq_csll: (c.aliq_csll ?? CONFIG_DEFAULTS.aliq_csll) / 100,
+    adicional_irpj_limite: c.adicional_irpj_limite ?? CONFIG_DEFAULTS.adicional_irpj_limite,
+    adicional_irpj_aliq: (c.adicional_irpj_aliq ?? CONFIG_DEFAULTS.adicional_irpj_aliq) / 100,
+    lc224_limite_anual: c.lc224_limite_anual ?? CONFIG_DEFAULTS.lc224_limite_anual,
+    icms_interestadual_importado: (c.icms_interestadual_importado ?? CONFIG_DEFAULTS.icms_interestadual_importado) / 100,
+    irrf_dividendos: (c.irrf_dividendos ?? CONFIG_DEFAULTS.irrf_dividendos) / 100,
+    irrf_piso_residente: c.irrf_piso_residente ?? CONFIG_DEFAULTS.irrf_piso_residente,
+  };
+}
+
+export const CONTAINERS_PADRAO = [
+  { nome: "20' Standard", comprimento_mm: 5900, largura_mm: 2350, altura_mm: 2390, frete_usd: 0 },
+  { nome: "40' Standard", comprimento_mm: 12030, largura_mm: 2350, altura_mm: 2390, frete_usd: 0 },
+  { nome: "40' High Cube", comprimento_mm: 12030, largura_mm: 2350, altura_mm: 2690, frete_usd: 0 },
+];
