@@ -112,9 +112,19 @@ export default function DRE() {
 
   const updateMix = (field, val) => {
     setForm(prev => {
-      const mix = { ...prev.mix_geo, [field]: val };
-      const total = (mix.pct_sp || 0) + (mix.pct_sul_sudeste || 0) + (mix.pct_norte_ne_co_es || 0);
-      if (total > 100) mix[field] = 100 - (total - val);
+      const keys = ["pct_sp", "pct_sul_sudeste", "pct_norte_ne_co_es"];
+      const others = keys.filter(k => k !== field);
+      const restante = 100 - val;
+      const restAtual = others.reduce((s, k) => s + (prev.mix_geo?.[k] || 0), 0);
+      const mix = { [field]: val };
+      if (restAtual > 0) {
+        const primeiro = Math.round(((prev.mix_geo?.[others[0]] || 0) / restAtual) * restante);
+        mix[others[0]] = primeiro;
+        mix[others[1]] = Math.max(0, restante - primeiro);
+      } else {
+        mix[others[0]] = Math.floor(restante / 2);
+        mix[others[1]] = restante - Math.floor(restante / 2);
+      }
       return { ...prev, mix_geo: mix };
     });
   };
