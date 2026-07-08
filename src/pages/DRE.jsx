@@ -73,7 +73,7 @@ export default function DRE() {
       nome: "", operacao_id: "", operacao_nome: "",
       vendas: [],
       mix_geo: { pct_sp: 100, pct_sul_sudeste: 0, pct_norte_ne_co_es: 0 },
-      meses_venda: 3, comissao: 0, saldo_credor_icms: 0,
+      meses_venda: 3, comissao: config?.comissao_vendedor_padrao ?? 0, saldo_credor_icms: 0,
     });
     setView("editor");
   };
@@ -353,7 +353,11 @@ export default function DRE() {
                   <SelectContent>{Array.from({ length: 12 }, (_, i) => i + 1).map(m => <SelectItem key={m} value={String(m)}>{m} {m === 1 ? "mês" : "meses"}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label>Comissão (%)</Label><Input type="number" step="0.1" value={form.comissao ?? 0} onChange={f("comissao")} /></div>
+              <div>
+                <Label>Comissão (%)</Label>
+                <Input type="number" step="0.1" value={form.comissao ?? 0} onChange={f("comissao")} />
+                <p className="text-[10px] text-muted-foreground mt-1">Pré-carregada da Config. Tributária (Comissão Padrão Vendedor). Aplicada sobre o lucro operacional do cenário — ajuste se este lote tiver comissão diferente.</p>
+              </div>
               <div><Label>Saldo Credor ICMS Inicial (R$)</Label><Input type="number" step="0.01" value={form.saldo_credor_icms ?? 0} onChange={f("saldo_credor_icms")} /></div>
             </div>
           </div>
@@ -422,16 +426,24 @@ export default function DRE() {
         </div>
 
         <div className="space-y-4">
+          <Button className="w-full" size="lg" onClick={handleMontarDRE} disabled={!form.operacao_id}>
+            <Calculator className="w-4 h-4 mr-2" /> Montar DRE
+          </Button>
+          {dreError && (
+            <div className="px-3 py-2 bg-destructive/10 border border-destructive/20 rounded-lg text-xs text-destructive font-medium">{dreError}</div>
+          )}
           {dreResult ? (
             <>
               <DREResults dre={dreResult} />
               <DREDistribution dre={dreResult} />
             </>
           ) : (
-            <div className="bg-card rounded-xl border border-border p-8 text-center">
-              <Calculator className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Selecione uma operação e defina os preços de venda para calcular o DRE.</p>
-            </div>
+            !dreError && (
+              <div className="bg-card rounded-xl border border-border p-8 text-center">
+                <Calculator className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Preencha os preços de venda e clique em “Montar DRE” para ver o resultado.</p>
+              </div>
+            )
           )}
         </div>
       </div>
