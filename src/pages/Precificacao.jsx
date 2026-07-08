@@ -9,7 +9,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import EmptyState from "@/components/shared/EmptyState";
 import {
   getCustoVigente, hasCostLanded, calcImpostosPct, getMasterChannel,
-  getSellerCommissionPct, calcSellerCommissionRs, calcMasterPriceFromMargin,
+  getSellerCommissionPct, calcSellerCommissionRs, calcMasterPriceFromMarkup,
   calcChannelPrice, calcChannelBreakdown, formatBRL, formatPct
 } from "@/lib/pricingCalc";
 
@@ -89,7 +89,7 @@ export default function Precificacao() {
 
   const calculatedMasterPrice = useMemo(() => {
     if (mode === "preco") return masterPriceInput || 0;
-    return calcMasterPriceFromMargin(targetMargin, custo, impostos?.total || 0, sellerCommPct, clientePagaFrete ? 0 : frete, indiceCustoFixo);
+    return calcMasterPriceFromMarkup(targetMargin, custo, impostos?.total || 0, masterChannel?.commission_percent || 0, masterChannel?.fixed_fee || 0, sellerCommPct, clientePagaFrete ? 0 : frete);
   }, [mode, masterPriceInput, targetMargin, custo, impostos, sellerCommPct, frete, clientePagaFrete, indiceCustoFixo]);
 
   const sellerCommRs = useMemo(() =>
@@ -294,7 +294,7 @@ export default function Precificacao() {
             <h3 className="font-heading font-semibold text-sm mb-3">Modo de Cálculo</h3>
             <div className="flex gap-2 mb-3">
               <button onClick={() => setMode("preco")} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium ${mode === "preco" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>Preço de Venda</button>
-              <button onClick={() => setMode("margem")} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium ${mode === "margem" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>Margem Líquida Alvo</button>
+              <button onClick={() => setMode("margem")} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium ${mode === "margem" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>Markup s/ Custo (%)</button>
             </div>
             {mode === "preco" ? (
               <div>
@@ -304,14 +304,23 @@ export default function Precificacao() {
               </div>
             ) : (
               <div>
-                <Label>Margem Líquida Alvo (%)</Label>
-                <Input type="number" step="0.1" value={targetMargin || ""} onChange={e => setTargetMargin(parseFloat(e.target.value) || 0)} placeholder="20" />
-                <p className="text-[10px] text-muted-foreground mt-1">O sistema calcula o preço do Master para atingir esta margem líquida</p>
-                {calculatedMasterPrice > 0 && (
+                <Label>Markup sobre o Custo (%)</Label>
+                <div className="flex gap-2">
+                  <Input type="number" step="0.1" value={targetMargin || ""} onChange={e => setTargetMargin(parseFloat(e.target.value) || 0)} placeholder="80" />
+                  <button type="button" onClick={() => { if (calculatedMasterPrice > 0) { setMasterPriceInput(Math.round(calculatedMasterPrice * 100) / 100); setMode("preco"); } }} className="px-4 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground whitespace-nowrap">Calcular</button>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Ex.: 80 = preço com 80% de acréscimo sobre o custo, já cobrindo impostos e comissões. Clique em Calcular para aplicar ao canal Master.</p>
+                {calculatedMasterPrice > 0 ? (
                   <div className="mt-2 px-3 py-2 bg-primary/5 rounded-lg text-sm flex justify-between">
                     <span className="text-muted-foreground">Preço Master calculado</span>
                     <span className="font-semibold text-primary">{formatBRL(calculatedMasterPrice)}</span>
                   </div>
+                ) : (
+                  targetMargin > 0 && (
+                    <div className="mt-2 px-3 py-2 bg-destructive/10 rounded-lg text-xs text-destructive">
+                      Configuração inválida: impostos + comissões consomem 100% ou mais do preço. Revise a Config. Tributária e as comissões.
+                    </div>
+                  )
                 )}
               </div>
             )}
