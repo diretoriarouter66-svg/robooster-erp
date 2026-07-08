@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { Plus, Search, Package, Edit, Trash2, Upload, ExternalLink, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Search, Package, Edit, Trash2, Upload, ExternalLink, X, ChevronDown, ChevronRight, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -32,7 +33,7 @@ export default function Products() {
       base44.entities.SalesChannel.list("-created_date", 50),
       base44.entities.ProductPricing.list("-created_date", 500),
     ]);
-    const vdChannel = chans.find(c => c.type === "venda_direta");
+    const vdChannel = chans.find(c => c.is_master) || chans.find(c => (c.commission_percent || 0) === 0 && (c.fixed_fee || 0) === 0) || chans.find(c => c.type === "venda_direta");
     const vdMap = {};
     if (vdChannel) {
       allPricings.filter(p => p.channel_id === vdChannel.id).forEach(p => { vdMap[p.product_id] = p.price; });
@@ -162,6 +163,9 @@ export default function Products() {
                       <td className="px-4 py-3 text-center"><StatusBadge status={product.status} /></td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <Link to={`/precificacao?produto=${product.id}`} className="p-1.5 hover:bg-muted rounded-lg transition-colors" title="Precificar">
+                            <Calculator className="w-3.5 h-3.5 text-primary" />
+                          </Link>
                           <button onClick={() => openEdit(product)} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
                             <Edit className="w-3.5 h-3.5 text-muted-foreground" />
                           </button>
@@ -304,11 +308,20 @@ export default function Products() {
               )}
             </div>
 
-            {/* CUSTO LANDED SOMENTE LEITURA */}
+            {/* CUSTO DO PRODUTO */}
             <div className="mt-3">
-              <Label>Custo Landed (BRL)</Label>
-              <Input readOnly value={form.cost_landed_brl ? formatCurrency(form.cost_landed_brl) : ""} className="bg-muted" placeholder="—" />
-              <p className="text-[10px] text-muted-foreground mt-1">Calculado automaticamente pela importação realizada — não é digitado</p>
+              <Label>Custo do Produto (R$)</Label>
+              {form.cost_landed_brl ? (
+                <>
+                  <Input readOnly value={formatCurrency(form.cost_landed_brl)} className="bg-muted" />
+                  <p className="text-[10px] text-muted-foreground mt-1">Substituído pelo custo da importação realizada</p>
+                </>
+              ) : (
+                <>
+                  <Input type="number" step="0.01" value={form.custo_manual_brl || ""} onChange={f("custo_manual_brl")} placeholder="0,00" />
+                  <p className="text-[10px] text-muted-foreground mt-1">Custo manual do produto — usado quando não há importação realizada</p>
+                </>
+              )}
             </div>
           </div>
 
@@ -423,6 +436,13 @@ export default function Products() {
                     <Label className="cursor-pointer" onClick={() => setForm(prev => ({ ...prev, ipi_recuperavel: !prev.ipi_recuperavel }))}>IPI Recuperável</Label>
                     <p className="text-[10px] text-muted-foreground">Indica se o IPI pode ser recuperado como crédito</p>
                   </div>
+                </div>
+
+                {/* COMISSÃO DO VENDEDOR */}
+                <div className="mt-3">
+                  <Label>Comissão do Vendedor (%)</Label>
+                  <Input type="number" step="0.1" value={form.seller_commission_percent || ""} onChange={f("seller_commission_percent")} placeholder="0" />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Percentual sobre o preço à vista líquido de impostos — vazio usa o padrão da Configuração Tributária</p>
                 </div>
 
                 {/* DIMENSÕES E PESO */}

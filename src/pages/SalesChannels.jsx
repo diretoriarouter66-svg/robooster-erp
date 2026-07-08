@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Plus, Search, Store, Edit, Trash2 } from "lucide-react";
+import { Plus, Search, Store, Edit, Trash2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -54,6 +54,17 @@ export default function SalesChannels() {
     loadData();
   };
 
+  const toggleMaster = async (id) => {
+    const channel = channels.find(c => c.id === id);
+    const newMaster = !channel.is_master;
+    if (newMaster) {
+      const others = channels.filter(c => c.id !== id && c.is_master);
+      await Promise.all(others.map(c => base44.entities.SalesChannel.update(c.id, { is_master: false })));
+    }
+    await base44.entities.SalesChannel.update(id, { is_master: newMaster });
+    loadData();
+  };
+
   const handleDelete = async (id) => {
     if (!confirm("Excluir este canal?")) return;
     await base44.entities.SalesChannel.delete(id);
@@ -99,6 +110,7 @@ export default function SalesChannels() {
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Tipo</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Comissão</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Taxa Fixa</th>
+                    <th className="text-center px-4 py-3 font-medium text-muted-foreground">Master</th>
                     <th className="text-center px-4 py-3 font-medium text-muted-foreground">Status</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Ações</th>
                   </tr>
@@ -110,6 +122,11 @@ export default function SalesChannels() {
                       <td className="px-4 py-3 hidden sm:table-cell text-muted-foreground">{CHANNEL_TYPES.find(t => t.value === ch.type)?.label || ch.type}</td>
                       <td className="px-4 py-3 text-right">{ch.commission_percent || 0}%</td>
                       <td className="px-4 py-3 text-right hidden sm:table-cell">{formatBRL(ch.fixed_fee)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <button onClick={() => toggleMaster(ch.id)} className={`p-1 rounded ${ch.is_master ? "text-warning" : "text-muted-foreground hover:text-foreground"}`} title={ch.is_master ? "Canal Master (Preço à Vista)" : "Marcar como Master"}>
+                          <Star className={`w-4 h-4 ${ch.is_master ? "fill-warning" : ""}`} />
+                        </button>
+                      </td>
                       <td className="px-4 py-3 text-center">{ch.active ? <StatusBadge status="active" /> : <StatusBadge status="inactive" />}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">

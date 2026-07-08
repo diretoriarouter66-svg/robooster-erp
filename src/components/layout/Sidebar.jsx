@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, Users, Truck, ShoppingCart,
   FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse,
-  Ship, Calculator, SlidersHorizontal, Store, Tag } from
+  Ship, Calculator, SlidersHorizontal, Store, Tag, Percent } from
 "lucide-react";
 import { base44 } from "@/api/base44Client";
 
@@ -31,6 +31,7 @@ const menuGroups = [
   items: [
   { icon: FileText, label: "Pedidos de Compra", path: "/purchase-orders" },
   { icon: ShoppingCart, label: "Pedidos de Venda", path: "/sale-orders" },
+  { icon: Percent, label: "Precificação", path: "/precificacao" },
   { icon: Warehouse, label: "Estoque", path: "/stock" }]
 
 },

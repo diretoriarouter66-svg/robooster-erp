@@ -1,6 +1,30 @@
 {
   "name": "ConfigTributaria",
   "properties": {
+    "nome": {
+      "default": "Padr\u00e3o",
+      "type": "string"
+    },
+    "presuncao_irpj": {
+      "default": 8,
+      "description": "Presun\u00e7\u00e3o IRPJ (%)",
+      "type": "number"
+    },
+    "presuncao_csll": {
+      "default": 12,
+      "description": "Presun\u00e7\u00e3o CSLL (%)",
+      "type": "number"
+    },
+    "aliq_irpj": {
+      "default": 15,
+      "description": "Al\u00edquota IRPJ (%)",
+      "type": "number"
+    },
+    "aliq_csll": {
+      "default": 9,
+      "description": "Al\u00edquota CSLL (%)",
+      "type": "number"
+    },
     "adicional_irpj_aliq": {
       "default": 10,
       "description": "Al\u00edquota adicional IRPJ (%)",
@@ -11,19 +35,9 @@
       "description": "Limite trimestral para adicional de IRPJ (R$)",
       "type": "number"
     },
-    "aliq_csll": {
-      "default": 9,
-      "description": "Al\u00edquota CSLL (%)",
-      "type": "number"
-    },
-    "aliq_irpj": {
-      "default": 15,
-      "description": "Al\u00edquota IRPJ (%)",
-      "type": "number"
-    },
-    "cambio_usd": {
-      "default": 5.3,
-      "description": "C\u00e2mbio USD padr\u00e3o para simula\u00e7\u00f5es",
+    "pis_venda": {
+      "default": 0.65,
+      "description": "PIS sobre venda (%) \u2014 Lucro Presumido cumulativo",
       "type": "number"
     },
     "cofins_venda": {
@@ -31,16 +45,14 @@
       "description": "COFINS sobre venda (%) \u2014 Lucro Presumido cumulativo",
       "type": "number"
     },
-    "despesas_fixas": {
-      "description": "Lista de despesas fixas mensais (nome e valor)",
-      "items": {
-        "type": "object"
-      },
-      "type": "array"
-    },
     "icms_interestadual_importado": {
       "default": 4,
       "description": "ICMS interestadual para produto importado (%)",
+      "type": "number"
+    },
+    "lc224_limite_anual": {
+      "default": 5000000,
+      "description": "Limite anual LC 224 (R$)",
       "type": "number"
     },
     "irrf_dividendos": {
@@ -53,29 +65,27 @@
       "description": "Piso mensal de dividendos para IRRF de residente (R$)",
       "type": "number"
     },
-    "lc224_limite_anual": {
-      "default": 5000000,
-      "description": "Limite anual LC 224 (R$)",
+    "cambio_usd": {
+      "default": 5.3,
+      "description": "C\u00e2mbio USD padr\u00e3o para simula\u00e7\u00f5es",
       "type": "number"
     },
-    "nome": {
-      "default": "Padr\u00e3o",
-      "type": "string"
-    },
-    "pis_venda": {
-      "default": 0.65,
-      "description": "PIS sobre venda (%) \u2014 Lucro Presumido cumulativo",
+    "comissao_vendedor_padrao": {
+      "default": 0,
+      "description": "Comiss\u00e3o padr\u00e3o do vendedor (%) sobre o pre\u00e7o \u00e0 vista l\u00edquido de impostos",
       "type": "number"
     },
-    "presuncao_csll": {
-      "default": 12,
-      "description": "Presun\u00e7\u00e3o CSLL (%)",
+    "indice_custo_fixo": {
+      "default": 0,
+      "description": "\u00cdndice de custo fixo alocado (multiplicador do custo do produto)",
       "type": "number"
     },
-    "presuncao_irpj": {
-      "default": 8,
-      "description": "Presun\u00e7\u00e3o IRPJ (%)",
-      "type": "number"
+    "despesas_fixas": {
+      "description": "Lista de despesas fixas mensais (nome e valor)",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     }
   },
   "required": [

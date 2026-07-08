@@ -10,13 +10,18 @@
       "type": "string",
       "description": "Nome do produto"
     },
+    "model": {
+      "type": "string",
+      "description": "Modelo (ex: WF-802, DW-3600, S2)"
+    },
     "description": {
       "type": "string",
       "description": "Descri\u00e7\u00e3o do produto"
     },
     "brand": {
       "type": "string",
-      "description": "Marca"
+      "description": "Marca",
+      "default": "Robooster"
     },
     "category_id": {
       "type": "string",
@@ -32,7 +37,8 @@
     },
     "origin_country": {
       "type": "string",
-      "description": "Pa\u00eds de origem"
+      "description": "Pa\u00eds de origem",
+      "default": "China"
     },
     "unit": {
       "type": "string",
@@ -49,19 +55,29 @@
     },
     "weight_kg": {
       "type": "number",
-      "description": "Peso em KG"
+      "description": "Peso bruto em KG (com embalagem)"
     },
     "height_cm": {
       "type": "number",
-      "description": "Altura em CM"
+      "description": "Altura da caixa/embalagem em CM"
     },
     "width_cm": {
       "type": "number",
-      "description": "Largura em CM"
+      "description": "Largura da caixa/embalagem em CM"
     },
     "length_cm": {
       "type": "number",
-      "description": "Comprimento em CM"
+      "description": "Comprimento da caixa/embalagem em CM"
+    },
+    "empilhavel": {
+      "type": "boolean",
+      "description": "Caixa \u00e9 empilh\u00e1vel no container",
+      "default": true
+    },
+    "pode_deitar": {
+      "type": "boolean",
+      "description": "Caixa pode ser deitada no container",
+      "default": false
     },
     "cost_fob_usd": {
       "type": "number",
@@ -69,37 +85,69 @@
     },
     "cost_landed_brl": {
       "type": "number",
-      "description": "Custo landed em BRL (calculado)"
+      "description": "Custo landed em BRL \u2014 calculado pela importa\u00e7\u00e3o realizada, nunca digitado manualmente"
+    },
+    "custo_manual_brl": {
+      "type": "number",
+      "description": "Custo manual do produto em BRL (usado quando n\u00e3o h\u00e1 importa\u00e7\u00e3o realizada)"
+    },
+    "seller_commission_percent": {
+      "type": "number",
+      "description": "Comiss\u00e3o do vendedor (%) sobre o pre\u00e7o \u00e0 vista l\u00edquido de impostos",
+      "default": 0
     },
     "sale_price": {
       "type": "number",
-      "description": "Pre\u00e7o de venda em BRL"
+      "description": "Pre\u00e7o de venda em BRL (legacy)"
     },
     "markup_percent": {
       "type": "number",
-      "description": "Markup percentual"
+      "description": "Markup percentual (legacy)"
     },
     "ii_rate": {
       "type": "number",
-      "description": "Al\u00edquota II (%)"
+      "description": "Al\u00edquota II (%)",
+      "default": 0
     },
     "ipi_rate": {
       "type": "number",
-      "description": "Al\u00edquota IPI (%)"
+      "description": "Al\u00edquota IPI (%)",
+      "default": 0
     },
     "pis_rate": {
       "type": "number",
-      "description": "Al\u00edquota PIS (%)",
+      "description": "Al\u00edquota PIS importa\u00e7\u00e3o (%)",
       "default": 2.1
     },
     "cofins_rate": {
       "type": "number",
-      "description": "Al\u00edquota COFINS (%)",
+      "description": "Al\u00edquota COFINS importa\u00e7\u00e3o (%)",
       "default": 9.65
     },
     "icms_rate": {
       "type": "number",
-      "description": "Al\u00edquota ICMS (%)"
+      "description": "Al\u00edquota ICMS (%)",
+      "default": 18
+    },
+    "beneficio_5291": {
+      "type": "boolean",
+      "description": "Possui benef\u00edcio fiscal 5.2.91",
+      "default": false
+    },
+    "ex_tarifario": {
+      "type": "boolean",
+      "description": "Possui Ex-Tarif\u00e1rio",
+      "default": false
+    },
+    "ex_tarifario_validade": {
+      "type": "string",
+      "format": "date",
+      "description": "Validade do Ex-Tarif\u00e1rio"
+    },
+    "ipi_recuperavel": {
+      "type": "boolean",
+      "description": "IPI \u00e9 recuper\u00e1vel",
+      "default": true
     },
     "stock_quantity": {
       "type": "number",

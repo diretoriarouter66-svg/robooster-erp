@@ -1,20 +1,6 @@
 {
   "name": "SalesChannel",
   "properties": {
-    "active": {
-      "default": true,
-      "type": "boolean"
-    },
-    "commission_percent": {
-      "default": 0,
-      "description": "Comiss\u00e3o do canal (%)",
-      "type": "number"
-    },
-    "fixed_fee": {
-      "default": 0,
-      "description": "Taxa fixa por venda (R$)",
-      "type": "number"
-    },
     "name": {
       "description": "Nome do canal (ex: Venda Direta, ML Cl\u00e1ssico, ML Premium, Site)",
       "type": "string"
@@ -29,6 +15,25 @@
         "outro"
       ],
       "type": "string"
+    },
+    "commission_percent": {
+      "default": 0,
+      "description": "Comiss\u00e3o do canal (%)",
+      "type": "number"
+    },
+    "fixed_fee": {
+      "default": 0,
+      "description": "Taxa fixa por venda (R$)",
+      "type": "number"
+    },
+    "is_master": {
+      "default": false,
+      "description": "Canal master (Pre\u00e7o \u00e0 Vista) \u2014 usado como base no Cockpit de Precifica\u00e7\u00e3o",
+      "type": "boolean"
+    },
+    "active": {
+      "default": true,
+      "type": "boolean"
     }
   },
   "required": [

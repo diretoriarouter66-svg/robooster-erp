@@ -109,6 +109,8 @@ export default function ConfigTributaria() {
             <div><Label>IRRF Dividendos (%)</Label><Input type="number" step="0.1" value={config.irrf_dividendos ?? 10} onChange={f("irrf_dividendos")} /></div>
             <div><Label>Piso IRRF Residente (R$/mês)</Label><Input type="number" step="1000" value={config.irrf_piso_residente ?? 50000} onChange={f("irrf_piso_residente")} /></div>
             <div><Label>Câmbio USD Padrão (R$)</Label><Input type="number" step="0.01" value={config.cambio_usd ?? 5.3} onChange={f("cambio_usd")} /></div>
+            <div><Label>Comissão Padrão Vendedor (%)</Label><Input type="number" step="0.1" value={config.comissao_vendedor_padrao ?? 0} onChange={f("comissao_vendedor_padrao")} /></div>
+            <div><Label>Índice de Custo Fixo</Label><Input type="number" step="0.01" value={config.indice_custo_fixo ?? 0} onChange={f("indice_custo_fixo")} /></div>
           </div>
         </Card>
 
