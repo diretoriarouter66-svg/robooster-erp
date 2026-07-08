@@ -68,7 +68,7 @@ function ProductBreakdown({ r }) {
 }
 
 export default function ImportResults({ result }) {
-  if (!result) return null;
+  if (!result || !result.totais || !result.resultados) return null;
   const t = result.totais;
 
   return (

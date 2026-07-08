@@ -4,7 +4,7 @@ import { AlertTriangle, Package } from "lucide-react";
 const fmt = (v) => v != null ? v.toLocaleString("pt-BR") : "—";
 
 export default function CubageResults({ result }) {
-  if (!result) return null;
+  if (!result || !result.detalhe) return null;
 
   return (
     <div className="bg-card rounded-xl border border-border p-4">
