@@ -39,7 +39,11 @@ export default function DREResults({ dre }) {
 
       <Row label="(−) PIS s/ Venda" value={dre.pis_venda} negative indent />
       <Row label="(−) COFINS s/ Venda" value={dre.cofins_venda} negative indent />
-      <Row label="(−) ICMS" value={dre.icms_a_pagar} negative indent />
+      <Row label="(−) ICMS débito" value={dre.icms_debito} negative indent />
+      {dre.icms_credito_utilizado > 0 && (
+        <Row label="(+) ICMS crédito utilizado" value={dre.icms_credito_utilizado} positive indent />
+      )}
+      <Row label="ICMS a pagar" value={dre.icms_a_pagar} negative indent />
       {dre.saldo_credor_icms_remanescente > 0 && (
         <Row label="  Crédito ICMS remanescente" value={dre.saldo_credor_icms_remanescente} positive indent />
       )}
