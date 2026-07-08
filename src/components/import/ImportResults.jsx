@@ -75,14 +75,14 @@ export default function ImportResults({ result }) {
     <div className="bg-card rounded-xl border border-border p-4">
       <h3 className="font-heading font-semibold text-sm mb-3">Custo de Importação</h3>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-        <div className="bg-muted/30 rounded-lg p-2"><p className="text-[10px] text-muted-foreground">FOB Total</p><p className="text-sm font-bold">{fmtBRL(t.fob_total_brl)}</p></div>
-        <div className="bg-muted/30 rounded-lg p-2"><p className="text-[10px] text-muted-foreground">Valor Aduaneiro</p><p className="text-sm font-bold">{fmtBRL(t.va)}</p></div>
-        <div className="bg-muted/30 rounded-lg p-2"><p className="text-[10px] text-muted-foreground">Custo Formação</p><p className="text-sm font-bold text-primary">{fmtBRL(t.custo_formacao_preco)}</p></div>
-        <div className="bg-muted/30 rounded-lg p-2"><p className="text-[10px] text-muted-foreground">Desembolso Caixa</p><p className="text-sm font-bold">{fmtBRL(t.desembolso_caixa)}</p></div>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="bg-muted/30 rounded-lg p-2 min-w-0"><p className="text-[10px] text-muted-foreground">FOB Total</p><p className="text-sm font-bold leading-tight break-words">{fmtBRL(t.fob_total_brl)}</p></div>
+        <div className="bg-muted/30 rounded-lg p-2 min-w-0"><p className="text-[10px] text-muted-foreground">Valor Aduaneiro</p><p className="text-sm font-bold leading-tight break-words">{fmtBRL(t.va)}</p></div>
+        <div className="bg-muted/30 rounded-lg p-2 min-w-0"><p className="text-[10px] text-muted-foreground">Custo Formação</p><p className="text-sm font-bold text-primary leading-tight break-words">{fmtBRL(t.custo_formacao_preco)}</p></div>
+        <div className="bg-muted/30 rounded-lg p-2 min-w-0"><p className="text-[10px] text-muted-foreground">Desembolso Caixa</p><p className="text-sm font-bold leading-tight break-words">{fmtBRL(t.desembolso_caixa)}</p></div>
       </div>
 
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3 text-xs">
+      <div className="grid grid-cols-3 gap-x-2 gap-y-2 mb-3 text-xs">
         <div className="text-center"><p className="text-muted-foreground">II</p><p className="font-medium">{fmtBRL(t.ii)}</p></div>
         <div className="text-center"><p className="text-muted-foreground">IPI</p><p className="font-medium">{fmtBRL(t.ipi)}</p></div>
         <div className="text-center"><p className="text-muted-foreground">PIS Imp</p><p className="font-medium">{fmtBRL(t.pis_imp)}</p></div>
