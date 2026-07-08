@@ -32,16 +32,22 @@ export default function DRE() {
 
   const loadData = async () => {
     try {
-      const [dres, ops, socs, configs] = await Promise.all([
+      const [dres, ops, socs, configs, chans, prices] = await Promise.all([
         base44.entities.DRESalvo.list("-created_date", 100),
         base44.entities.ImportOperation.list("-created_date", 100),
         base44.entities.Socio.list("-created_date", 50),
-        base44.entities.ConfigTributaria.list("-created_date", 5)
+        base44.entities.ConfigTributaria.list("-created_date", 5),
+        base44.entities.SalesChannel.list("-created_date", 50),
+        base44.entities.ProductPricing.list("-created_date", 500)
       ]);
       setSavedDREs(dres || []);
       setOperations((ops || []).filter(o => o.resultado_importacao?.resultados));
       setSocios(socs || []);
       setConfig(configs?.[0] || {});
+      const vd = (chans || []).find(c => c.type === "venda_direta") || (chans || []).find(c => (c.commission_percent || 0) === 0 && (c.fixed_fee || 0) === 0);
+      const priceMap = {};
+      (prices || []).forEach(p => { if (vd && p.channel_id === vd.id && p.price > 0) priceMap[p.product_id] = p.price; });
+      setVendaDiretaPrices(priceMap);
     } catch (err) {
       console.error("Erro ao carregar dados:", err);
     } finally {
@@ -56,7 +62,7 @@ export default function DRE() {
       product_name: r.produto.nome,
       qty: r.quantidade,
       custo_unitario: r.custo_unitario_formacao,
-      preco_venda: 0
+      preco_venda: vendaDiretaPrices[r.produto.id] || 0
     }));
   };
 
@@ -75,7 +81,7 @@ export default function DRE() {
     const op = operations.find(o => o.id === dre.operacao_id);
     const vendas = op ? buildVendas(op).map(v => ({
       ...v,
-      preco_venda: dre.preco_overrides?.[v.product_id] ?? 0
+      preco_venda: dre.preco_overrides?.[v.product_id] ?? (vendaDiretaPrices[v.product_id] || 0)
     })) : [];
     setEditing(dre);
     setForm({
