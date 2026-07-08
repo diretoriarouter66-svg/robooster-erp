@@ -270,6 +270,11 @@ export default function Precificacao() {
           {/* Custo e Impostos */}
           <div className="bg-card rounded-xl border border-border p-4">
             <h3 className="font-heading font-semibold text-sm mb-3">Custo e Impostos</h3>
+            {custo <= 0 && (
+              <div className="mb-3 px-3 py-2 bg-destructive/10 border border-destructive/20 rounded-lg text-xs text-destructive font-medium">
+                Produto sem custo definido — a precificação não funciona sem custo. Informe o "Custo do Produto (R$)" no cadastro do produto ou marque uma importação como Realizada.
+              </div>
+            )}
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Custo do Produto</span>
