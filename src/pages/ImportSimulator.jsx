@@ -119,7 +119,7 @@ export default function ImportSimulator() {
       seguro_usd: form.seguro_usd || 0,
     };
 
-    const result = calcularOperacaoImportacao(engineItems, operacaoEngine, configMotor, form.data || "2026-01-01");
+    const result = calcularOperacaoImportacao(engineItems, operacaoEngine, configMotor, form.data || "2026-01-01", (form.pct_declarado ?? 100) / 100);
     setImportResult(result);
 
     const container = CONTAINERS_PADRAO.find(c => c.nome === form.container_tipo) || CONTAINERS_PADRAO[2];
@@ -256,6 +256,16 @@ export default function ImportSimulator() {
               <div><Label>Seguro (USD)</Label><Input type="number" step="0.01" value={form.seguro_usd ?? ""} onChange={f("seguro_usd")} /></div>
               <div><Label>Despesas Locais (USD)</Label><Input type="number" step="0.01" value={form.despesas_locais_usd ?? ""} onChange={f("despesas_locais_usd")} /></div>
             </div>
+          </div>
+
+          <div className="bg-card rounded-xl border border-border p-4">
+            <h3 className="font-heading font-semibold text-sm mb-1">Valor Declarado na Invoice</h3>
+            <p className="text-[11px] text-muted-foreground mb-3">O custo real do produto (FOB × câmbio) é mantido. Apenas a base tributária (II, IPI, PIS/COFINS imp., ICMS imp.) é calculada sobre o valor reduzido declarado.</p>
+            <div className="flex items-center gap-3">
+              <input type="range" min="10" max="100" step="1" value={form.pct_declarado ?? 100} onChange={e => setForm({ ...form, pct_declarado: parseInt(e.target.value, 10) })} className="flex-1 accent-primary" />
+              <span className="text-lg font-bold text-primary whitespace-nowrap w-20 text-right">{form.pct_declarado ?? 100}%</span>
+            </div>
+            <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>10%</span><span>50%</span><span>100% (real)</span></div>
           </div>
 
           <div className="flex gap-2">
