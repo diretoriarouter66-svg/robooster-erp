@@ -42,15 +42,20 @@ export default function ImportSimulator() {
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [ops, prods, configs] = await Promise.all([
-      base44.entities.ImportOperation.list("-created_date", 100),
-      base44.entities.Product.list("-created_date", 500),
-      base44.entities.ConfigTributaria.list("-created_date", 5)
-    ]);
-    setOperations(ops);
-    setProducts(prods);
-    setConfig(configs[0] || {});
-    setLoading(false);
+    try {
+      const [ops, prods, configs] = await Promise.all([
+        base44.entities.ImportOperation.list("-created_date", 100),
+        base44.entities.Product.list("-created_date", 500),
+        base44.entities.ConfigTributaria.list("-created_date", 5)
+      ]);
+      setOperations(ops || []);
+      setProducts(prods || []);
+      setConfig(configs?.[0] || {});
+    } catch (err) {
+      console.error("Erro ao carregar dados:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openNew = () => {

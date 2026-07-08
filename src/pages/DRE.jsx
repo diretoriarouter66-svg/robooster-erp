@@ -31,17 +31,22 @@ export default function DRE() {
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [dres, ops, socs, configs] = await Promise.all([
-      base44.entities.DRESalvo.list("-created_date", 100),
-      base44.entities.ImportOperation.list("-created_date", 100),
-      base44.entities.Socio.list("-created_date", 50),
-      base44.entities.ConfigTributaria.list("-created_date", 5)
-    ]);
-    setSavedDREs(dres);
-    setOperations(ops.filter(o => o.resultado_importacao?.resultados));
-    setSocios(socs);
-    setConfig(configs[0] || {});
-    setLoading(false);
+    try {
+      const [dres, ops, socs, configs] = await Promise.all([
+        base44.entities.DRESalvo.list("-created_date", 100),
+        base44.entities.ImportOperation.list("-created_date", 100),
+        base44.entities.Socio.list("-created_date", 50),
+        base44.entities.ConfigTributaria.list("-created_date", 5)
+      ]);
+      setSavedDREs(dres || []);
+      setOperations((ops || []).filter(o => o.resultado_importacao?.resultados));
+      setSocios(socs || []);
+      setConfig(configs?.[0] || {});
+    } catch (err) {
+      console.error("Erro ao carregar dados:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const buildVendas = (op) => {
