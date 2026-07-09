@@ -100,10 +100,26 @@ export default function SaleOrders() {
     return sub - (parseFloat(form.discount) || 0) + (parseFloat(form.shipping_cost) || 0);
   };
 
+  // Status que baixam estoque e geram conta a receber
+  const STATUS_BAIXA = ["invoiced", "shipped", "delivered"];
+
+  const ajustarEstoque = async (itens, sinal) => {
+    for (const item of itens || []) {
+      if (!item.product_id || !item.quantity) continue;
+      const p = products.find(pr => pr.id === item.product_id) || await base44.entities.Product.get(item.product_id).catch(() => null);
+      if (!p) continue;
+      const novoEstoque = Math.max(0, (p.stock_quantity || 0) + sinal * item.quantity);
+      await base44.entities.Product.update(item.product_id, { stock_quantity: novoEstoque });
+    }
+  };
+
   const handleSave = async () => {
     const sub = orderItems.reduce((s, i) => s + ((i.quantity || 0) * (i.unit_price || 0)), 0);
     const total = calcTotal();
     const customer = customers.find(c => c.id === form.customer_id);
+    const deveBaixar = STATUS_BAIXA.includes(form.status);
+    const jaBaixado = !!editing?.stock_deducted;
+
     const data = {
       ...form,
       customer_name: customer?.name || form.customer_name || "",
@@ -111,12 +127,53 @@ export default function SaleOrders() {
       subtotal: sub,
       total,
       order_number: form.order_number || `PV-${Date.now().toString(36).toUpperCase()}`,
+      stock_deducted: deveBaixar,
     };
+
+    // 1) Estoque: devolve o que havia sido baixado (itens antigos), depois baixa os itens atuais se aplicável
+    if (jaBaixado) await ajustarEstoque(editing.items, +1);
+    if (deveBaixar) await ajustarEstoque(orderItems, -1);
+
+    // 2) Financeiro: conta a receber automática
+    let financialEntryId = editing?.financial_entry_id || null;
+    const entryStatus = form.payment_status === "paid" ? "paid" : "pending";
+    const entryData = {
+      type: "receivable",
+      category: "sale",
+      description: `Pedido ${data.order_number} — ${data.customer_name || "Cliente"}`,
+      reference_id: editing?.id || "",
+      reference_type: "sale_order",
+      amount: total,
+      due_date: new Date().toISOString().slice(0, 10),
+      status: entryStatus,
+      payment_method: form.payment_method || "pix",
+      ...(form.payment_status === "paid" ? { payment_date: new Date().toISOString().slice(0, 10) } : {}),
+    };
+
+    if (deveBaixar && !financialEntryId) {
+      const entry = await base44.entities.FinancialEntry.create(entryData);
+      financialEntryId = entry.id;
+    } else if (deveBaixar && financialEntryId) {
+      await base44.entities.FinancialEntry.update(financialEntryId, entryData).catch(() => {});
+    } else if (!deveBaixar && financialEntryId) {
+      // Pedido cancelado/devolvido/voltou para pendente: cancela a conta se ainda não foi paga
+      const entry = await base44.entities.FinancialEntry.get(financialEntryId).catch(() => null);
+      if (entry && entry.status !== "paid") {
+        await base44.entities.FinancialEntry.update(financialEntryId, { status: "cancelled" }).catch(() => {});
+      }
+      financialEntryId = null;
+    }
+
+    data.financial_entry_id = financialEntryId || "";
 
     if (editing) {
       await base44.entities.SaleOrder.update(editing.id, data);
     } else {
-      await base44.entities.SaleOrder.create(data);
+      const created = await base44.entities.SaleOrder.create(data);
+      // vincula a conta a receber ao pedido recém-criado
+      if (financialEntryId) {
+        await base44.entities.FinancialEntry.update(financialEntryId, { reference_id: created.id }).catch(() => {});
+      }
     }
     setDialogOpen(false);
     loadData();
@@ -124,6 +181,15 @@ export default function SaleOrders() {
 
   const handleDelete = async (id) => {
     if (!confirm("Excluir este pedido?")) return;
+    const order = orders.find(o => o.id === id);
+    // Devolve o estoque e cancela a conta a receber antes de excluir
+    if (order?.stock_deducted) await ajustarEstoque(order.items, +1);
+    if (order?.financial_entry_id) {
+      const entry = await base44.entities.FinancialEntry.get(order.financial_entry_id).catch(() => null);
+      if (entry && entry.status !== "paid") {
+        await base44.entities.FinancialEntry.update(order.financial_entry_id, { status: "cancelled" }).catch(() => {});
+      }
+    }
     await base44.entities.SaleOrder.delete(id);
     loadData();
   };
