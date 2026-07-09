@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, Users, Truck, ShoppingCart,
   FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse,
-  Ship, Calculator, SlidersHorizontal, Store, Tag, Percent } from
+  Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container } from
 "lucide-react";
 import { base44 } from "@/api/base44Client";
 
