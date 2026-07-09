@@ -264,7 +264,8 @@ export default function Products() {
               </div>
               <div>
                 <Label>Estoque Atual</Label>
-                <Input type="number" value={form.stock_quantity || ""} onChange={f("stock_quantity")} placeholder="0" />
+                <Input type="number" value={form.stock_quantity ?? 0} readOnly disabled className="bg-muted" />
+                <p className="text-[10px] text-muted-foreground mt-1">Somente leitura — movimentado pela tela de Estoque (vendas, importações e ajustes com justificativa).</p>
               </div>
               <div>
                 <Label>Estoque Mínimo</Label>
