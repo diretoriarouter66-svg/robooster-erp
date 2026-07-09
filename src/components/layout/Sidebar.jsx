@@ -19,8 +19,8 @@ const menuGroups = [
   label: "Cadastros",
   items: [
   { icon: Package, label: "Produtos", path: "/products" },
-  { icon: Truck, label: "Fornecedores", path: "/suppliers" },
-  { icon: Users, label: "Clientes", path: "/customers" },
+  
+  { icon: Users, label: "Contatos", path: "/contatos" },
   { icon: Store, label: "Canais de Venda", path: "/sales-channels" },
   { icon: Tag, label: "Categorias", path: "/categorias" }]
 

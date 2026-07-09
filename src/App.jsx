@@ -13,8 +13,8 @@ import ResetPassword from '@/pages/ResetPassword';
 import AppLayout from './components/layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
-import Suppliers from './pages/Suppliers';
-import Customers from './pages/Customers';
+
+import Contatos from './pages/Contatos';
 import SalesChannels from './pages/SalesChannels';
 import Categorias from './pages/Categorias';
 import Precificacao from './pages/Precificacao';
@@ -61,8 +61,9 @@ const AuthenticatedApp = () => {
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/products" element={<Products />} />
-          <Route path="/suppliers" element={<Suppliers />} />
-          <Route path="/customers" element={<Customers />} />
+          <Route path="/suppliers" element={<Contatos />} />
+          <Route path="/contatos" element={<Contatos />} />
+          <Route path="/customers" element={<Contatos />} />
           <Route path="/sales-channels" element={<SalesChannels />} />
           <Route path="/categorias" element={<Categorias />} />
           <Route path="/precificacao" element={<Precificacao />} />
