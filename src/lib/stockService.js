@@ -55,6 +55,7 @@ export async function registrarMovimento({ productId, tipo, quantidade, quantida
     product_id: productId,
     product_name: p.name,
     sku: p.sku,
+    product_sku: p.sku,
     tipo,
     quantidade: delta,
     saldo_anterior: saldoAnterior,
@@ -64,6 +65,14 @@ export async function registrarMovimento({ productId, tipo, quantidade, quantida
     origem_ref: origemRef || "",
     motivo: motivo || "",
     unit_cost: unitCost ?? p.cost_landed_brl ?? p.custo_manual_brl ?? 0,
+    // Campos do schema original (inglês) — mantidos para compatibilidade de validação
+    type: tipo === "ajuste_inventario" ? "adjustment" : (delta > 0 ? "entry" : "exit"),
+    quantity: Math.abs(delta),
+    previous_stock: saldoAnterior,
+    new_stock: saldoNovo,
+    reference_type: { entrada_importacao: "import", saida_venda: "sale", devolucao_venda: "return", ajuste_inventario: "adjustment" }[tipo] || "other",
+    reference_id: origemId || "",
+    notes: [origemRef, motivo].filter(Boolean).join(" — "),
   });
 
   await base44.entities.Product.update(productId, { stock_quantity: saldoNovo });
