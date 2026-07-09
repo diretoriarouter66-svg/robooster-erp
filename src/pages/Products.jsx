@@ -59,8 +59,11 @@ export default function Products() {
   };
 
   const handleSave = async () => {
-    if (editing) await base44.entities.Product.update(editing.id, form);
-    else await base44.entities.Product.create(form);
+    const data = { ...form };
+    // Estoque nunca é salvo pelo cadastro — só por movimentação (Kardex)
+    if (editing) delete data.stock_quantity;
+    if (editing) await base44.entities.Product.update(editing.id, data);
+    else await base44.entities.Product.create({ ...data, stock_quantity: 0 });
     setDialogOpen(false);
     loadData();
   };
