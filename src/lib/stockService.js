@@ -94,6 +94,50 @@ export async function movimentarPedidoVenda(itens, sinal, orderId, orderNumber) 
   }
 }
 
+/**
+ * Reconcilia o estoque de um pedido usando o Kardex como fonte da verdade.
+ * Consulta os movimentos já registrados para o pedido e gera apenas a diferença
+ * entre o estado atual e o estado alvo (deveBaixar = pedido faturado/enviado/entregue).
+ * À prova de edições de itens, cancelamentos e reaberturas.
+ */
+export async function reconciliarPedidoVenda(orderId, orderNumber, itens, deveBaixar) {
+  if (!orderId) throw new Error("Pedido sem ID para reconciliar estoque.");
+  const movs = await base44.entities.StockMovement.filter({ origem_id: orderId }, "-created_date", 500).catch(() => []);
+
+  // Posição atual no ledger por produto (soma dos movimentos de venda/devolução deste pedido)
+  const atual = {};
+  for (const m of movs) {
+    if (m.tipo !== "saida_venda" && m.tipo !== "devolucao_venda") continue;
+    atual[m.product_id] = (atual[m.product_id] || 0) + (m.quantidade || 0);
+  }
+
+  // Posição alvo: -qtd por produto se deve estar baixado; 0 se não
+  const alvo = {};
+  if (deveBaixar) {
+    for (const item of itens || []) {
+      if (!item.product_id || !item.quantity) continue;
+      alvo[item.product_id] = (alvo[item.product_id] || 0) - item.quantity;
+    }
+  }
+
+  const custoPorProduto = {};
+  for (const item of itens || []) { if (item.product_id) custoPorProduto[item.product_id] = item.unit_price; }
+
+  const produtos = new Set([...Object.keys(atual), ...Object.keys(alvo)]);
+  for (const pid of produtos) {
+    const delta = (alvo[pid] || 0) - (atual[pid] || 0);
+    if (delta === 0) continue;
+    await registrarMovimento({
+      productId: pid,
+      tipo: delta < 0 ? "saida_venda" : "devolucao_venda",
+      quantidade: Math.abs(delta),
+      origemId: orderId,
+      origemRef: orderNumber || "",
+      unitCost: custoPorProduto[pid],
+    });
+  }
+}
+
 /** Dá entrada dos itens de uma operação de importação realizada */
 export async function entradaImportacao(resultados, operacaoId, operacaoNome) {
   for (const r of resultados || []) {
