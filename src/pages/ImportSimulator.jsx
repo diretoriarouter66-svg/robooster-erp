@@ -14,7 +14,7 @@ import {
   calcularOperacaoImportacao, calcularCubagem, produtoFromProduct,
   configParaMotor, CONTAINERS_PADRAO
 } from "@/lib/simportEngine";
-import { entradaImportacao } from "@/lib/stockService";
+import { entradaImportacao, operacaoJaDeuEntrada } from "@/lib/stockService";
 
 const STATUS_OPTIONS = [
   { value: "simulacao", label: "Simulação" },
@@ -108,13 +108,28 @@ export default function ImportSimulator() {
     }).filter(it => it.produto && it.quantidade > 0);
   };
 
+  // ==== Remessas de pagamento: câmbio médio ponderado ====
+  const calcCambioMedio = (remessas) => {
+    const rs = (remessas || []).filter(r => (parseFloat(r.valor_usd) || 0) > 0 && (parseFloat(r.cotacao) || 0) > 0);
+    if (!rs.length) return null;
+    const totalUsd = rs.reduce((s, r) => s + parseFloat(r.valor_usd), 0);
+    const totalBrl = rs.reduce((s, r) => s + parseFloat(r.valor_usd) * parseFloat(r.cotacao) + (parseFloat(r.taxas_brl) || 0), 0);
+    return totalUsd > 0 ? totalBrl / totalUsd : null;
+  };
+  const cambioMedio = calcCambioMedio(form.remessas);
+  const cambioEfetivo = cambioMedio ?? (form.cambio || config?.cambio_usd || 5.3);
+
+  const addRemessa = () => setForm(prev => ({ ...prev, remessas: [...(prev.remessas || []), { data: new Date().toISOString().slice(0, 10), valor_usd: "", cotacao: "", taxas_brl: "" }] }));
+  const updRemessa = (i, campo, val) => setForm(prev => ({ ...prev, remessas: prev.remessas.map((r, idx) => idx === i ? { ...r, [campo]: val } : r) }));
+  const delRemessa = (i) => setForm(prev => ({ ...prev, remessas: prev.remessas.filter((_, idx) => idx !== i) }));
+
   const handleCalculate = () => {
     const engineItems = buildEngineItems();
     if (!engineItems.length) return;
 
     const configMotor = configParaMotor(config);
     const operacaoEngine = {
-      cambio: form.cambio || config?.cambio_usd || 5.3,
+      cambio: cambioEfetivo,
       frete_internacional_usd: form.frete_internacional_usd || 0,
       despesas_locais_usd: form.despesas_locais_usd || 0,
       seguro_usd: form.seguro_usd || 0,
@@ -134,7 +149,7 @@ export default function ImportSimulator() {
       ...form,
       resultado_cubagem: cubageResult,
       resultado_importacao: importResult,
-      cambio: form.cambio || config?.cambio_usd
+      cambio: cambioEfetivo
     };
 
     const wasRealizada = editing?.status === "realizada";
@@ -147,11 +162,11 @@ export default function ImportSimulator() {
           .filter(r => r.produto?.id)
           .map(r => ({ id: r.produto.id, cost_landed_brl: r.custo_unitario_formacao }))
       );
-      // 2) Dá entrada das quantidades no estoque via Kardex (uma única vez por operação)
-      if (!editing?.estoque_lancado) {
+      // 2) Dá entrada das quantidades no estoque via Kardex (o próprio Kardex garante que é uma única vez)
+      const jaEntrou = await operacaoJaDeuEntrada(editing?.id);
+      if (!jaEntrou) {
         try {
           await entradaImportacao(importResult.resultados, editing?.id, form.nome);
-          data.estoque_lancado = true;
         } catch (err) {
           alert(`Custo atualizado, mas houve erro na entrada de estoque: ${err.message}`);
         }
@@ -250,7 +265,17 @@ export default function ImportSimulator() {
                   <SelectContent>{STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label>Câmbio USD (R$)</Label><Input type="number" step="0.01" value={form.cambio ?? ""} onChange={f("cambio")} /></div>
+              <div>
+                <Label>Câmbio USD (R$)</Label>
+                {cambioMedio != null ? (
+                  <>
+                    <Input type="number" value={cambioMedio.toFixed(4)} readOnly disabled className="bg-muted" />
+                    <p className="text-[10px] text-primary mt-1 font-medium">Câmbio médio ponderado de {(form.remessas || []).filter(r => parseFloat(r.valor_usd) > 0).length} remessa(s)</p>
+                  </>
+                ) : (
+                  <Input type="number" step="0.01" value={form.cambio ?? ""} onChange={f("cambio")} />
+                )}
+              </div>
               <div><Label>Container</Label>
                 <Select value={form.container_tipo || "40' High Cube"} onValueChange={v => setForm({ ...form, container_tipo: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
