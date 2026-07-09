@@ -140,11 +140,21 @@ export default function ImportSimulator() {
     const isRealizada = form.status === "realizada";
 
     if (isRealizada && !wasRealizada && importResult?.resultados) {
+      // 1) Atualiza o custo landed de cada produto
       await base44.entities.Product.bulkUpdate(
         importResult.resultados
           .filter(r => r.produto?.id)
           .map(r => ({ id: r.produto.id, cost_landed_brl: r.custo_unitario_formacao }))
       );
+      // 2) Dá entrada das quantidades no estoque via Kardex (uma única vez por operação)
+      if (!editing?.estoque_lancado) {
+        try {
+          await entradaImportacao(importResult.resultados, editing?.id, form.nome);
+          data.estoque_lancado = true;
+        } catch (err) {
+          alert(`Custo atualizado, mas houve erro na entrada de estoque: ${err.message}`);
+        }
+      }
     }
 
     if (editing) await base44.entities.ImportOperation.update(editing.id, data);
