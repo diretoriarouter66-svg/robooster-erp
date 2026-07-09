@@ -304,6 +304,35 @@ export default function ImportSimulator() {
             <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>10%</span><span>50%</span><span>100% (real)</span></div>
           </div>
 
+          <div className="bg-card rounded-xl border border-border p-4">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-heading font-semibold text-sm">Remessas de Pagamento</h3>
+              <Button size="sm" variant="outline" onClick={addRemessa}><Plus className="w-3.5 h-3.5 mr-1" /> Remessa</Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-3">Lance cada envio ao fornecedor. O câmbio da operação vira a média ponderada automaticamente.</p>
+            {(form.remessas || []).length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-2">Nenhuma remessa lançada — o câmbio manual acima será usado.</p>
+            ) : (
+              <div className="space-y-2">
+                {(form.remessas || []).map((r, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-1.5 items-end">
+                    <div><Label className="text-[10px]">Data</Label><Input type="date" value={r.data || ""} onChange={e => updRemessa(i, "data", e.target.value)} className="h-8 text-xs" /></div>
+                    <div><Label className="text-[10px]">Valor (USD)</Label><Input type="number" step="0.01" value={r.valor_usd} onChange={e => updRemessa(i, "valor_usd", e.target.value)} className="h-8 text-xs" placeholder="10000" /></div>
+                    <div><Label className="text-[10px]">Cotação (R$)</Label><Input type="number" step="0.0001" value={r.cotacao} onChange={e => updRemessa(i, "cotacao", e.target.value)} className="h-8 text-xs" placeholder="5,20" /></div>
+                    <div><Label className="text-[10px]">Taxas (R$)</Label><Input type="number" step="0.01" value={r.taxas_brl} onChange={e => updRemessa(i, "taxas_brl", e.target.value)} className="h-8 text-xs" placeholder="0" /></div>
+                    <button onClick={() => delRemessa(i)} className="p-1.5 hover:bg-muted rounded-lg mb-0.5"><Trash2 className="w-3.5 h-3.5 text-destructive" /></button>
+                  </div>
+                ))}
+                {cambioMedio != null && (
+                  <div className="flex justify-between items-center px-3 py-2 bg-primary/5 rounded-lg text-sm mt-1">
+                    <span className="text-muted-foreground text-xs">Total enviado: US$ {(form.remessas || []).reduce((t, r) => t + (parseFloat(r.valor_usd) || 0), 0).toLocaleString("pt-BR")}</span>
+                    <span className="font-bold text-primary">Câmbio médio: R$ {cambioMedio.toFixed(4)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2">
             <Button className="flex-1" variant="outline" onClick={handleCalculate} disabled={!form.itens?.length}>
               <Calculator className="w-4 h-4 mr-1" /> Calcular
@@ -312,8 +341,13 @@ export default function ImportSimulator() {
               {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />} Salvar
             </Button>
           </div>
-          {form.status === "realizada" && importResult?.resultados && (
-            <p className="text-xs text-primary text-center">Ao salvar, o custo landed será gravado em cada produto do mix.</p>
+          {editing && form.status !== "realizada" && (
+            <Button className="w-full bg-success hover:bg-success/90 text-white" onClick={abrirFinalizacao} disabled={!importResult?.resultados}>
+              Finalizar Importação
+            </Button>
+          )}
+          {form.status === "realizada" && (
+            <p className="text-xs text-success text-center font-medium">Importação realizada — custos e estoque já lançados no sistema.</p>
           )}
         </div>
 
