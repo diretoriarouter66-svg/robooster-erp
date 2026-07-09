@@ -14,6 +14,7 @@ import {
   calcularOperacaoImportacao, calcularCubagem, produtoFromProduct,
   configParaMotor, CONTAINERS_PADRAO
 } from "@/lib/simportEngine";
+import { entradaImportacao } from "@/lib/stockService";
 
 const STATUS_OPTIONS = [
   { value: "simulacao", label: "Simulação" },
