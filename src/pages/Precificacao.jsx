@@ -123,7 +123,7 @@ export default function Precificacao() {
     const notesData = JSON.stringify({ frete, cliente_paga_frete: clientePagaFrete });
     for (const result of channelResults) {
       const existing = pricings.find(p => p.product_id === selectedProduct.id && p.channel_id === result.channel.id);
-      const data = { product_id: selectedProduct.id, channel_id: result.channel.id, price: result.price, notes: notesData };
+      const data = { product_id: selectedProduct.id, channel_id: result.channel.id, price: Math.round(result.price * 100) / 100, notes: notesData };
       if (existing) await base44.entities.ProductPricing.update(existing.id, data);
       else await base44.entities.ProductPricing.create(data);
     }
