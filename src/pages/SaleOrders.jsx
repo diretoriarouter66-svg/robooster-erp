@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import EmptyState from "../components/shared/EmptyState";
-import { movimentarPedidoVenda } from "@/lib/stockService";
+import { reconciliarPedidoVenda } from "@/lib/stockService";
 
 const CHANNEL_TYPE_MAP = {
   direct: "venda_direta",
@@ -109,7 +109,6 @@ export default function SaleOrders() {
     const total = calcTotal();
     const customer = customers.find(c => c.id === form.customer_id);
     const deveBaixar = STATUS_BAIXA.includes(form.status);
-    const jaBaixado = !!editing?.stock_deducted;
 
     const data = {
       ...form,
@@ -118,61 +117,57 @@ export default function SaleOrders() {
       subtotal: sub,
       total,
       order_number: form.order_number || `PV-${Date.now().toString(36).toUpperCase()}`,
-      stock_deducted: deveBaixar,
     };
 
-    // 1) Estoque via Kardex: devolve o que havia sido baixado (itens antigos), depois baixa os itens atuais
-    const orderRef = data.order_number;
+    // 1) Salva o pedido primeiro para ter um ID (o Kardex referencia o pedido)
+    let orderId;
+    if (editing) {
+      await base44.entities.SaleOrder.update(editing.id, data);
+      orderId = editing.id;
+    } else {
+      const created = await base44.entities.SaleOrder.create(data);
+      orderId = created.id;
+    }
+
+    // 2) Estoque: reconcilia com o Kardex como fonte da verdade
     try {
-      if (jaBaixado) await movimentarPedidoVenda(editing.items, +1, editing?.id, orderRef);
-      if (deveBaixar) await movimentarPedidoVenda(orderItems, -1, editing?.id, orderRef);
+      await reconciliarPedidoVenda(orderId, data.order_number, orderItems, deveBaixar);
     } catch (err) {
-      alert(`Não foi possível movimentar o estoque: ${err.message}\n\nO pedido NÃO foi salvo.`);
+      // Sem estoque suficiente: pedido volta para Pendente e o usuário é avisado
+      await base44.entities.SaleOrder.update(orderId, { status: "pending" }).catch(() => {});
+      alert(`Não foi possível baixar o estoque: ${err.message}\n\nO pedido foi salvo como PENDENTE.`);
+      setDialogOpen(false);
       loadData();
       return;
     }
 
-    // 2) Financeiro: conta a receber automática
-    let financialEntryId = editing?.financial_entry_id || null;
-    const entryStatus = form.payment_status === "paid" ? "paid" : "pending";
+    // 3) Financeiro: conta a receber automática (localizada pelo vínculo com o pedido, não por memória)
+    const entradas = await base44.entities.FinancialEntry.filter({ reference_id: orderId, reference_type: "sale_order" }, "-created_date", 5).catch(() => []);
+    const entradaAtiva = (entradas || []).find(e => e.status !== "cancelled");
     const entryData = {
       type: "receivable",
       category: "sale",
       description: `Pedido ${data.order_number} — ${data.customer_name || "Cliente"}`,
-      reference_id: editing?.id || "",
+      reference_id: orderId,
       reference_type: "sale_order",
       amount: total,
       due_date: new Date().toISOString().slice(0, 10),
-      status: entryStatus,
+      status: form.payment_status === "paid" ? "paid" : "pending",
       payment_method: form.payment_method || "pix",
       ...(form.payment_status === "paid" ? { payment_date: new Date().toISOString().slice(0, 10) } : {}),
     };
 
-    if (deveBaixar && !financialEntryId) {
-      const entry = await base44.entities.FinancialEntry.create(entryData);
-      financialEntryId = entry.id;
-    } else if (deveBaixar && financialEntryId) {
-      await base44.entities.FinancialEntry.update(financialEntryId, entryData).catch(() => {});
-    } else if (!deveBaixar && financialEntryId) {
-      // Pedido cancelado/devolvido/voltou para pendente: cancela a conta se ainda não foi paga
-      const entry = await base44.entities.FinancialEntry.get(financialEntryId).catch(() => null);
-      if (entry && entry.status !== "paid") {
-        await base44.entities.FinancialEntry.update(financialEntryId, { status: "cancelled" }).catch(() => {});
-      }
-      financialEntryId = null;
-    }
-
-    data.financial_entry_id = financialEntryId || "";
-
-    if (editing) {
-      await base44.entities.SaleOrder.update(editing.id, data);
-    } else {
-      const created = await base44.entities.SaleOrder.create(data);
-      // vincula a conta a receber ao pedido recém-criado
-      if (financialEntryId) {
-        await base44.entities.FinancialEntry.update(financialEntryId, { reference_id: created.id }).catch(() => {});
+    if (deveBaixar && !entradaAtiva) {
+      await base44.entities.FinancialEntry.create(entryData);
+    } else if (deveBaixar && entradaAtiva) {
+      if (entradaAtiva.status !== "paid") await base44.entities.FinancialEntry.update(entradaAtiva.id, entryData).catch(() => {});
+    } else if (!deveBaixar && entradaAtiva) {
+      // Cancelado/devolvido/pendente: cancela a conta se ainda não foi paga
+      if (entradaAtiva.status !== "paid") {
+        await base44.entities.FinancialEntry.update(entradaAtiva.id, { status: "cancelled" }).catch(() => {});
       }
     }
+
     setDialogOpen(false);
     loadData();
   };
@@ -180,12 +175,14 @@ export default function SaleOrders() {
   const handleDelete = async (id) => {
     if (!confirm("Excluir este pedido?")) return;
     const order = orders.find(o => o.id === id);
-    // Devolve o estoque e cancela a conta a receber antes de excluir
-    if (order?.stock_deducted) await movimentarPedidoVenda(order.items, +1, order.id, order.order_number).catch(err => alert(err.message));
-    if (order?.financial_entry_id) {
-      const entry = await base44.entities.FinancialEntry.get(order.financial_entry_id).catch(() => null);
-      if (entry && entry.status !== "paid") {
-        await base44.entities.FinancialEntry.update(order.financial_entry_id, { status: "cancelled" }).catch(() => {});
+    // Reconcilia o estoque para zero (devolve o que estiver baixado) e cancela a conta a receber
+    try {
+      await reconciliarPedidoVenda(id, order?.order_number, order?.items || [], false);
+    } catch (err) { alert(err.message); }
+    const entradas = await base44.entities.FinancialEntry.filter({ reference_id: id, reference_type: "sale_order" }, "-created_date", 5).catch(() => []);
+    for (const e of entradas || []) {
+      if (e.status !== "paid" && e.status !== "cancelled") {
+        await base44.entities.FinancialEntry.update(e.id, { status: "cancelled" }).catch(() => {});
       }
     }
     await base44.entities.SaleOrder.delete(id);
