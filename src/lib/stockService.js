@@ -153,3 +153,10 @@ export async function entradaImportacao(resultados, operacaoId, operacaoNome) {
     });
   }
 }
+
+/** Verifica no Kardex se a operação já deu entrada no estoque (fonte da verdade, não memória) */
+export async function operacaoJaDeuEntrada(operacaoId) {
+  if (!operacaoId) return false;
+  const movs = await base44.entities.StockMovement.filter({ origem_id: operacaoId, tipo: "entrada_importacao" }, "-created_date", 1).catch(() => []);
+  return (movs || []).length > 0;
+}
