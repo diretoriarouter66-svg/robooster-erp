@@ -1,0 +1,102 @@
+/**
+ * ROBOOSTER ERP — Serviço de Movimentação de Estoque (padrão Kardex)
+ * REGRA DE OURO: estoque nunca se edita; estoque se movimenta.
+ * Todo movimento é um registro imutável em StockMovement, e o campo
+ * stock_quantity do Product é sempre o resultado do último movimento.
+ */
+import { base44 } from "@/api/base44Client";
+
+export const TIPOS_MOVIMENTO = {
+  entrada_importacao: { label: "Entrada por Importação", direcao: +1, origem: "operacao_importacao", manual: false },
+  saida_venda: { label: "Saída por Venda", direcao: -1, origem: "pedido_venda", manual: false },
+  devolucao_venda: { label: "Devolução de Venda", direcao: +1, origem: "pedido_venda", manual: false },
+  ajuste_inventario: { label: "Ajuste de Inventário", direcao: 0, origem: "manual", manual: true },
+  avaria: { label: "Avaria / Perda", direcao: -1, origem: "manual", manual: true },
+  uso_interno: { label: "Uso Interno / Demonstração", direcao: -1, origem: "manual", manual: true },
+};
+
+/**
+ * Registra um movimento de estoque e atualiza o saldo do produto.
+ * @param {Object} mov
+ * @param {string} mov.productId
+ * @param {string} mov.tipo - chave de TIPOS_MOVIMENTO
+ * @param {number} mov.quantidade - SEMPRE positiva; a direção vem do tipo (exceto ajuste_inventario, que usa quantidadeAssinada)
+ * @param {number} [mov.quantidadeAssinada] - apenas para ajuste_inventario: delta com sinal (+2 achou, -1 sumiu)
+ * @param {string} [mov.origemId]
+ * @param {string} [mov.origemRef]
+ * @param {string} [mov.motivo] - OBRIGATÓRIO para tipos manuais
+ * @param {number} [mov.unitCost]
+ * @returns {Promise<number>} saldo novo
+ */
+export async function registrarMovimento({ productId, tipo, quantidade, quantidadeAssinada, origemId, origemRef, motivo, unitCost }) {
+  const def = TIPOS_MOVIMENTO[tipo];
+  if (!def) throw new Error(`Tipo de movimento inválido: ${tipo}`);
+  if (def.manual && !motivo?.trim()) throw new Error("Justificativa obrigatória para movimentos manuais.");
+
+  let delta;
+  if (tipo === "ajuste_inventario") {
+    if (!quantidadeAssinada || quantidadeAssinada === 0) throw new Error("Informe a quantidade do ajuste (positiva ou negativa).");
+    delta = quantidadeAssinada;
+  } else {
+    if (!quantidade || quantidade <= 0) throw new Error("Quantidade deve ser maior que zero.");
+    delta = def.direcao * quantidade;
+  }
+
+  const p = await base44.entities.Product.get(productId);
+  if (!p) throw new Error("Produto não encontrado.");
+
+  const saldoAnterior = p.stock_quantity || 0;
+  const saldoNovo = saldoAnterior + delta;
+  if (saldoNovo < 0) {
+    throw new Error(`Estoque insuficiente de "${p.name}": saldo atual ${saldoAnterior}, movimento ${delta}.`);
+  }
+
+  await base44.entities.StockMovement.create({
+    product_id: productId,
+    product_name: p.name,
+    sku: p.sku,
+    tipo,
+    quantidade: delta,
+    saldo_anterior: saldoAnterior,
+    saldo_novo: saldoNovo,
+    origem_tipo: def.origem,
+    origem_id: origemId || "",
+    origem_ref: origemRef || "",
+    motivo: motivo || "",
+    unit_cost: unitCost ?? p.cost_landed_brl ?? p.custo_manual_brl ?? 0,
+  });
+
+  await base44.entities.Product.update(productId, { stock_quantity: saldoNovo });
+  return saldoNovo;
+}
+
+/** Movimenta os itens de um pedido de venda. sinal -1 = baixa (venda), +1 = devolução */
+export async function movimentarPedidoVenda(itens, sinal, orderId, orderNumber) {
+  for (const item of itens || []) {
+    if (!item.product_id || !item.quantity) continue;
+    await registrarMovimento({
+      productId: item.product_id,
+      tipo: sinal < 0 ? "saida_venda" : "devolucao_venda",
+      quantidade: item.quantity,
+      origemId: orderId || "",
+      origemRef: orderNumber || "",
+      unitCost: item.unit_price,
+    });
+  }
+}
+
+/** Dá entrada dos itens de uma operação de importação realizada */
+export async function entradaImportacao(resultados, operacaoId, operacaoNome) {
+  for (const r of resultados || []) {
+    if (!r.produto?.id || !r.quantidade) continue;
+    await registrarMovimento({
+      productId: r.produto.id,
+      tipo: "entrada_importacao",
+      quantidade: r.quantidade,
+      origemId: operacaoId || "",
+      origemRef: operacaoNome || "",
+      motivo: "",
+      unitCost: r.custo_unitario_formacao,
+    });
+  }
+}
