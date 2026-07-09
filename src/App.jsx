@@ -27,6 +27,8 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import ImportSimulator from './pages/ImportSimulator';
 import DRE from './pages/DRE';
+import Breakeven from './pages/Breakeven';
+import ContainerPage from './pages/Container';
 import ConfigTributaria from './pages/ConfigTributaria';
 
 const AuthenticatedApp = () => {
@@ -72,6 +74,8 @@ const AuthenticatedApp = () => {
           <Route path="/reports" element={<Reports />} />
           <Route path="/import-simulator" element={<ImportSimulator />} />
           <Route path="/dre" element={<DRE />} />
+          <Route path="/breakeven" element={<Breakeven />} />
+          <Route path="/container" element={<ContainerPage />} />
           <Route path="/config-tributaria" element={<ConfigTributaria />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
