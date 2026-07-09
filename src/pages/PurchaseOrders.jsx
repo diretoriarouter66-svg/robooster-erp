@@ -26,7 +26,7 @@ export default function PurchaseOrders() {
   const loadData = async () => {
     const [o, s, p] = await Promise.all([
       base44.entities.PurchaseOrder.list("-created_date", 200),
-      base44.entities.Supplier.list("-created_date", 200),
+      base44.entities.Contato.list("-created_date", 500).then(cs => (cs || []).filter(c => (c.tipos || []).includes("Fornecedor") && c.status !== "inactive")),
       base44.entities.Product.list("-created_date", 200),
     ]);
     setOrders(o);
@@ -70,7 +70,7 @@ export default function PurchaseOrders() {
     const supplier = suppliers.find(s => s.id === form.supplier_id);
     const data = {
       ...form,
-      supplier_name: supplier?.company_name || form.supplier_name || "",
+      supplier_name: supplier?.name || form.supplier_name || "",
       items: poItems,
       subtotal: sub,
       total_brl: sub * (form.exchange_rate || 1),
@@ -163,7 +163,7 @@ export default function PurchaseOrders() {
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nenhum</SelectItem>
-                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.company_name}</SelectItem>)}
+                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

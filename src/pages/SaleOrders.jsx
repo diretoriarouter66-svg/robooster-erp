@@ -36,7 +36,7 @@ export default function SaleOrders() {
   const loadData = async () => {
     const [o, c, p, ch, pr] = await Promise.all([
       base44.entities.SaleOrder.list("-created_date", 200),
-      base44.entities.Customer.list("-created_date", 200),
+      base44.entities.Contato.list("-created_date", 500).then(cs => (cs || []).filter(c => (c.tipos || []).includes("Cliente") && c.status !== "inactive")),
       base44.entities.Product.list("-created_date", 200),
       base44.entities.SalesChannel.list("-created_date", 50),
       base44.entities.ProductPricing.list("-created_date", 500),
