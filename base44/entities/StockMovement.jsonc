@@ -2,66 +2,26 @@
   "name": "StockMovement",
   "type": "object",
   "properties": {
-    "product_id": {
-      "type": "string",
-      "description": "ID do produto"
-    },
-    "product_name": {
-      "type": "string",
-      "description": "Nome do produto"
-    },
-    "product_sku": {
-      "type": "string",
-      "description": "SKU do produto"
-    },
-    "type": {
-      "type": "string",
-      "enum": [
-        "entry",
-        "exit",
-        "adjustment"
-      ],
-      "description": "Tipo de movimenta\u00e7\u00e3o"
-    },
-    "quantity": {
-      "type": "number",
-      "description": "Quantidade movimentada"
-    },
-    "previous_stock": {
-      "type": "number",
-      "description": "Estoque anterior"
-    },
-    "new_stock": {
-      "type": "number",
-      "description": "Novo estoque"
-    },
-    "reference_type": {
-      "type": "string",
-      "enum": [
-        "import",
-        "sale",
-        "return",
-        "adjustment",
-        "other"
-      ],
-      "default": "other"
-    },
-    "reference_id": {
-      "type": "string",
-      "description": "ID de refer\u00eancia"
-    },
-    "unit_cost": {
-      "type": "number",
-      "description": "Custo unit\u00e1rio na movimenta\u00e7\u00e3o"
-    },
-    "notes": {
-      "type": "string",
-      "description": "Observa\u00e7\u00f5es"
-    }
+    "product_id": { "type": "string", "description": "ID do produto" },
+    "product_name": { "type": "string", "description": "Nome do produto" },
+    "product_sku": { "type": "string", "description": "SKU do produto" },
+    "sku": { "type": "string", "description": "SKU do produto" },
+    "type": { "type": "string", "enum": ["entry", "exit", "adjustment"], "description": "Tipo (legado)" },
+    "quantity": { "type": "number", "description": "Quantidade absoluta (legado)" },
+    "previous_stock": { "type": "number", "description": "Estoque anterior (legado)" },
+    "new_stock": { "type": "number", "description": "Novo estoque (legado)" },
+    "reference_type": { "type": "string", "enum": ["import", "sale", "return", "adjustment", "other"], "default": "other" },
+    "reference_id": { "type": "string", "description": "ID de referência" },
+    "unit_cost": { "type": "number", "description": "Custo unitário na movimentação" },
+    "notes": { "type": "string", "description": "Observações" },
+    "tipo": { "type": "string", "enum": ["entrada_importacao", "saida_venda", "devolucao_venda", "ajuste_inventario", "avaria", "uso_interno"], "description": "Tipo do movimento (Kardex)" },
+    "quantidade": { "type": "number", "description": "Quantidade com sinal (positiva = entrada, negativa = saída)" },
+    "saldo_anterior": { "type": "number", "description": "Saldo antes do movimento" },
+    "saldo_novo": { "type": "number", "description": "Saldo após o movimento" },
+    "origem_tipo": { "type": "string", "enum": ["pedido_venda", "operacao_importacao", "manual"], "default": "manual" },
+    "origem_id": { "type": "string", "description": "ID do registro de origem" },
+    "origem_ref": { "type": "string", "description": "Referência legível da origem" },
+    "motivo": { "type": "string", "description": "Justificativa (obrigatória em movimentos manuais)" }
   },
-  "required": [
-    "product_id",
-    "type",
-    "quantity"
-  ]
+  "required": ["product_id", "type", "quantity"]
 }
