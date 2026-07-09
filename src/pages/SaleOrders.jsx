@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import EmptyState from "../components/shared/EmptyState";
+import { movimentarPedidoVenda } from "@/lib/stockService";
 
 const CHANNEL_TYPE_MAP = {
   direct: "venda_direta",
@@ -103,16 +104,6 @@ export default function SaleOrders() {
   // Status que baixam estoque e geram conta a receber
   const STATUS_BAIXA = ["invoiced", "shipped", "delivered"];
 
-  const ajustarEstoque = async (itens, sinal) => {
-    for (const item of itens || []) {
-      if (!item.product_id || !item.quantity) continue;
-      const p = products.find(pr => pr.id === item.product_id) || await base44.entities.Product.get(item.product_id).catch(() => null);
-      if (!p) continue;
-      const novoEstoque = Math.max(0, (p.stock_quantity || 0) + sinal * item.quantity);
-      await base44.entities.Product.update(item.product_id, { stock_quantity: novoEstoque });
-    }
-  };
-
   const handleSave = async () => {
     const sub = orderItems.reduce((s, i) => s + ((i.quantity || 0) * (i.unit_price || 0)), 0);
     const total = calcTotal();
@@ -130,9 +121,16 @@ export default function SaleOrders() {
       stock_deducted: deveBaixar,
     };
 
-    // 1) Estoque: devolve o que havia sido baixado (itens antigos), depois baixa os itens atuais se aplicável
-    if (jaBaixado) await ajustarEstoque(editing.items, +1);
-    if (deveBaixar) await ajustarEstoque(orderItems, -1);
+    // 1) Estoque via Kardex: devolve o que havia sido baixado (itens antigos), depois baixa os itens atuais
+    const orderRef = data.order_number;
+    try {
+      if (jaBaixado) await movimentarPedidoVenda(editing.items, +1, editing?.id, orderRef);
+      if (deveBaixar) await movimentarPedidoVenda(orderItems, -1, editing?.id, orderRef);
+    } catch (err) {
+      alert(`Não foi possível movimentar o estoque: ${err.message}\n\nO pedido NÃO foi salvo.`);
+      loadData();
+      return;
+    }
 
     // 2) Financeiro: conta a receber automática
     let financialEntryId = editing?.financial_entry_id || null;
@@ -183,7 +181,7 @@ export default function SaleOrders() {
     if (!confirm("Excluir este pedido?")) return;
     const order = orders.find(o => o.id === id);
     // Devolve o estoque e cancela a conta a receber antes de excluir
-    if (order?.stock_deducted) await ajustarEstoque(order.items, +1);
+    if (order?.stock_deducted) await movimentarPedidoVenda(order.items, +1, order.id, order.order_number).catch(err => alert(err.message));
     if (order?.financial_entry_id) {
       const entry = await base44.entities.FinancialEntry.get(order.financial_entry_id).catch(() => null);
       if (entry && entry.status !== "paid") {
