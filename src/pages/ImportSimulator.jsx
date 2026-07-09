@@ -123,6 +123,53 @@ export default function ImportSimulator() {
   const updRemessa = (i, campo, val) => setForm(prev => ({ ...prev, remessas: prev.remessas.map((r, idx) => idx === i ? { ...r, [campo]: val } : r) }));
   const delRemessa = (i) => setForm(prev => ({ ...prev, remessas: prev.remessas.filter((_, idx) => idx !== i) }));
 
+  // ==== Finalizar Importação: recalcula, mostra conferência e executa tudo ====
+  const [finalizarOpen, setFinalizarOpen] = useState(false);
+  const [resumoFinal, setResumoFinal] = useState(null);
+  const [finalizando, setFinalizando] = useState(false);
+
+  const abrirFinalizacao = () => {
+    const engineItems = buildEngineItems();
+    if (!engineItems.length) { alert("A operação não tem produtos."); return; }
+    const configMotor = configParaMotor(config);
+    const operacaoEngine = { cambio: cambioEfetivo, frete_internacional_usd: form.frete_internacional_usd || 0, despesas_locais_usd: form.despesas_locais_usd || 0, seguro_usd: form.seguro_usd || 0 };
+    const result = calcularOperacaoImportacao(engineItems, operacaoEngine, configMotor, form.data || "2026-01-01", (form.pct_declarado ?? 100) / 100);
+    const container = CONTAINERS_PADRAO.find(c => c.nome === form.container_tipo) || CONTAINERS_PADRAO[2];
+    const cubage = calcularCubagem(engineItems, container);
+    setImportResult(result);
+    setCubageResult(cubage);
+    setResumoFinal(result);
+    setFinalizarOpen(true);
+  };
+
+  const confirmarFinalizacao = async () => {
+    if (!resumoFinal?.resultados || !editing?.id) return;
+    setFinalizando(true);
+    try {
+      // 1) Custo landed em cada produto
+      await base44.entities.Product.bulkUpdate(
+        resumoFinal.resultados.filter(r => r.produto?.id).map(r => ({ id: r.produto.id, cost_landed_brl: r.custo_unitario_formacao }))
+      );
+      // 2) Entrada no estoque via Kardex (guardada pelo próprio Kardex)
+      const jaEntrou = await operacaoJaDeuEntrada(editing.id);
+      if (!jaEntrou) await entradaImportacao(resumoFinal.resultados, editing.id, form.nome);
+      // 3) Grava a operação como Realizada com os resultados finais
+      await base44.entities.ImportOperation.update(editing.id, {
+        ...form,
+        status: "realizada",
+        cambio: cambioEfetivo,
+        resultado_importacao: resumoFinal,
+        resultado_cubagem: cubageResult,
+      });
+      setFinalizarOpen(false);
+      setView("list");
+      loadData();
+    } catch (err) {
+      alert(`Erro ao finalizar: ${err.message}`);
+    }
+    setFinalizando(false);
+  };
+
   const handleCalculate = () => {
     const engineItems = buildEngineItems();
     if (!engineItems.length) return;
@@ -406,6 +453,49 @@ export default function ImportSimulator() {
           )}
         </div>
       </div>
+
+      {finalizarOpen && resumoFinal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => !finalizando && setFinalizarOpen(false)}>
+          <div className="bg-card rounded-xl border border-border max-w-lg w-full max-h-[85vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="font-heading font-bold text-lg mb-1">Finalizar Importação</h3>
+            <p className="text-xs text-muted-foreground mb-4">Confira antes de confirmar — esta ação grava o custo nos produtos, dá entrada no estoque e marca a operação como Realizada.</p>
+
+            <div className="px-3 py-2 bg-primary/5 rounded-lg text-sm flex justify-between mb-3">
+              <span className="text-muted-foreground">Câmbio usado</span>
+              <span className="font-bold text-primary">R$ {Number(cambioEfetivo).toFixed(4)}{calcCambioMedio(form.remessas) != null ? " (média ponderada)" : " (manual)"}</span>
+            </div>
+
+            <table className="w-full text-sm mb-3">
+              <thead><tr className="border-b border-border text-xs text-muted-foreground">
+                <th className="text-left py-1.5">Produto</th>
+                <th className="text-right py-1.5">Entrada Estoque</th>
+                <th className="text-right py-1.5">Custo Landed/un</th>
+              </tr></thead>
+              <tbody>
+                {resumoFinal.resultados.map((r, i) => (
+                  <tr key={i} className="border-b border-border/50 last:border-0">
+                    <td className="py-1.5">{r.produto.nome}</td>
+                    <td className="py-1.5 text-right font-bold text-success">+{r.quantidade}</td>
+                    <td className="py-1.5 text-right font-semibold">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(r.custo_unitario_formacao)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="grid grid-cols-2 gap-2 text-sm mb-4">
+              <div className="px-3 py-2 bg-success/10 rounded-lg"><span className="block text-[10px] text-muted-foreground">Crédito ICMS gerado</span><span className="font-bold text-success">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(resumoFinal.totais?.credito_icms || 0)}</span></div>
+              <div className="px-3 py-2 bg-success/10 rounded-lg"><span className="block text-[10px] text-muted-foreground">Crédito IPI gerado</span><span className="font-bold text-success">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(resumoFinal.totais?.credito_ipi || 0)}</span></div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setFinalizarOpen(false)} disabled={finalizando}>Cancelar</Button>
+              <Button className="bg-success hover:bg-success/90 text-white" onClick={confirmarFinalizacao} disabled={finalizando}>
+                {finalizando ? "Executando..." : "Confirmar e Finalizar"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
