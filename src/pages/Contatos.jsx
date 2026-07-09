@@ -94,6 +94,28 @@ export default function Contatos() {
 
   const f = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
 
+  const [buscandoCep, setBuscandoCep] = useState(false);
+  const buscarCep = async (cepRaw) => {
+    const cep = (cepRaw || "").replace(/\D/g, "");
+    if (cep.length !== 8) return;
+    setBuscandoCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const d = await res.json();
+      if (!d.erro) {
+        setForm(prev => ({
+          ...prev,
+          address: d.logradouro || prev.address,
+          neighborhood: d.bairro || prev.neighborhood,
+          city: d.localidade || prev.city,
+          state: d.uf || prev.state,
+          country: "Brasil",
+        }));
+      }
+    } catch { /* serviço fora do ar — preenchimento manual segue funcionando */ }
+    setBuscandoCep(false);
+  };
+
   const filtered = contatos.filter(c => {
     const matchTipo = filtroTipo === "Todos" || (c.tipos || []).includes(filtroTipo);
     const q = search.toLowerCase();
@@ -200,7 +222,11 @@ export default function Contatos() {
               <div><Label>E-mail</Label><Input value={form.email || ""} onChange={f("email")} /></div>
               <div><Label>Telefone</Label><Input value={form.phone || ""} onChange={f("phone")} /></div>
               <div><Label>WhatsApp</Label><Input value={form.whatsapp || ""} onChange={f("whatsapp")} /></div>
-              <div><Label>CEP</Label><Input value={form.zip_code || ""} onChange={f("zip_code")} /></div>
+              <div>
+                <Label>CEP {buscandoCep && <span className="text-[10px] text-primary">buscando...</span>}</Label>
+                <Input value={form.zip_code || ""} onChange={e => { f("zip_code")(e); buscarCep(e.target.value); }} onBlur={e => buscarCep(e.target.value)} placeholder="00000-000" />
+                <p className="text-[10px] text-muted-foreground mt-1">Endereço preenche sozinho ao digitar o CEP.</p>
+              </div>
               <div className="sm:col-span-2"><Label>Endereço</Label><Input value={form.address || ""} onChange={f("address")} /></div>
               <div><Label>Número</Label><Input value={form.address_number || ""} onChange={f("address_number")} /></div>
               <div><Label>Complemento</Label><Input value={form.address_complement || ""} onChange={f("address_complement")} /></div>
