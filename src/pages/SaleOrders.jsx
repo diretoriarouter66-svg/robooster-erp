@@ -287,7 +287,7 @@ export default function SaleOrders() {
               <Select value={form.status || "pending"} onValueChange={v => setForm({...form, status: v})}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["pending","approved","invoiced","shipped","delivered","cancelled","returned"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {[["pending","Pendente"],["approved","Aprovado"],["invoiced","Faturado"],["shipped","Enviado"],["delivered","Entregue"],["cancelled","Cancelado"],["returned","Devolvido"]].map(([s, label]) => <SelectItem key={s} value={s}>{label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -296,7 +296,7 @@ export default function SaleOrders() {
               <Select value={form.payment_method || "pix"} onValueChange={v => setForm({...form, payment_method: v})}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["pix","boleto","credit_card","transfer","marketplace"].map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  {[["pix","Pix"],["boleto","Boleto"],["credit_card","Cartão de Crédito"],["transfer","Transferência"],["marketplace","Marketplace"]].map(([m, label]) => <SelectItem key={m} value={m}>{label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
