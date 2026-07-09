@@ -40,6 +40,8 @@ const menuGroups = [
   items: [
   { icon: Ship, label: "Simulador", path: "/import-simulator" },
   { icon: Calculator, label: "DRE", path: "/dre" },
+  { icon: Target, label: "Break-even", path: "/breakeven" },
+  { icon: Container, label: "Container", path: "/container" },
   { icon: SlidersHorizontal, label: "Config. Tributária", path: "/config-tributaria" }]
 
 },
