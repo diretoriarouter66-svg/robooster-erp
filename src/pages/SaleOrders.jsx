@@ -314,7 +314,33 @@ export default function SaleOrders() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Condição</Label>
+              <Select value={String(form.installments || 1)} onValueChange={v => setForm({...form, installments: parseInt(v)})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[[1,"À vista / 1 parcela"],[2,"2 parcelas"],[3,"3 parcelas"],[4,"4 parcelas"],[6,"6 parcelas"],[10,"10 parcelas"],[12,"12 parcelas"]].map(([n, label]) => <SelectItem key={n} value={String(n)}>{label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {(form.installments || 1) > 1 && (
+              <>
+                <div>
+                  <Label>1º vencimento (dias)</Label>
+                  <Input type="number" min="0" value={form.first_due_days ?? 0} onChange={e => setForm({...form, first_due_days: parseInt(e.target.value) || 0})} placeholder="30" />
+                </div>
+                <div>
+                  <Label>Intervalo (dias)</Label>
+                  <Input type="number" min="1" value={form.installment_interval_days ?? 30} onChange={e => setForm({...form, installment_interval_days: parseInt(e.target.value) || 30})} placeholder="30" />
+                </div>
+              </>
+            )}
           </div>
+          {(() => {
+            const canalObj = channels.find(c => (c.type || "").startsWith(form.channel === "mercado_livre" ? "mercado_livre" : (form.channel || "")));
+            const dias = canalObj?.dias_liberacao || 0;
+            return dias > 0 ? <p className="text-[11px] text-warning mt-1">Canal com liberação em ~{dias} dias: as contas a receber serão previstas a partir da data de liberação.</p> : null;
+          })()}
 
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
