@@ -342,6 +342,7 @@ export default function SaleOrders() {
               </Select>
             </div>
             {!(canalDoPedido()?.commission_percent > 0 || canalDoPedido()?.dias_liberacao > 0) && (
+            <>
             <div>
               <Label>Condição</Label>
               <Select value={String(form.installments || 1)} onValueChange={v => setForm({...form, installments: parseInt(v)})}>
@@ -363,7 +364,7 @@ export default function SaleOrders() {
                 </div>
               </>
             )}
-            </div>
+            </>
             )}
           </div>
           {(() => {
