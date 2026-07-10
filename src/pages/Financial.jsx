@@ -51,6 +51,43 @@ export default function Financial() {
     loadData();
   };
 
+  const gerarContasDoMes = async () => {
+    const mesRef = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const configs = await base44.entities.ConfigTributaria.list("-created_date", 1).catch(() => []);
+    const despesas = configs?.[0]?.despesas_fixas || [];
+    if (!despesas.length) { alert("Nenhuma despesa fixa cadastrada na Config. Tributária."); return; }
+    const existentes = await base44.entities.FinancialEntry.filter({ reference_type: "despesa_fixa", reference_id: mesRef }, "-created_date", 100).catch(() => []);
+    if ((existentes || []).length > 0) { alert(`As contas fixas de ${mesRef} já foram geradas (${existentes.length} lançamentos).`); return; }
+    if (!confirm(`Gerar ${despesas.length} contas a pagar das despesas fixas de ${mesRef} (vencimento dia 5)?`)) return;
+    const venc = `${mesRef}-05`;
+    for (const d of despesas) {
+      if (!d?.nome || !(d?.valor > 0)) continue;
+      await base44.entities.FinancialEntry.create({
+        type: "payable", category: "other",
+        description: `${d.nome} — ${mesRef}`,
+        reference_id: mesRef, reference_type: "despesa_fixa",
+        amount: d.valor, due_date: venc, status: "pending", payment_method: "boleto",
+      });
+    }
+    loadData();
+  };
+
+  const fluxoCaixa = (() => {
+    const hoje = new Date();
+    const faixas = [
+      { nome: "Próximos 7 dias", dias: 7 },
+      { nome: "Próximos 30 dias", dias: 30 },
+      { nome: "Próximos 90 dias", dias: 90 },
+    ];
+    return faixas.map(f => {
+      const limite = new Date(); limite.setDate(hoje.getDate() + f.dias);
+      const pend = entries.filter(e => (e.status === "pending" || e.status === "overdue") && e.due_date && new Date(e.due_date) <= limite);
+      const entra = pend.filter(e => e.type === "receivable").reduce((t, e) => t + (e.amount || 0), 0);
+      const sai = pend.filter(e => e.type === "payable").reduce((t, e) => t + (e.amount || 0), 0);
+      return { ...f, entra, sai, liquido: entra - sai };
+    });
+  })();
+
   const handleDelete = async (id) => {
     if (!confirm("Excluir este lançamento?")) return;
     await base44.entities.FinancialEntry.delete(id);
@@ -92,6 +129,7 @@ export default function Financial() {
         description="Contas a pagar e receber"
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" onClick={gerarContasDoMes}><Plus className="w-4 h-4 mr-1" /> Gerar Contas do Mês</Button>
             <Button variant="outline" onClick={() => openNew("receivable")}><TrendingUp className="w-4 h-4 mr-1" /> A Receber</Button>
             <Button onClick={() => openNew("payable")}><TrendingDown className="w-4 h-4 mr-1" /> A Pagar</Button>
           </div>
@@ -103,6 +141,21 @@ export default function Financial() {
         <StatCard icon={TrendingDown} label="A Pagar (pendente)" value={formatCurrency(totalPayable)} color="destructive" />
         <StatCard icon={DollarSign} label="Saldo Projetado" value={formatCurrency(totalReceivable - totalPayable)} color={totalReceivable - totalPayable >= 0 ? "success" : "destructive"} />
         <StatCard icon={DollarSign} label="Vencidos" value={overdue.length} color={overdue.length > 0 ? "destructive" : "success"} />
+      </div>
+
+      <div className="bg-card rounded-xl border border-border p-4 mb-6">
+        <h3 className="font-heading font-semibold text-sm mb-3">Fluxo de Caixa Projetado (pelos vencimentos)</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {fluxoCaixa.map(f => (
+            <div key={f.nome} className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground mb-2 font-medium">{f.nome}</p>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Entradas</span><span className="font-semibold text-success">{formatCurrency(f.entra)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Saídas</span><span className="font-semibold text-destructive">{formatCurrency(f.sai)}</span></div>
+              <div className="flex justify-between text-sm border-t border-border mt-1.5 pt-1.5"><span className="font-medium">Líquido</span><span className={`font-bold ${f.liquido >= 0 ? "text-success" : "text-destructive"}`}>{formatCurrency(f.liquido)}</span></div>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-2">Considera contas pendentes/atrasadas pela data de vencimento — incluindo a liberação prevista dos marketplaces e as parcelas de vendas a prazo.</p>
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mb-4">
