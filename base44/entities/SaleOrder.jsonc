@@ -118,6 +118,10 @@
       "type": "boolean",
       "default": false,
       "description": "Estoque baixado (legado; a verdade é o Kardex)"
+    },
+    "channel_id": {
+      "type": "string",
+      "description": "ID do SalesChannel do pedido"
     }
   },
   "required": [
