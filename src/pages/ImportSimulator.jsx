@@ -119,6 +119,15 @@ export default function ImportSimulator() {
   const cambioMedio = calcCambioMedio(form.remessas);
   const cambioEfetivo = cambioMedio ?? (form.cambio || config?.cambio_usd || 5.3);
 
+  // Quitação do fornecedor: as remessas devem cobrir o valor da compra (FOB do mix)
+  const fobCompraUsd = (form.itens || []).reduce((t, item) => {
+    const prod = products.find(pr => pr.id === item.product_id);
+    return t + (prod?.cost_fob_usd || 0) * (item.quantidade || item.quantity || 0);
+  }, 0);
+  const totalEnviadoUsd = (form.remessas || []).reduce((t, r) => t + (parseFloat(r.valor_usd) || 0), 0);
+  const saldoQuitarUsd = Math.round((fobCompraUsd - totalEnviadoUsd) * 100) / 100;
+  const fmtUsd = (v) => (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const addRemessa = () => setForm(prev => ({ ...prev, remessas: [...(prev.remessas || []), { data: new Date().toISOString().slice(0, 10), valor_usd: "", cotacao: "", taxas_brl: "" }] }));
   const updRemessa = (i, campo, val) => setForm(prev => ({ ...prev, remessas: prev.remessas.map((r, idx) => idx === i ? { ...r, [campo]: val } : r) }));
   const delRemessa = (i) => setForm(prev => ({ ...prev, remessas: prev.remessas.filter((_, idx) => idx !== i) }));
@@ -409,10 +418,20 @@ export default function ImportSimulator() {
                 ))}
                 {cambioMedio != null && (
                   <div className="flex justify-between items-center px-3 py-2 bg-primary/5 rounded-lg text-sm mt-1">
-                    <span className="text-muted-foreground text-xs">Total enviado: US$ {(form.remessas || []).reduce((t, r) => t + (parseFloat(r.valor_usd) || 0), 0).toLocaleString("pt-BR")}</span>
+                    <span className="text-muted-foreground text-xs">Total enviado: US$ {fmtUsd(totalEnviadoUsd)}</span>
                     <span className="font-bold text-primary">Câmbio médio: R$ {cambioMedio.toFixed(4)}</span>
                   </div>
                 )}
+              </div>
+            )}
+            {fobCompraUsd > 0 && (
+              <div className={`mt-3 rounded-lg p-3 border ${saldoQuitarUsd > 0 ? "bg-warning/10 border-warning/30" : "bg-success/10 border-success/30"}`}>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Valor da compra (FOB do mix)</span><span className="font-semibold">US$ {fmtUsd(fobCompraUsd)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Total enviado ao fornecedor</span><span className="font-semibold">US$ {fmtUsd(totalEnviadoUsd)}</span></div>
+                <div className="flex justify-between text-sm border-t border-border mt-1.5 pt-1.5">
+                  <span className="font-medium">{saldoQuitarUsd > 0 ? "Falta enviar" : saldoQuitarUsd < 0 ? "Enviado a mais" : "Fornecedor quitado"}</span>
+                  <span className={`font-bold ${saldoQuitarUsd > 0 ? "text-warning" : "text-success"}`}>{saldoQuitarUsd === 0 ? "✓" : `US$ ${fmtUsd(Math.abs(saldoQuitarUsd))}`}</span>
+                </div>
               </div>
             )}
           </div>
@@ -497,6 +516,11 @@ export default function ImportSimulator() {
             <h3 className="font-heading font-bold text-lg mb-1">Finalizar Importação</h3>
             <p className="text-xs text-muted-foreground mb-4">Confira antes de confirmar — esta ação grava o custo nos produtos, dá entrada no estoque e marca a operação como Realizada.</p>
 
+            {saldoQuitarUsd > 0 && (
+              <div className="px-3 py-2 bg-warning/10 border border-warning/30 rounded-lg text-xs text-warning font-medium mb-3">
+                Atenção: ainda faltam US$ {fmtUsd(saldoQuitarUsd)} de remessas para quitar o fornecedor (compra de US$ {fmtUsd(fobCompraUsd)}, enviado US$ {fmtUsd(totalEnviadoUsd)}). Você pode finalizar mesmo assim, mas o câmbio médio ficará provisório.
+              </div>
+            )}
             <div className="px-3 py-2 bg-primary/5 rounded-lg text-sm flex justify-between mb-3">
               <span className="text-muted-foreground">Câmbio usado</span>
               <span className="font-bold text-primary">R$ {Number(cambioEfetivo).toFixed(4)}{calcCambioMedio(form.remessas) != null ? " (média ponderada)" : " (manual)"}</span>
