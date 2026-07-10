@@ -122,7 +122,7 @@ export default function ImportSimulator() {
   // Quitação do fornecedor: as remessas devem cobrir o valor da compra (FOB do mix)
   const fobCompraUsd = (form.itens || []).reduce((t, item) => {
     const prod = products.find(pr => pr.id === item.product_id);
-    return t + (prod?.cost_fob_usd || 0) * (item.quantidade || item.quantity || 0);
+    return t + (prod?.cost_fob_usd || 0) * (item.qty || item.quantidade || item.quantity || 0);
   }, 0);
   const totalEnviadoUsd = (form.remessas || []).reduce((t, r) => t + (parseFloat(r.valor_usd) || 0), 0);
   const saldoQuitarUsd = Math.round((fobCompraUsd - totalEnviadoUsd) * 100) / 100;
