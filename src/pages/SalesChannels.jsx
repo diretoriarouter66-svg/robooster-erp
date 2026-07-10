@@ -169,6 +169,11 @@ export default function SalesChannels() {
                 <Label>Taxa Fixa (R$)</Label>
                 <Input type="number" step="0.01" value={form.fixed_fee ?? ""} onChange={f("fixed_fee")} />
               </div>
+              <div>
+                <Label>Dias para liberação do dinheiro</Label>
+                <Input type="number" min="0" value={form.dias_liberacao ?? 0} onChange={e => setForm({ ...form, dias_liberacao: parseInt(e.target.value) || 0 })} placeholder="0" />
+                <p className="text-[10px] text-muted-foreground mt-1">Ex: Mercado Livre ≈ 14 dias. As contas a receber deste canal serão previstas com este prazo.</p>
+              </div>
             </div>
             <div>
               <Label>Status</Label>
