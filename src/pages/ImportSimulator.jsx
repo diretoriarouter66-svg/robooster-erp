@@ -123,6 +123,32 @@ export default function ImportSimulator() {
   const updRemessa = (i, campo, val) => setForm(prev => ({ ...prev, remessas: prev.remessas.map((r, idx) => idx === i ? { ...r, [campo]: val } : r) }));
   const delRemessa = (i) => setForm(prev => ({ ...prev, remessas: prev.remessas.filter((_, idx) => idx !== i) }));
 
+  // ==== Remessas → Financeiro: cada envio vira uma conta paga (saída de caixa real) ====
+  const sincronizarRemessasFinanceiro = async (opId, opNome, remessas) => {
+    if (!opId) return;
+    const antigas = await base44.entities.FinancialEntry.filter({ reference_id: opId, reference_type: "import_remessa" }, "-created_date", 100).catch(() => []);
+    for (const e of antigas || []) {
+      await base44.entities.FinancialEntry.delete(e.id).catch(() => {});
+    }
+    const rs = (remessas || []).filter(r => (parseFloat(r.valor_usd) || 0) > 0 && (parseFloat(r.cotacao) || 0) > 0);
+    for (let i = 0; i < rs.length; i++) {
+      const r = rs[i];
+      const valorBrl = Math.round((parseFloat(r.valor_usd) * parseFloat(r.cotacao) + (parseFloat(r.taxas_brl) || 0)) * 100) / 100;
+      await base44.entities.FinancialEntry.create({
+        type: "payable",
+        category: "import",
+        description: `Remessa ${i + 1}/${rs.length} — ${opNome || "Importação"} (US$ ${parseFloat(r.valor_usd).toLocaleString("pt-BR")} @ ${parseFloat(r.cotacao).toFixed(4)})`,
+        reference_id: opId,
+        reference_type: "import_remessa",
+        amount: valorBrl,
+        due_date: r.data || new Date().toISOString().slice(0, 10),
+        payment_date: r.data || new Date().toISOString().slice(0, 10),
+        status: "paid",
+        payment_method: "transfer",
+      });
+    }
+  };
+
   // ==== Finalizar Importação: recalcula, mostra conferência e executa tudo ====
   const [finalizarOpen, setFinalizarOpen] = useState(false);
   const [resumoFinal, setResumoFinal] = useState(null);
@@ -161,6 +187,7 @@ export default function ImportSimulator() {
         resultado_importacao: resumoFinal,
         resultado_cubagem: cubageResult,
       });
+      await sincronizarRemessasFinanceiro(editing.id, form.nome, form.remessas).catch(() => {});
       setFinalizarOpen(false);
       setView("list");
       loadData();
@@ -220,8 +247,16 @@ export default function ImportSimulator() {
       }
     }
 
-    if (editing) await base44.entities.ImportOperation.update(editing.id, data);
-    else await base44.entities.ImportOperation.create(data);
+    let opId = editing?.id;
+    if (editing) {
+      await base44.entities.ImportOperation.update(editing.id, data);
+    } else {
+      const created = await base44.entities.ImportOperation.create(data);
+      opId = created.id;
+    }
+
+    // Remessas viram contas pagas no Financeiro (fluxo de caixa real da importação)
+    await sincronizarRemessasFinanceiro(opId, form.nome, form.remessas).catch(() => {});
 
     setSaving(false);
     setView("list");
