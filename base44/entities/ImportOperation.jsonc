@@ -2,12 +2,12 @@
   "name": "ImportOperation",
   "properties": {
     "cambio": {
-      "description": "C\u00e2mbio USD/BRL da opera\u00e7\u00e3o",
+      "description": "Câmbio USD/BRL da operação",
       "type": "number"
     },
     "comissao_perc": {
       "default": 0,
-      "description": "Comiss\u00e3o de venda (%)",
+      "description": "Comissão de venda (%)",
       "type": "number"
     },
     "container_tipo": {
@@ -19,7 +19,7 @@
       "type": "string"
     },
     "despesas_locais_usd": {
-      "description": "Despesas locais de importa\u00e7\u00e3o em USD",
+      "description": "Despesas locais de importação em USD",
       "type": "number"
     },
     "frete_container_usd": {
@@ -46,7 +46,7 @@
       "type": "number"
     },
     "purchase_order_id": {
-      "description": "ID da PO vinculada (quando a simula\u00e7\u00e3o vira compra real)",
+      "description": "ID da PO vinculada (quando a simulação vira compra real)",
       "type": "string"
     },
     "resultado_cubagem": {
@@ -58,7 +58,7 @@
       "type": "object"
     },
     "resultado_venda": {
-      "description": "Resultado calculado do cen\u00e1rio de venda",
+      "description": "Resultado calculado do cenário de venda",
       "type": "object"
     },
     "seguro_usd": {
@@ -85,11 +85,28 @@
       "type": "string"
     },
     "vendas": {
-      "description": "Cen\u00e1rio de vendas: pre\u00e7os e quantidades por produto",
+      "description": "Cenário de vendas: preços e quantidades por produto",
       "items": {
         "type": "object"
       },
       "type": "array"
+    },
+    "pct_declarado": {
+      "type": "number",
+      "default": 100,
+      "description": "Percentual do valor real declarado na invoice (%)"
+    },
+    "remessas": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Remessas de pagamento ao fornecedor: data, valor_usd, cotacao, taxas_brl"
+    },
+    "estoque_lancado": {
+      "type": "boolean",
+      "default": false,
+      "description": "Entrada de estoque já lançada (legado; a verdade é o Kardex)"
     }
   },
   "required": [

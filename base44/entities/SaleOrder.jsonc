@@ -4,7 +4,7 @@
   "properties": {
     "order_number": {
       "type": "string",
-      "description": "N\u00famero do pedido"
+      "description": "Número do pedido"
     },
     "customer_id": {
       "type": "string",
@@ -85,15 +85,39 @@
     },
     "tracking_code": {
       "type": "string",
-      "description": "C\u00f3digo de rastreamento"
+      "description": "Código de rastreamento"
     },
     "invoice_number": {
       "type": "string",
-      "description": "N\u00famero da NF"
+      "description": "Número da NF"
     },
     "notes": {
       "type": "string",
-      "description": "Observa\u00e7\u00f5es"
+      "description": "Observações"
+    },
+    "installments": {
+      "type": "number",
+      "default": 1,
+      "description": "Número de parcelas"
+    },
+    "installment_interval_days": {
+      "type": "number",
+      "default": 30,
+      "description": "Intervalo entre parcelas (dias)"
+    },
+    "first_due_days": {
+      "type": "number",
+      "default": 0,
+      "description": "Dias até o 1º vencimento"
+    },
+    "financial_entry_id": {
+      "type": "string",
+      "description": "ID da conta a receber principal (legado)"
+    },
+    "stock_deducted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Estoque baixado (legado; a verdade é o Kardex)"
     }
   },
   "required": [

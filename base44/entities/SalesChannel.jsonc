@@ -2,7 +2,7 @@
   "name": "SalesChannel",
   "properties": {
     "name": {
-      "description": "Nome do canal (ex: Venda Direta, ML Cl\u00e1ssico, ML Premium, Site)",
+      "description": "Nome do canal (ex: Venda Direta, ML Clássico, ML Premium, Site)",
       "type": "string"
     },
     "type": {
@@ -18,7 +18,7 @@
     },
     "commission_percent": {
       "default": 0,
-      "description": "Comiss\u00e3o do canal (%)",
+      "description": "Comissão do canal (%)",
       "type": "number"
     },
     "fixed_fee": {
@@ -27,13 +27,22 @@
       "type": "number"
     },
     "is_master": {
+      "type": "boolean",
       "default": false,
-      "description": "Canal master (Pre\u00e7o \u00e0 Vista) \u2014 usado como base no Cockpit de Precifica\u00e7\u00e3o",
-      "type": "boolean"
+      "description": "Canal master da precificação"
     },
     "active": {
       "default": true,
       "type": "boolean"
+    },
+    "dias_liberacao": {
+      "type": "number",
+      "default": 0,
+      "description": "Dias até a liberação do dinheiro (ex: Mercado Livre ~14)"
+    },
+    "aliq_icms_venda": {
+      "type": "number",
+      "description": "Alíquota efetiva de ICMS de saída deste canal (%) — ex: 8,8 SP interno com Conv. 52/91; 4 interestadual contribuinte. Vazio = usa a do produto"
     }
   },
   "required": [
