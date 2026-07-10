@@ -174,6 +174,11 @@ export default function SalesChannels() {
                 <Input type="number" min="0" value={form.dias_liberacao ?? 0} onChange={e => setForm({ ...form, dias_liberacao: parseInt(e.target.value) || 0 })} placeholder="0" />
                 <p className="text-[10px] text-muted-foreground mt-1">Ex: Mercado Livre ≈ 14 dias. As contas a receber deste canal serão previstas com este prazo.</p>
               </div>
+              <div>
+                <Label>ICMS de saída deste canal (%)</Label>
+                <Input type="number" step="0.01" value={form.aliq_icms_venda ?? ""} onChange={e => setForm({ ...form, aliq_icms_venda: e.target.value === "" ? null : parseFloat(e.target.value) })} placeholder="deixe vazio para usar a do produto" />
+                <p className="text-[10px] text-muted-foreground mt-1">Ex: 8,8 = venda interna SP com Conv. 52/91 · 4 = interestadual p/ contribuinte · 4 + DIFAL se vender p/ consumidor final de outro estado. Vazio = automático pelo produto (8,8 com benefício).</p>
+              </div>
             </div>
             <div>
               <Label>Status</Label>
