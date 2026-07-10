@@ -362,12 +362,14 @@ export default function ImportSimulator() {
             ) : (
               <div className="space-y-2">
                 {(form.remessas || []).map((r, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-1.5 items-end">
-                    <div><Label className="text-[10px]">Data</Label><Input type="date" value={r.data || ""} onChange={e => updRemessa(i, "data", e.target.value)} className="h-8 text-xs" /></div>
-                    <div><Label className="text-[10px]">Valor (USD)</Label><Input type="number" step="0.01" value={r.valor_usd} onChange={e => updRemessa(i, "valor_usd", e.target.value)} className="h-8 text-xs" placeholder="10000" /></div>
-                    <div><Label className="text-[10px]">Cotação (R$)</Label><Input type="number" step="0.0001" value={r.cotacao} onChange={e => updRemessa(i, "cotacao", e.target.value)} className="h-8 text-xs" placeholder="5,20" /></div>
-                    <div><Label className="text-[10px]">Taxas (R$)</Label><Input type="number" step="0.01" value={r.taxas_brl} onChange={e => updRemessa(i, "taxas_brl", e.target.value)} className="h-8 text-xs" placeholder="0" /></div>
-                    <button onClick={() => delRemessa(i)} className="p-1.5 hover:bg-muted rounded-lg mb-0.5"><Trash2 className="w-3.5 h-3.5 text-destructive" /></button>
+                  <div key={i} className="rounded-lg border border-border p-3 relative">
+                    <button onClick={() => delRemessa(i)} className="absolute top-2 right-2 p-1.5 hover:bg-muted rounded-lg"><Trash2 className="w-4 h-4 text-destructive" /></button>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pr-8">
+                      <div><Label className="text-xs">Data do envio</Label><Input type="date" value={r.data || ""} onChange={e => updRemessa(i, "data", e.target.value)} /></div>
+                      <div><Label className="text-xs">Valor enviado (USD)</Label><Input type="number" step="0.01" value={r.valor_usd} onChange={e => updRemessa(i, "valor_usd", e.target.value)} placeholder="10.000,00" /></div>
+                      <div><Label className="text-xs">Cotação do dólar (R$)</Label><Input type="number" step="0.0001" value={r.cotacao} onChange={e => updRemessa(i, "cotacao", e.target.value)} placeholder="5,2000" /></div>
+                      <div><Label className="text-xs">Taxas bancárias (R$)</Label><Input type="number" step="0.01" value={r.taxas_brl} onChange={e => updRemessa(i, "taxas_brl", e.target.value)} placeholder="0,00" /></div>
+                    </div>
                   </div>
                 ))}
                 {cambioMedio != null && (
