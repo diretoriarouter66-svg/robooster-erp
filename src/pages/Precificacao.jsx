@@ -83,8 +83,9 @@ export default function Precificacao() {
 
   const custo = selectedProduct ? getCustoVigente(selectedProduct) : 0;
   const usingLanded = selectedProduct ? hasCostLanded(selectedProduct) : false;
-  const impostos = selectedProduct ? calcImpostosPct(config, selectedProduct) : null;
-  const masterChannel = getMasterChannel(channels);
+  const masterChannelPre = getMasterChannel(channels);
+  const impostos = selectedProduct ? calcImpostosPct(config, selectedProduct, masterChannelPre) : null;
+  const masterChannel = masterChannelPre;
   const indiceCustoFixo = config?.indice_custo_fixo || 0;
 
   const calculatedMasterPrice = useMemo(() => {
@@ -108,13 +109,14 @@ export default function Precificacao() {
     return channels.map(ch => {
       const isMaster = ch.id === masterChannel?.id;
       const isDecoupled = decoupled[ch.id] != null;
+      const impCh = calcImpostosPct(config, selectedProduct, ch);
       const price = isMaster
         ? calculatedMasterPrice
         : isDecoupled
           ? decoupled[ch.id]
-          : calcChannelPrice(margemBrutaAlvo, ch, custo, impostos.total, sellerCommRs, freteEff);
-      const breakdown = calcChannelBreakdown(price, ch, custo, impostos.total, sellerCommRs, frete, clientePagaFrete, indiceCustoFixo);
-      return { channel: ch, isMaster, isDecoupled, price, breakdown };
+          : calcChannelPrice(margemBrutaAlvo, ch, custo, impCh.total, sellerCommRs, freteEff);
+      const breakdown = calcChannelBreakdown(price, ch, custo, impCh.total, sellerCommRs, frete, clientePagaFrete, indiceCustoFixo);
+      return { channel: ch, isMaster, isDecoupled, price, breakdown, impostosPct: impCh.total, icmsPct: impCh.icms };
     });
   }, [masterBreakdown, channels, masterChannel, calculatedMasterPrice, decoupled, custo, impostos, sellerCommRs, frete, clientePagaFrete, indiceCustoFixo]);
 
@@ -140,7 +142,7 @@ export default function Precificacao() {
 
     for (const product of productsWithPricing) {
       const custoProd = getCustoVigente(product);
-      const impProd = calcImpostosPct(config, product);
+      const impProd = calcImpostosPct(config, product, masterCh);
       const scPct = getSellerCommissionPct(product, config);
       const masterPricing = pricings.find(p => p.product_id === product.id && p.channel_id === masterCh?.id);
       if (!masterPricing?.price) continue;

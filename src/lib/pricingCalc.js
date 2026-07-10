@@ -7,10 +7,16 @@ export function hasCostLanded(product) {
   return product.cost_landed_brl != null && product.cost_landed_brl > 0;
 }
 
-export function calcImpostosPct(config, product) {
+/**
+ * Impostos sobre a venda (Lucro Presumido), por canal:
+ * ICMS de saída = alíquota do CANAL (aliq_icms_venda) quando definida;
+ * senão, 8,8% se o produto tem benefício Conv. 52/91; senão, a alíquota do produto.
+ */
+export function calcImpostosPct(config, product, channel) {
   const pis = config?.pis_venda || 0;
   const cofins = config?.cofins_venda || 0;
-  const icms = product?.icms_rate || 0;
+  const icmsProduto = product?.beneficio_5291 ? 8.8 : (product?.icms_rate || 0);
+  const icms = (channel?.aliq_icms_venda != null && channel?.aliq_icms_venda !== "") ? channel.aliq_icms_venda : icmsProduto;
   const irpjEfetivo = (config?.presuncao_irpj || 0) * (config?.aliq_irpj || 0) / 100;
   const csllEfetiva = (config?.presuncao_csll || 0) * (config?.aliq_csll || 0) / 100;
   return { pis, cofins, icms, irpjEfetivo, csllEfetiva, total: pis + cofins + icms + irpjEfetivo + csllEfetiva };
