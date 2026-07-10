@@ -51,7 +51,7 @@ export default function SaleOrders() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ status: "pending", channel: "direct", payment_method: "pix", payment_status: "pending", discount: 0, shipping_cost: 0 });
+    setForm({ status: "pending", channel: "direct", payment_method: "pix", payment_status: "pending", discount: 0, shipping_cost: 0, installments: 1, installment_interval_days: 30, first_due_days: 0 });
     setOrderItems([{ product_id: "", name: "", quantity: 1, unit_price: 0 }]);
     setDialogOpen(true);
   };
@@ -141,30 +141,49 @@ export default function SaleOrders() {
       return;
     }
 
-    // 3) Financeiro: conta a receber automática (localizada pelo vínculo com o pedido, não por memória)
-    const entradas = await base44.entities.FinancialEntry.filter({ reference_id: orderId, reference_type: "sale_order" }, "-created_date", 5).catch(() => []);
-    const entradaAtiva = (entradas || []).find(e => e.status !== "cancelled");
-    const entryData = {
-      type: "receivable",
-      category: "sale",
-      description: `Pedido ${data.order_number} — ${data.customer_name || "Cliente"}`,
-      reference_id: orderId,
-      reference_type: "sale_order",
-      amount: total,
-      due_date: new Date().toISOString().slice(0, 10),
-      status: form.payment_status === "paid" ? "paid" : "pending",
-      payment_method: form.payment_method || "pix",
-      ...(form.payment_status === "paid" ? { payment_date: new Date().toISOString().slice(0, 10) } : {}),
-    };
+    // 3) Financeiro: contas a receber automáticas (parcelas + liberação do marketplace)
+    const entradas = await base44.entities.FinancialEntry.filter({ reference_id: orderId, reference_type: "sale_order" }, "-created_date", 50).catch(() => []);
+    const pagas = (entradas || []).filter(e => e.status === "paid");
+    const pendentes = (entradas || []).filter(e => e.status === "pending" || e.status === "overdue");
 
-    if (deveBaixar && !entradaAtiva) {
-      await base44.entities.FinancialEntry.create(entryData);
-    } else if (deveBaixar && entradaAtiva) {
-      if (entradaAtiva.status !== "paid") await base44.entities.FinancialEntry.update(entradaAtiva.id, entryData).catch(() => {});
-    } else if (!deveBaixar && entradaAtiva) {
-      // Cancelado/devolvido/pendente: cancela a conta se ainda não foi paga
-      if (entradaAtiva.status !== "paid") {
-        await base44.entities.FinancialEntry.update(entradaAtiva.id, { status: "cancelled" }).catch(() => {});
+    // Cancela as pendentes antigas (as pagas são preservadas sempre)
+    for (const e of pendentes) {
+      await base44.entities.FinancialEntry.update(e.id, { status: "cancelled" }).catch(() => {});
+    }
+
+    if (deveBaixar) {
+      // Data-base: hoje + dias de liberação do canal (ex: Mercado Livre segura ~14 dias)
+      const canalObj = channels.find(c => c.type === (form.channel === "mercado_livre" ? "mercado_livre_premium" : form.channel)) || channels.find(c => (c.type || "").startsWith(form.channel));
+      const diasLiberacao = canalObj?.dias_liberacao || 0;
+      const nParcelas = Math.max(1, parseInt(form.installments) || 1);
+      const intervalo = Math.max(0, parseInt(form.installment_interval_days) || 30);
+      const primeiroVenc = Math.max(0, parseInt(form.first_due_days) || 0);
+      const totalPago = pagas.reduce((t, e) => t + (e.amount || 0), 0);
+      const restante = Math.max(0, total - totalPago);
+      const parcelasRestantes = Math.max(1, nParcelas - pagas.length);
+      const valorParcela = Math.round((restante / parcelasRestantes) * 100) / 100;
+      const metodoValido = ["pix", "boleto", "credit_card", "transfer", "cash"].includes(form.payment_method) ? form.payment_method : "other";
+
+      if (restante > 0) {
+        for (let i = 0; i < parcelasRestantes; i++) {
+          const venc = new Date();
+          venc.setDate(venc.getDate() + diasLiberacao + primeiroVenc + i * intervalo);
+          const ultima = i === parcelasRestantes - 1;
+          const valor = ultima ? Math.round((restante - valorParcela * (parcelasRestantes - 1)) * 100) / 100 : valorParcela;
+          const idxParcela = pagas.length + i + 1;
+          await base44.entities.FinancialEntry.create({
+            type: "receivable",
+            category: "sale",
+            description: `Pedido ${data.order_number} — ${data.customer_name || "Cliente"}${nParcelas > 1 ? ` (parcela ${idxParcela}/${nParcelas})` : ""}${diasLiberacao > 0 ? " · liberação marketplace" : ""}`,
+            reference_id: orderId,
+            reference_type: "sale_order",
+            amount: valor,
+            due_date: venc.toISOString().slice(0, 10),
+            status: form.payment_status === "paid" ? "paid" : "pending",
+            payment_method: metodoValido,
+            ...(form.payment_status === "paid" ? { payment_date: new Date().toISOString().slice(0, 10) } : {}),
+          });
+        }
       }
     }
 
