@@ -63,14 +63,13 @@ export default function SaleOrders() {
     setDialogOpen(true);
   };
 
-  const getChannelPrice = (productId, orderChannel) => {
-    const channelType = CHANNEL_TYPE_MAP[orderChannel];
-    if (!channelType) return null;
-    const channel = channels.find(c => c.type === channelType && c.active);
-    if (!channel) return null;
-    const pricing = pricings.find(p => p.product_id === productId && p.channel_id === channel.id);
+  const getChannelPrice = (productId, channelId) => {
+    if (!channelId) return null;
+    const pricing = pricings.find(p => p.product_id === productId && p.channel_id === channelId);
     return pricing?.price || null;
   };
+
+  const canalDoPedido = () => channels.find(c => c.id === form.channel_id) || null;
 
   const updateOrderItem = (idx, field, value) => {
     const updated = [...orderItems];
@@ -80,18 +79,20 @@ export default function SaleOrders() {
       if (p) {
         updated[idx].name = p.name;
         updated[idx].sku = p.sku;
-        const channelPrice = getChannelPrice(value, form.channel);
+        const channelPrice = getChannelPrice(value, form.channel_id);
         updated[idx].unit_price = channelPrice ?? 0;
       }
     }
     setOrderItems(updated);
   };
 
-  const handleChannelChange = (newChannel) => {
-    setForm(prev => ({ ...prev, channel: newChannel }));
+  const handleChannelChange = (newChannelId) => {
+    const ch = channels.find(c => c.id === newChannelId);
+    const legado = ch?.type?.startsWith("mercado_livre") ? "mercado_livre" : ch?.type === "site_woocommerce" ? "woocommerce" : ch?.type === "venda_direta" ? "direct" : "other";
+    setForm(prev => ({ ...prev, channel_id: newChannelId, channel: legado }));
     setOrderItems(prev => prev.map(item => {
       if (!item.product_id) return item;
-      const price = getChannelPrice(item.product_id, newChannel);
+      const price = getChannelPrice(item.product_id, newChannelId);
       return { ...item, unit_price: price ?? 0 };
     }));
   };
@@ -286,13 +287,12 @@ export default function SaleOrders() {
             </div>
             <div>
               <Label>Canal</Label>
-              <Select value={form.channel || "direct"} onValueChange={v => handleChannelChange(v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select value={form.channel_id || ""} onValueChange={v => handleChannelChange(v)}>
+                <SelectTrigger><SelectValue placeholder="Selecione o canal" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="direct">Direto</SelectItem>
-                  <SelectItem value="mercado_livre">Mercado Livre</SelectItem>
-                  <SelectItem value="woocommerce">WooCommerce</SelectItem>
-                  <SelectItem value="other">Outro</SelectItem>
+                  {channels.filter(c => c.active !== false).map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}{c.commission_percent > 0 ? ` (${c.commission_percent}%)` : ""}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
