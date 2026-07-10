@@ -153,37 +153,64 @@ export default function SaleOrders() {
     }
 
     if (deveBaixar) {
-      // Data-base: hoje + dias de liberação do canal (ex: Mercado Livre segura ~14 dias)
-      const canalObj = channels.find(c => c.type === (form.channel === "mercado_livre" ? "mercado_livre_premium" : form.channel)) || channels.find(c => (c.type || "").startsWith(form.channel));
+      const canalObj = channels.find(c => c.id === form.channel_id);
+      const comissaoPct = canalObj?.commission_percent || 0;
+      const taxaFixa = canalObj?.fixed_fee || 0;
       const diasLiberacao = canalObj?.dias_liberacao || 0;
-      const nParcelas = Math.max(1, parseInt(form.installments) || 1);
-      const intervalo = Math.max(0, parseInt(form.installment_interval_days) || 30);
-      const primeiroVenc = Math.max(0, parseInt(form.first_due_days) || 0);
+      const intermediado = comissaoPct > 0 || diasLiberacao > 0;
       const totalPago = pagas.reduce((t, e) => t + (e.amount || 0), 0);
-      const restante = Math.max(0, total - totalPago);
-      const parcelasRestantes = Math.max(1, nParcelas - pagas.length);
-      const valorParcela = Math.round((restante / parcelasRestantes) * 100) / 100;
       const metodoValido = ["pix", "boleto", "credit_card", "transfer", "cash"].includes(form.payment_method) ? form.payment_method : "other";
+      const hojeStr = () => new Date().toISOString().slice(0, 10);
 
-      if (restante > 0) {
-        for (let i = 0; i < parcelasRestantes; i++) {
+      if (intermediado) {
+        // Marketplace / PayPal / cartão intermediado: recebimento ÚNICO, LÍQUIDO da comissão, na data de liberação
+        const liquido = Math.round((total * (1 - comissaoPct / 100) - taxaFixa) * 100) / 100;
+        const restante = Math.max(0, liquido - totalPago);
+        if (restante > 0) {
           const venc = new Date();
-          venc.setDate(venc.getDate() + diasLiberacao + primeiroVenc + i * intervalo);
-          const ultima = i === parcelasRestantes - 1;
-          const valor = ultima ? Math.round((restante - valorParcela * (parcelasRestantes - 1)) * 100) / 100 : valorParcela;
-          const idxParcela = pagas.length + i + 1;
+          venc.setDate(venc.getDate() + diasLiberacao);
           await base44.entities.FinancialEntry.create({
             type: "receivable",
             category: "sale",
-            description: `Pedido ${data.order_number} — ${data.customer_name || "Cliente"}${nParcelas > 1 ? ` (parcela ${idxParcela}/${nParcelas})` : ""}${diasLiberacao > 0 ? " · liberação marketplace" : ""}`,
+            description: `Pedido ${data.order_number} — ${data.customer_name || "Cliente"} · ${canalObj?.name || "canal"} (líquido de ${comissaoPct}% de comissão${taxaFixa > 0 ? " + taxa fixa" : ""})`,
             reference_id: orderId,
             reference_type: "sale_order",
-            amount: valor,
+            amount: restante,
             due_date: venc.toISOString().slice(0, 10),
             status: form.payment_status === "paid" ? "paid" : "pending",
             payment_method: metodoValido,
-            ...(form.payment_status === "paid" ? { payment_date: new Date().toISOString().slice(0, 10) } : {}),
+            ...(form.payment_status === "paid" ? { payment_date: hojeStr() } : {}),
           });
+        }
+      } else {
+        // Venda direta: boleto parcelado gera N parcelas brutas com vencimentos reais
+        const nParcelas = Math.max(1, parseInt(form.installments) || 1);
+        const intervalo = Math.max(0, parseInt(form.installment_interval_days) || 30);
+        const primeiroVenc = Math.max(0, parseInt(form.first_due_days) || 0);
+        const restante = Math.max(0, total - totalPago);
+        const parcelasRestantes = Math.max(1, nParcelas - pagas.length);
+        const valorParcela = Math.round((restante / parcelasRestantes) * 100) / 100;
+
+        if (restante > 0) {
+          for (let i = 0; i < parcelasRestantes; i++) {
+            const venc = new Date();
+            venc.setDate(venc.getDate() + primeiroVenc + i * intervalo);
+            const ultima = i === parcelasRestantes - 1;
+            const valor = ultima ? Math.round((restante - valorParcela * (parcelasRestantes - 1)) * 100) / 100 : valorParcela;
+            const idxParcela = pagas.length + i + 1;
+            await base44.entities.FinancialEntry.create({
+              type: "receivable",
+              category: "sale",
+              description: `Pedido ${data.order_number} — ${data.customer_name || "Cliente"}${nParcelas > 1 ? ` (parcela ${idxParcela}/${nParcelas})` : ""}`,
+              reference_id: orderId,
+              reference_type: "sale_order",
+              amount: valor,
+              due_date: venc.toISOString().slice(0, 10),
+              status: form.payment_status === "paid" ? "paid" : "pending",
+              payment_method: metodoValido,
+              ...(form.payment_status === "paid" ? { payment_date: hojeStr() } : {}),
+            });
+          }
         }
       }
     }
@@ -314,6 +341,7 @@ export default function SaleOrders() {
                 </SelectContent>
               </Select>
             </div>
+            {!(canalDoPedido()?.commission_percent > 0 || canalDoPedido()?.dias_liberacao > 0) && (
             <div>
               <Label>Condição</Label>
               <Select value={String(form.installments || 1)} onValueChange={v => setForm({...form, installments: parseInt(v)})}>
@@ -335,11 +363,16 @@ export default function SaleOrders() {
                 </div>
               </>
             )}
+            </div>
+            )}
           </div>
           {(() => {
-            const canalObj = channels.find(c => (c.type || "").startsWith(form.channel === "mercado_livre" ? "mercado_livre" : (form.channel || "")));
-            const dias = canalObj?.dias_liberacao || 0;
-            return dias > 0 ? <p className="text-[11px] text-warning mt-1">Canal com liberação em ~{dias} dias: as contas a receber serão previstas a partir da data de liberação.</p> : null;
+            const ch = canalDoPedido();
+            if (!ch) return null;
+            const intermediado = (ch.commission_percent || 0) > 0 || (ch.dias_liberacao || 0) > 0;
+            if (!intermediado) return null;
+            const liquido = calcTotal() * (1 - (ch.commission_percent || 0) / 100) - (ch.fixed_fee || 0);
+            return <p className="text-[11px] text-warning mt-1">Canal intermediado: recebimento único e líquido — {formatCurrency(Math.max(0, liquido))} previsto para {ch.dias_liberacao || 0} dia(s) após o faturamento (comissão de {ch.commission_percent || 0}% já descontada).</p>;
           })()}
 
           <div className="mt-4">
