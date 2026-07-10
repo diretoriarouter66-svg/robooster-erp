@@ -1,0 +1,119 @@
+{
+  "name": "Contato",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome / Razão Social"
+    },
+    "trade_name": {
+      "type": "string",
+      "description": "Nome fantasia"
+    },
+    "tipos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tipos do contato (um ou mais): Cliente, Fornecedor, Despachante Aduaneiro, Contador, Transportador, Técnico..."
+    },
+    "person_type": {
+      "type": "string",
+      "enum": [
+        "PF",
+        "PJ"
+      ],
+      "default": "PJ"
+    },
+    "document": {
+      "type": "string",
+      "description": "CPF, CNPJ ou Tax ID"
+    },
+    "state_registration": {
+      "type": "string",
+      "description": "Inscrição Estadual"
+    },
+    "contact_name": {
+      "type": "string",
+      "description": "Pessoa de contato (empresas)"
+    },
+    "email": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "whatsapp": {
+      "type": "string"
+    },
+    "zip_code": {
+      "type": "string",
+      "description": "CEP"
+    },
+    "address": {
+      "type": "string"
+    },
+    "address_number": {
+      "type": "string"
+    },
+    "address_complement": {
+      "type": "string"
+    },
+    "neighborhood": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "description": "UF"
+    },
+    "country": {
+      "type": "string",
+      "default": "Brasil"
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "BRL",
+        "USD",
+        "EUR",
+        "CNY"
+      ],
+      "default": "BRL"
+    },
+    "payment_terms": {
+      "type": "string",
+      "description": "Condições de pagamento"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "mercado_livre",
+        "woocommerce",
+        "other"
+      ],
+      "default": "direct"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "legacy_id": {
+      "type": "string",
+      "description": "ID do registro original (migração Customer/Supplier)"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

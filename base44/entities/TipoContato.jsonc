@@ -1,0 +1,17 @@
+{
+  "name": "TipoContato",
+  "type": "object",
+  "properties": {
+    "nome": {
+      "type": "string",
+      "description": "Nome do tipo de contato"
+    },
+    "ativa": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "nome"
+  ]
+}
