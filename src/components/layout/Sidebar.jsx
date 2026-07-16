@@ -93,23 +93,28 @@ export default function Sidebar() {
     (async () => {
       try {
         const { supabase } = await import("@/api/base44Client");
-        const [{ data: perm }, { data: membro }] = await Promise.all([
+        const [{ data: perm, error: errPerm }, { data: membro }] = await Promise.all([
           supabase.rpc("meus_modulos"),
           supabase.from("cofre_membros").select("nivel"),
         ]);
+        // Se a consulta de permissões falhar, NÃO escondemos o menu: o RLS do
+        // Postgres é quem protege de verdade. Esconder tudo já trancou o master
+        // fora do ERP uma vez (PostgREST sem a função no cache de schema).
+        if (errPerm) { setPermitidos("todos"); return; }
         const mods = new Set((perm || []).map((r) => r.modulo));
         if ((membro || []).length > 0) mods.add("cofre");
         setPermitidos(mods);
       } catch {
-        setPermitidos(new Set()); // na dúvida, mostra só o que não exige módulo
+        setPermitidos("todos");
       }
     })();
   }, []);
 
   const podeVerItem = (path) => {
     const mod = MODULO_DO_ITEM[path];
-    if (!mod) return true;              // Dashboard
-    if (permitidos === null) return false; // enquanto carrega, não pisca item proibido
+    if (!mod) return true;                       // Dashboard
+    if (permitidos === null) return true;        // carregando: não pisca o menu
+    if (permitidos === "todos") return true;     // falha na consulta: banco protege
     return permitidos.has(mod);
   };
   const [expandedGroups, setExpandedGroups] = useState(
