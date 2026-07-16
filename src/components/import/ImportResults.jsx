@@ -28,7 +28,7 @@ function ProductBreakdown({ r }) {
       <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/30 transition-colors text-left">
         {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{r.produto.nome}</p>
+          <p className="text-sm font-medium truncate">{r.produto?.nome || r.produto_nome || "Produto"}</p>
           <p className="text-[10px] text-muted-foreground">{r.quantidade} un · Custo un: {fmtBRL(r.custo_unitario_formacao)}</p>
         </div>
         <span className="text-xs font-medium">{fmtBRL(r.custo_formacao_preco)}</span>

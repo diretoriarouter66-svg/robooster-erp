@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, Users, Truck, ShoppingCart,
   FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse,
-  Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container } from
+  Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container, KeyRound } from
 "lucide-react";
 import { base44 } from "@/api/base44Client";
 
@@ -51,6 +51,12 @@ const menuGroups = [
   { icon: DollarSign, label: "Financeiro", path: "/financial" },
   { icon: BarChart3, label: "Relatórios", path: "/reports" }]
 
+},
+{
+  label: "Empresa",
+  items: [
+  { icon: KeyRound, label: "Controle de Acessos", path: "/acessos" }]
+
 }];
 
 
@@ -74,7 +80,7 @@ export default function Sidebar() {
   <div className="flex flex-col h-full">
       <div className="p-4 flex items-center gap-3 border-b border-sidebar-border">
         <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center bg-white">
-          <img src="https://media.base44.com/images/public/6a2b4465744531a689b598cb/1e5673928_RoboosterTurbo2-Editado.png" alt="Robooster" className="w-full h-full object-contain" />
+          <img src="/logo.png" alt="Robooster" className="w-full h-full object-contain" />
         </div>
         {!collapsed &&
       <div>

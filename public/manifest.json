@@ -1,0 +1,16 @@
+{
+  "name": "Robooster ERP",
+  "short_name": "Robooster ERP",
+  "description": "ERP de gestão de importação e revenda",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "1024x683",
+      "type": "image/png"
+    }
+  ]
+}

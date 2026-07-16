@@ -535,7 +535,7 @@ export default function ImportSimulator() {
               <tbody>
                 {resumoFinal.resultados.map((r, i) => (
                   <tr key={i} className="border-b border-border/50 last:border-0">
-                    <td className="py-1.5">{r.produto.nome}</td>
+                    <td className="py-1.5">{r.produto?.nome || r.produto_nome || "Produto"}</td>
                     <td className="py-1.5 text-right font-bold text-success">+{r.quantidade}</td>
                     <td className="py-1.5 text-right font-semibold">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(r.custo_unitario_formacao)}</td>
                   </tr>
