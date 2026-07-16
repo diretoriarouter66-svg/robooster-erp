@@ -6,8 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   KeyRound, Search, Eye, EyeOff, Copy, Check, ExternalLink,
-  Lock, Unlock, ShieldAlert } from
+  Lock, Unlock, ShieldAlert, Plus, Pencil, Trash2, Files } from
 "lucide-react";
+import CredencialForm from "@/components/cofre/CredencialForm";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from
+"@/components/ui/alert-dialog";
 
 // Cofre de acessos — substitui o app "Controle de Acessos" do Base44.
 //
@@ -73,6 +78,8 @@ export default function Acessos() {
   const [empresa, setEmpresa] = useState("todas");
   const [aberta, setAberta] = useState(null);
   const [nivelMaster, setNivelMaster] = useState(false);
+  const [form, setForm] = useState({ aberto: false, credencial: null, modo: "novo" });
+  const [excluindo, setExcluindo] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -118,6 +125,34 @@ export default function Acessos() {
     }
   };
 
+  const salvar = async (dados, modo) => {
+    const limpo = { ...dados };
+    delete limpo.created_date; delete limpo.updated_date; delete limpo.created_by;
+    if (modo === "editar") {
+      const id = limpo.id; delete limpo.id;
+      const atualizado = await base44.entities.Credential.update(id, limpo);
+      setCredenciais((cs) => cs.map((c) => c.id === id ? { ...c, ...atualizado } : c));
+    } else {
+      delete limpo.id;
+      const criado = await base44.entities.Credential.create(limpo);
+      setCredenciais((cs) => [...cs, criado].sort((a, b) =>
+      (a.service_name || "").localeCompare(b.service_name || "")));
+    }
+  };
+
+  const excluir = async () => {
+    const alvo = excluindo;
+    setExcluindo(null);
+    const antes = credenciais;
+    setCredenciais((cs) => cs.filter((c) => c.id !== alvo.id));
+    try {
+      await base44.entities.Credential.delete(alvo.id);
+    } catch (e) {
+      setCredenciais(antes);
+      setErro("Não foi possível excluir. Só o acesso master pode.");
+    }
+  };
+
   if (carregando) {
     return <div className="p-8 text-slate-500">Abrindo o cofre…</div>;
   }
@@ -128,13 +163,18 @@ export default function Acessos() {
         <div className="p-2 rounded-lg bg-orange-100">
           <KeyRound className="h-5 w-5 text-orange-700" />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-xl font-semibold text-slate-900">Controle de Acessos</h1>
           <p className="text-sm text-slate-500">
             {credenciais.length} {credenciais.length === 1 ? "credencial disponível" : "credenciais disponíveis"} para você
             {nivelMaster && " · acesso master"}
           </p>
         </div>
+        {nivelMaster &&
+        <Button onClick={() => setForm({ aberto: true, credencial: null, modo: "novo" })} className="gap-2">
+            <Plus className="h-4 w-4" />Nova credencial
+          </Button>
+        }
       </div>
 
       {erro &&
@@ -221,15 +261,30 @@ export default function Acessos() {
                     </div>
               }
                   {nivelMaster &&
-              <div className="mt-4 pt-3 border-t flex items-center justify-between gap-3">
+              <div className="mt-4 pt-3 border-t flex items-center justify-between gap-3 flex-wrap">
                       <span className="text-xs text-slate-500">
                         {c.is_master ?
                   "Só você e a Roberta veem esta credencial." :
                   "Liberada: os colaboradores do cofre veem esta credencial."}
                       </span>
-                      <Button size="sm" variant="outline" onClick={() => alternarLiberacao(c)}>
-                        {c.is_master ? "Liberar p/ colaboradores" : "Voltar para master"}
-                      </Button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button size="sm" variant="outline" onClick={() => alternarLiberacao(c)}>
+                          {c.is_master ? "Liberar p/ colaboradores" : "Voltar para master"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5"
+                  onClick={() => setForm({ aberto: true, credencial: c, modo: "editar" })}>
+                          <Pencil className="h-3.5 w-3.5" />Editar
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5"
+                  onClick={() => setForm({ aberto: true, credencial: c, modo: "duplicar" })}>
+                          <Files className="h-3.5 w-3.5" />Duplicar
+                        </Button>
+                        <Button size="sm" variant="outline"
+                  className="gap-1.5 text-red-700 hover:text-red-800 hover:bg-red-50"
+                  onClick={() => setExcluindo(c)}>
+                          <Trash2 className="h-3.5 w-3.5" />Excluir
+                        </Button>
+                      </div>
                     </div>
               }
                 </div>
@@ -238,6 +293,30 @@ export default function Acessos() {
           </Card>
         )}
       </div>
+
+      <CredencialForm
+        aberto={form.aberto}
+        credencial={form.credencial}
+        modo={form.modo}
+        onFechar={() => setForm({ aberto: false, credencial: null, modo: "novo" })}
+        onSalvar={salvar} />
+
+      <AlertDialog open={!!excluindo} onOpenChange={(o) => !o && setExcluindo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir “{excluindo?.service_name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A credencial sai do cofre para todo mundo. Esta ação não tem desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={excluir}>
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>);
 
 }
