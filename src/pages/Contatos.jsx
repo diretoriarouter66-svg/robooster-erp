@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { Users, Search, Plus, Pencil, Trash2, Settings2 } from "lucide-react";
+import { base44, supabase } from "@/api/base44Client";
+import { Users, Search, Plus, Pencil, Trash2, Settings2, KeyRound } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PageHeader from "../components/shared/PageHeader";
 import EmptyState from "../components/shared/EmptyState";
+
+// Tipos que trabalham na empresa => podem entrar no ERP.
+const TIPOS_COM_LOGIN = ["Colaborador", "Diretor", "Contador", "Técnico"];
 
 const TIPO_CORES = {
   "Cliente": "bg-primary/10 text-primary",
@@ -29,6 +32,8 @@ export default function Contatos() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
   const [novoTipo, setNovoTipo] = useState("");
+  const [senhaAcesso, setSenhaAcesso] = useState("");
+  const [avisoAcesso, setAvisoAcesso] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -45,12 +50,16 @@ export default function Contatos() {
   const openNew = () => {
     setEditing(null);
     setForm({ person_type: "PJ", status: "active", country: "Brasil", currency: "BRL", tipos: [] });
+    setSenhaAcesso("");
+    setAvisoAcesso(null);
     setDialogOpen(true);
   };
 
   const openEdit = (c) => {
     setEditing(c);
     setForm({ ...c, tipos: c.tipos || [] });
+    setSenhaAcesso("");   // nunca pré-carrega senha
+    setAvisoAcesso(null);
     setDialogOpen(true);
   };
 
@@ -61,12 +70,50 @@ export default function Contatos() {
     });
   };
 
+  const precisaLogin = (form.tipos || []).some((t) => TIPOS_COM_LOGIN.includes(t));
+
   const handleSave = async () => {
     if (!form.name?.trim()) { alert("Informe o nome / razão social."); return; }
     if (!form.tipos?.length) { alert("Selecione pelo menos um tipo (Cliente, Fornecedor...)."); return; }
+    if (senhaAcesso && senhaAcesso.length < 8) { alert("A senha de acesso precisa ter ao menos 8 caracteres."); return; }
+    if (senhaAcesso && !form.email?.trim()) { alert("Informe o e-mail: é com ele que a pessoa faz login."); return; }
+
     const data = { ...form };
-    if (editing) await base44.entities.Contato.update(editing.id, data);
-    else await base44.entities.Contato.create(data);
+    delete data.user_id; // quem define o vínculo é a função no servidor
+    const salvo = editing
+      ? await base44.entities.Contato.update(editing.id, data)
+      : await base44.entities.Contato.create(data);
+
+    // Login só é criado quando o master digita uma senha. A criação acontece numa
+    // função no servidor (a chave-mestra não pode existir no navegador).
+    if (senhaAcesso) {
+      try {
+        const { data: sessao } = await supabase.auth.getSession();
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/criar-acesso`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${sessao?.session?.access_token ?? ""}`,
+            },
+            body: JSON.stringify({
+              contato_id: salvo?.id || editing?.id,
+              email: form.email.trim(),
+              password: senhaAcesso,
+              nome: form.name.trim(),
+            }),
+          }
+        );
+        const r = await resp.json();
+        if (!resp.ok) { alert(`Contato salvo, mas o acesso não foi criado: ${r.error}`); }
+        else { setAvisoAcesso(r.criado ? "Acesso criado." : "Senha atualizada."); }
+      } catch (e) {
+        alert(`Contato salvo, mas o acesso não foi criado: ${e.message}`);
+      }
+    }
+    setSenhaAcesso("");
     setDialogOpen(false);
     loadData();
   };
@@ -205,6 +252,31 @@ export default function Contatos() {
                 ))}
               </div>
             </div>
+
+            {precisaLogin && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="h-4 w-4 text-primary" />
+                  <Label className="mb-0">Acesso ao ERP</Label>
+                  {form.user_id && <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/10 text-success font-medium">já tem login</span>}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Este contato trabalha na empresa e pode entrar no ERP. O login é o <b>e-mail</b> preenchido abaixo.
+                  {form.user_id ? " Digite uma senha nova só se quiser trocar a atual." : " Deixe a senha em branco se ainda não quiser dar acesso."}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">{form.user_id ? "Nova senha" : "Senha de acesso"}</Label>
+                    <Input type="password" autoComplete="new-password" value={senhaAcesso}
+                      onChange={(e) => setSenhaAcesso(e.target.value)} placeholder="mínimo 8 caracteres" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-warning">
+                  Atenção: hoje quem entra no ERP enxerga todos os módulos (financeiro, DRE, importação).
+                  O cofre de senhas é a única área com acesso restrito.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2"><Label>Nome / Razão Social *</Label><Input value={form.name || ""} onChange={f("name")} /></div>
