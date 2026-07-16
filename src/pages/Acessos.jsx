@@ -84,12 +84,16 @@ export default function Acessos() {
   useEffect(() => {
     (async () => {
       try {
-        const [lista, membros] = await Promise.all([
-        base44.entities.Credential.list("service_name"),
-        base44.entities.CofreMembro.list().catch(() => [])]
-        );
+        const lista = await base44.entities.Credential.list("service_name");
         setCredenciais(lista || []);
-        setNivelMaster((membros || []).some((m) => m.nivel === "master"));
+        // Nível do usuário: se esta consulta falhar, a tela some com os botões de
+        // master — então o erro precisa aparecer, não ser engolido.
+        try {
+          const membros = await base44.entities.CofreMembro.list("created_date");
+          setNivelMaster((membros || []).some((m) => m.nivel === "master"));
+        } catch (e) {
+          setErro("Não consegui confirmar seu nível de acesso: " + (e?.message || "erro"));
+        }
       } catch (e) {
         setErro(e?.message || "Não foi possível carregar o cofre.");
       } finally {
