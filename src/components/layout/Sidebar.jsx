@@ -8,6 +8,29 @@ import {
 "lucide-react";
 import { base44 } from "@/api/base44Client";
 
+// Módulo de cada item — precisa bater com o mapa de public.permissoes.
+// Isto é só para a tela não oferecer o que o banco vai negar; a segurança de
+// verdade é o RLS no Postgres.
+const MODULO_DO_ITEM = {
+  "/": null,                       // Dashboard: sempre visível
+  "/products": "produtos",
+  "/contatos": "contatos",
+  "/sales-channels": "comercial",
+  "/categorias": "produtos",
+  "/purchase-orders": "comercial",
+  "/sale-orders": "comercial",
+  "/precificacao": "comercial",
+  "/stock": "estoque",
+  "/import-simulator": "importacao",
+  "/dre": "financeiro",
+  "/breakeven": "financeiro",
+  "/container": "importacao",
+  "/config-tributaria": "config",
+  "/financial": "financeiro",
+  "/reports": "financeiro",
+  "/acessos": "cofre",             // o cofre tem regra própria (cofre_membros)
+};
+
 const menuGroups = [
 {
   label: "Principal",
@@ -62,8 +85,33 @@ const menuGroups = [
 
 export default function Sidebar() {
   const location = useLocation();
+  const [permitidos, setPermitidos] = React.useState(null); // null = ainda carregando
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const { supabase } = await import("@/api/base44Client");
+        const [{ data: perm }, { data: membro }] = await Promise.all([
+          supabase.rpc("meus_modulos"),
+          supabase.from("cofre_membros").select("nivel"),
+        ]);
+        const mods = new Set((perm || []).map((r) => r.modulo));
+        if ((membro || []).length > 0) mods.add("cofre");
+        setPermitidos(mods);
+      } catch {
+        setPermitidos(new Set()); // na dúvida, mostra só o que não exige módulo
+      }
+    })();
+  }, []);
+
+  const podeVerItem = (path) => {
+    const mod = MODULO_DO_ITEM[path];
+    if (!mod) return true;              // Dashboard
+    if (permitidos === null) return false; // enquanto carrega, não pisca item proibido
+    return permitidos.has(mod);
+  };
   const [expandedGroups, setExpandedGroups] = useState(
     menuGroups.reduce((acc, g) => ({ ...acc, [g.label]: true }), {})
   );
@@ -91,7 +139,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-        {menuGroups.map((group) =>
+        {menuGroups.filter((g) => g.items.some((i) => podeVerItem(i.path))).map((group) =>
       <div key={group.label}>
             {!collapsed &&
         <button
@@ -108,7 +156,7 @@ export default function Sidebar() {
         }
             {(collapsed || expandedGroups[group.label]) &&
         <div className="space-y-0.5">
-                {group.items.map((item) => {
+                {group.items.filter((item) => podeVerItem(item.path)).map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <Link
