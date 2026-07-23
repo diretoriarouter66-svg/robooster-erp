@@ -142,14 +142,16 @@ export default function SaleOrders() {
       return;
     }
 
-    // 3) Financeiro: contas a receber automáticas (parcelas + liberação do marketplace)
-    const entradas = await base44.entities.FinancialEntry.filter({ reference_id: orderId, reference_type: "sale_order" }, "-created_date", 50).catch(() => []);
+    // 3) Financeiro: contas a receber automáticas (parcelas + liberação do marketplace).
+    // Erro aqui precisa aparecer: engolir a consulta duplicaria parcelas.
+    try {
+    const entradas = await base44.entities.FinancialEntry.filter({ reference_id: orderId, reference_type: "sale_order" }, "-created_date", 100);
     const pagas = (entradas || []).filter(e => e.status === "paid");
     const pendentes = (entradas || []).filter(e => e.status === "pending" || e.status === "overdue");
 
     // Cancela as pendentes antigas (as pagas são preservadas sempre)
     for (const e of pendentes) {
-      await base44.entities.FinancialEntry.update(e.id, { status: "cancelled" }).catch(() => {});
+      await base44.entities.FinancialEntry.update(e.id, { status: "cancelled" });
     }
 
     if (deveBaixar) {
@@ -214,6 +216,9 @@ export default function SaleOrders() {
         }
       }
     }
+    } catch (err) {
+      alert(`O pedido e o estoque foram salvos, mas houve erro ao gerar as contas a receber: ${err.message}\n\nConfira o Financeiro antes de salvar de novo.`);
+    }
 
     setDialogOpen(false);
     loadData();
@@ -222,17 +227,20 @@ export default function SaleOrders() {
   const handleDelete = async (id) => {
     if (!confirm("Excluir este pedido?")) return;
     const order = orders.find(o => o.id === id);
-    // Reconcilia o estoque para zero (devolve o que estiver baixado) e cancela a conta a receber
     try {
+      // Reconcilia o estoque para zero (devolve o que estiver baixado)
       await reconciliarPedidoVenda(id, order?.order_number, order?.items || [], false);
-    } catch (err) { alert(err.message); }
-    const entradas = await base44.entities.FinancialEntry.filter({ reference_id: id, reference_type: "sale_order" }, "-created_date", 5).catch(() => []);
-    for (const e of entradas || []) {
-      if (e.status !== "paid" && e.status !== "cancelled") {
-        await base44.entities.FinancialEntry.update(e.id, { status: "cancelled" }).catch(() => {});
+      // Cancela TODAS as contas em aberto do pedido (um 12x tem 12 parcelas)
+      const entradas = await base44.entities.FinancialEntry.filter({ reference_id: id, reference_type: "sale_order" }, "-created_date", 100);
+      for (const e of entradas || []) {
+        if (e.status !== "paid" && e.status !== "cancelled") {
+          await base44.entities.FinancialEntry.update(e.id, { status: "cancelled" });
+        }
       }
+      await base44.entities.SaleOrder.delete(id);
+    } catch (err) {
+      alert(`Não foi possível excluir o pedido: ${err.message}`);
     }
-    await base44.entities.SaleOrder.delete(id);
     loadData();
   };
 

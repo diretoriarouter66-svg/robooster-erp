@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { emAberto } from "@/lib/utils";
 import { Package, Users, ShoppingCart, DollarSign, AlertTriangle, TrendingUp, Truck } from "lucide-react";
 import StatCard from "../components/shared/StatCard";
 import PageHeader from "../components/shared/PageHeader";
@@ -11,40 +12,51 @@ export default function Dashboard() {
   const [recentOrders, setRecentOrders] = useState([]);
   const [lowStock, setLowStock] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState(null);
 
   useEffect(() => { loadDashboard(); }, []);
 
   const loadDashboard = async () => {
-    const [products, customers, suppliers, orders, financial] = await Promise.all([
-      base44.entities.Product.list("-created_date", 200),
-      base44.entities.Customer.list("-created_date", 200),
-      base44.entities.Supplier.list("-created_date", 200),
-      base44.entities.SaleOrder.list("-created_date", 10),
-      base44.entities.FinancialEntry.list("-created_date", 200),
-    ]);
+    setErro(null);
+    try {
+      // Clientes e fornecedores moram em Contatos (campo "tipos") — as tabelas
+      // customers/suppliers são legado do Base44 e ficaram vazias na migração.
+      const [products, contatos, orders, financial] = await Promise.all([
+        base44.entities.Product.list("-created_date", 200),
+        base44.entities.Contato.list("-created_date", 500),
+        base44.entities.SaleOrder.list("-created_date", 10),
+        base44.entities.FinancialEntry.list("-created_date", 500),
+      ]);
 
-    const activeProducts = products.filter(p => p.status === "active");
-    const lowStockProducts = activeProducts.filter(p => p.stock_quantity <= p.min_stock && p.min_stock > 0);
+      const activeProducts = products.filter(p => p.status === "active");
+      const lowStockProducts = activeProducts.filter(p => p.stock_quantity <= p.min_stock && p.min_stock > 0);
 
-    const pendingReceivables = financial
-      .filter(f => f.type === "receivable" && f.status === "pending")
-      .reduce((sum, f) => sum + (f.amount || 0), 0);
+      const contatosAtivos = contatos.filter(c => c.status !== "inactive");
+      const totalCustomers = contatosAtivos.filter(c => (c.tipos || []).includes("Cliente")).length;
+      const totalSuppliers = contatosAtivos.filter(c => (c.tipos || []).includes("Fornecedor")).length;
 
-    const pendingPayables = financial
-      .filter(f => f.type === "payable" && f.status === "pending")
-      .reduce((sum, f) => sum + (f.amount || 0), 0);
+      const pendingReceivables = financial
+        .filter(f => f.type === "receivable" && emAberto(f))
+        .reduce((sum, f) => sum + (f.amount || 0), 0);
 
-    setStats({
-      totalProducts: activeProducts.length,
-      totalCustomers: customers.length,
-      totalSuppliers: suppliers.length,
-      pendingReceivables,
-      pendingPayables,
-      lowStockCount: lowStockProducts.length,
-      totalOrders: orders.length,
-    });
-    setRecentOrders(orders.slice(0, 5));
-    setLowStock(lowStockProducts.slice(0, 5));
+      const pendingPayables = financial
+        .filter(f => f.type === "payable" && emAberto(f))
+        .reduce((sum, f) => sum + (f.amount || 0), 0);
+
+      setStats({
+        totalProducts: activeProducts.length,
+        totalCustomers,
+        totalSuppliers,
+        pendingReceivables,
+        pendingPayables,
+        lowStockCount: lowStockProducts.length,
+        totalOrders: orders.length,
+      });
+      setRecentOrders(orders.slice(0, 5));
+      setLowStock(lowStockProducts.slice(0, 5));
+    } catch (err) {
+      setErro(err.message || "Erro ao carregar o dashboard.");
+    }
     setLoading(false);
   };
 
@@ -57,6 +69,18 @@ export default function Dashboard() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (erro) {
+    return (
+      <div>
+        <PageHeader title="Dashboard" description="Visão geral do seu negócio" />
+        <div className="bg-destructive/10 text-destructive rounded-xl border border-destructive/20 p-4 text-sm">
+          Não foi possível carregar o dashboard: {erro}
+          <button onClick={() => { setLoading(true); loadDashboard(); }} className="ml-2 underline font-medium">Tentar de novo</button>
+        </div>
       </div>
     );
   }

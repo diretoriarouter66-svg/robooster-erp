@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { statusFinanceiro, emAberto } from "@/lib/utils";
 import { Plus, Search, DollarSign, Edit, Trash2, TrendingUp, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,7 @@ export default function Financial() {
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const data = await base44.entities.FinancialEntry.list("-created_date", 200);
+    const data = await base44.entities.FinancialEntry.list("-created_date", 500);
     setEntries(data);
     setLoading(false);
   };
@@ -42,32 +43,42 @@ export default function Financial() {
   };
 
   const handleSave = async () => {
-    if (editing) {
-      await base44.entities.FinancialEntry.update(editing.id, form);
-    } else {
-      await base44.entities.FinancialEntry.create(form);
+    try {
+      if (editing) {
+        await base44.entities.FinancialEntry.update(editing.id, form);
+      } else {
+        await base44.entities.FinancialEntry.create(form);
+      }
+    } catch (err) {
+      alert(`Não foi possível salvar o lançamento: ${err.message}`);
+      return;
     }
     setDialogOpen(false);
     loadData();
   };
 
   const gerarContasDoMes = async () => {
-    const mesRef = new Date().toISOString().slice(0, 7); // YYYY-MM
-    const configs = await base44.entities.ConfigTributaria.list("-created_date", 1).catch(() => []);
-    const despesas = configs?.[0]?.despesas_fixas || [];
-    if (!despesas.length) { alert("Nenhuma despesa fixa cadastrada na Config. Tributária."); return; }
-    const existentes = await base44.entities.FinancialEntry.filter({ reference_type: "despesa_fixa", reference_id: mesRef }, "-created_date", 100).catch(() => []);
-    if ((existentes || []).length > 0) { alert(`As contas fixas de ${mesRef} já foram geradas (${existentes.length} lançamentos).`); return; }
-    if (!confirm(`Gerar ${despesas.length} contas a pagar das despesas fixas de ${mesRef} (vencimento dia 5)?`)) return;
-    const venc = `${mesRef}-05`;
-    for (const d of despesas) {
-      if (!d?.nome || !(d?.valor > 0)) continue;
-      await base44.entities.FinancialEntry.create({
-        type: "payable", category: "other",
-        description: `${d.nome} — ${mesRef}`,
-        reference_id: mesRef, reference_type: "despesa_fixa",
-        amount: d.valor, due_date: venc, status: "pending", payment_method: "boleto",
-      });
+    try {
+      const mesRef = new Date().toISOString().slice(0, 7); // YYYY-MM
+      const configs = await base44.entities.ConfigTributaria.list("-created_date", 1);
+      const despesas = configs?.[0]?.despesas_fixas || [];
+      if (!despesas.length) { alert("Nenhuma despesa fixa cadastrada na Config. Tributária."); return; }
+      // Se esta consulta falhar, o erro tem que subir — senão gera tudo em dobro
+      const existentes = await base44.entities.FinancialEntry.filter({ reference_type: "despesa_fixa", reference_id: mesRef }, "-created_date", 100);
+      if ((existentes || []).length > 0) { alert(`As contas fixas de ${mesRef} já foram geradas (${existentes.length} lançamentos).`); return; }
+      if (!confirm(`Gerar ${despesas.length} contas a pagar das despesas fixas de ${mesRef} (vencimento dia 5)?`)) return;
+      const venc = `${mesRef}-05`;
+      for (const d of despesas) {
+        if (!d?.nome || !(d?.valor > 0)) continue;
+        await base44.entities.FinancialEntry.create({
+          type: "payable", category: "other",
+          description: `${d.nome} — ${mesRef}`,
+          reference_id: mesRef, reference_type: "despesa_fixa",
+          amount: d.valor, due_date: venc, status: "pending", payment_method: "boleto",
+        });
+      }
+    } catch (err) {
+      alert(`Não foi possível gerar as contas do mês: ${err.message}`);
     }
     loadData();
   };
@@ -81,7 +92,7 @@ export default function Financial() {
     ];
     return faixas.map(f => {
       const limite = new Date(); limite.setDate(hoje.getDate() + f.dias);
-      const pend = entries.filter(e => (e.status === "pending" || e.status === "overdue") && e.due_date && new Date(e.due_date) <= limite);
+      const pend = entries.filter(e => emAberto(e) && e.due_date && new Date(e.due_date) <= limite);
       const entra = pend.filter(e => e.type === "receivable").reduce((t, e) => t + (e.amount || 0), 0);
       const sai = pend.filter(e => e.type === "payable").reduce((t, e) => t + (e.amount || 0), 0);
       return { ...f, entra, sai, liquido: entra - sai };
@@ -90,7 +101,11 @@ export default function Financial() {
 
   const handleDelete = async (id) => {
     if (!confirm("Excluir este lançamento?")) return;
-    await base44.entities.FinancialEntry.delete(id);
+    try {
+      await base44.entities.FinancialEntry.delete(id);
+    } catch (err) {
+      alert(`Não foi possível excluir o lançamento: ${err.message}`);
+    }
     loadData();
   };
 
@@ -99,16 +114,17 @@ export default function Financial() {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
   };
 
+  // Vencido é derivado do vencimento (statusFinanceiro) — ninguém marca na mão
   const receivables = entries.filter(e => e.type === "receivable");
   const payables = entries.filter(e => e.type === "payable");
-  const totalReceivable = receivables.filter(e => e.status === "pending").reduce((s, e) => s + (e.amount || 0), 0);
-  const totalPayable = payables.filter(e => e.status === "pending").reduce((s, e) => s + (e.amount || 0), 0);
-  const overdue = entries.filter(e => e.status === "overdue");
+  const totalReceivable = receivables.filter(emAberto).reduce((s, e) => s + (e.amount || 0), 0);
+  const totalPayable = payables.filter(emAberto).reduce((s, e) => s + (e.amount || 0), 0);
+  const overdue = entries.filter(e => statusFinanceiro(e) === "overdue");
 
   const filtered = entries.filter(e => {
     if (tab === "receivable" && e.type !== "receivable") return false;
     if (tab === "payable" && e.type !== "payable") return false;
-    if (tab === "overdue" && e.status !== "overdue") return false;
+    if (tab === "overdue" && statusFinanceiro(e) !== "overdue") return false;
     if (search && !e.description?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -137,8 +153,8 @@ export default function Financial() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={TrendingUp} label="A Receber (pendente)" value={formatCurrency(totalReceivable)} color="success" />
-        <StatCard icon={TrendingDown} label="A Pagar (pendente)" value={formatCurrency(totalPayable)} color="destructive" />
+        <StatCard icon={TrendingUp} label="A Receber (em aberto)" value={formatCurrency(totalReceivable)} color="success" />
+        <StatCard icon={TrendingDown} label="A Pagar (em aberto)" value={formatCurrency(totalPayable)} color="destructive" />
         <StatCard icon={DollarSign} label="Saldo Projetado" value={formatCurrency(totalReceivable - totalPayable)} color={totalReceivable - totalPayable >= 0 ? "success" : "destructive"} />
         <StatCard icon={DollarSign} label="Vencidos" value={overdue.length} color={overdue.length > 0 ? "destructive" : "success"} />
       </div>
@@ -201,7 +217,7 @@ export default function Financial() {
                         {formatCurrency(e.amount)}
                       </td>
                       <td className="px-4 py-3 text-center text-xs hidden md:table-cell">{e.due_date || "—"}</td>
-                      <td className="px-4 py-3 text-center"><StatusBadge status={e.status} /></td>
+                      <td className="px-4 py-3 text-center"><StatusBadge status={statusFinanceiro(e)} /></td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button onClick={() => openEdit(e)} className="p-1.5 hover:bg-muted rounded-lg"><Edit className="w-3.5 h-3.5 text-muted-foreground" /></button>

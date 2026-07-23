@@ -50,8 +50,12 @@ export default function ConfigTributaria() {
 
   const handleSave = async () => {
     setSaving(true);
-    if (config.id) await base44.entities.ConfigTributaria.update(config.id, config);
-    else await base44.entities.ConfigTributaria.create(config);
+    try {
+      if (config.id) await base44.entities.ConfigTributaria.update(config.id, config);
+      else await base44.entities.ConfigTributaria.create(config);
+    } catch (err) {
+      alert(`Não foi possível salvar a configuração: ${err.message}`);
+    }
     setSaving(false);
   };
 

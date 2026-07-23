@@ -59,18 +59,27 @@ export default function Products() {
   };
 
   const handleSave = async () => {
-    const data = { ...form };
-    // Estoque nunca é salvo pelo cadastro — só por movimentação (Kardex)
-    if (editing) delete data.stock_quantity;
-    if (editing) await base44.entities.Product.update(editing.id, data);
-    else await base44.entities.Product.create({ ...data, stock_quantity: 0 });
+    try {
+      const data = { ...form };
+      // Estoque nunca é salvo pelo cadastro — só por movimentação (Kardex)
+      if (editing) delete data.stock_quantity;
+      if (editing) await base44.entities.Product.update(editing.id, data);
+      else await base44.entities.Product.create({ ...data, stock_quantity: 0 });
+    } catch (err) {
+      alert(`Não foi possível salvar o produto: ${err.message}`);
+      return;
+    }
     setDialogOpen(false);
     loadData();
   };
 
   const handleDelete = async (id) => {
     if (!confirm("Deseja realmente excluir este produto?")) return;
-    await base44.entities.Product.delete(id);
+    try {
+      await base44.entities.Product.delete(id);
+    } catch (err) {
+      alert(`Não foi possível excluir o produto: ${err.message}`);
+    }
     loadData();
   };
 
@@ -78,8 +87,12 @@ export default function Products() {
     const file = e.target.files[0];
     if (!file) return;
     setUploadingImage(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    setForm(prev => ({ ...prev, image_url: file_url }));
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setForm(prev => ({ ...prev, image_url: file_url }));
+    } catch (err) {
+      alert(`Não foi possível enviar a imagem: ${err.message}`);
+    }
     setUploadingImage(false);
   };
 

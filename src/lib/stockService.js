@@ -102,7 +102,9 @@ export async function movimentarPedidoVenda(itens, sinal, orderId, orderNumber) 
  */
 export async function reconciliarPedidoVenda(orderId, orderNumber, itens, deveBaixar) {
   if (!orderId) throw new Error("Pedido sem ID para reconciliar estoque.");
-  const movs = await base44.entities.StockMovement.filter({ origem_id: orderId }, "-created_date", 500).catch(() => []);
+  // Se esta consulta falhar, o erro TEM que subir: tratar falha como "nenhum
+  // movimento" faria a reconciliação baixar o estoque em dobro.
+  const movs = await base44.entities.StockMovement.filter({ origem_id: orderId }, "-created_date", 500);
 
   // Posição atual no ledger por produto (soma dos movimentos de venda/devolução deste pedido)
   const atual = {};
@@ -157,6 +159,7 @@ export async function entradaImportacao(resultados, operacaoId, operacaoNome) {
 /** Verifica no Kardex se a operação já deu entrada no estoque (fonte da verdade, não memória) */
 export async function operacaoJaDeuEntrada(operacaoId) {
   if (!operacaoId) return false;
-  const movs = await base44.entities.StockMovement.filter({ origem_id: operacaoId, tipo: "entrada_importacao" }, "-created_date", 1).catch(() => []);
+  // Erro aqui não pode virar "não entrou ainda": geraria entrada duplicada.
+  const movs = await base44.entities.StockMovement.filter({ origem_id: operacaoId, tipo: "entrada_importacao" }, "-created_date", 1);
   return (movs || []).length > 0;
 }

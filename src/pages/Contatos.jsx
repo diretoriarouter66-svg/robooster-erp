@@ -80,9 +80,15 @@ export default function Contatos() {
 
     const data = { ...form };
     delete data.user_id; // quem define o vínculo é a função no servidor
-    const salvo = editing
-      ? await base44.entities.Contato.update(editing.id, data)
-      : await base44.entities.Contato.create(data);
+    let salvo;
+    try {
+      salvo = editing
+        ? await base44.entities.Contato.update(editing.id, data)
+        : await base44.entities.Contato.create(data);
+    } catch (err) {
+      alert(`Não foi possível salvar o contato: ${err.message}`);
+      return;
+    }
 
     // Login só é criado quando o master digita uma senha. A criação acontece numa
     // função no servidor (a chave-mestra não pode existir no navegador).
@@ -120,7 +126,11 @@ export default function Contatos() {
 
   const handleDelete = async (c) => {
     if (!confirm(`Excluir o contato "${c.name}"?`)) return;
-    await base44.entities.Contato.delete(c.id);
+    try {
+      await base44.entities.Contato.delete(c.id);
+    } catch (err) {
+      alert(`Não foi possível excluir o contato: ${err.message}`);
+    }
     loadData();
   };
 

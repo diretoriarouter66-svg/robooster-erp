@@ -48,26 +48,39 @@ export default function SalesChannels() {
   };
 
   const handleSave = async () => {
-    if (editing) await base44.entities.SalesChannel.update(editing.id, form);
-    else await base44.entities.SalesChannel.create(form);
+    try {
+      if (editing) await base44.entities.SalesChannel.update(editing.id, form);
+      else await base44.entities.SalesChannel.create(form);
+    } catch (err) {
+      alert(`Não foi possível salvar o canal: ${err.message}`);
+      return;
+    }
     setDialogOpen(false);
     loadData();
   };
 
   const toggleMaster = async (id) => {
-    const channel = channels.find(c => c.id === id);
-    const newMaster = !channel.is_master;
-    if (newMaster) {
-      const others = channels.filter(c => c.id !== id && c.is_master);
-      await Promise.all(others.map(c => base44.entities.SalesChannel.update(c.id, { is_master: false })));
+    try {
+      const channel = channels.find(c => c.id === id);
+      const newMaster = !channel.is_master;
+      if (newMaster) {
+        const others = channels.filter(c => c.id !== id && c.is_master);
+        await Promise.all(others.map(c => base44.entities.SalesChannel.update(c.id, { is_master: false })));
+      }
+      await base44.entities.SalesChannel.update(id, { is_master: newMaster });
+    } catch (err) {
+      alert(`Não foi possível alterar o canal master: ${err.message}`);
     }
-    await base44.entities.SalesChannel.update(id, { is_master: newMaster });
     loadData();
   };
 
   const handleDelete = async (id) => {
     if (!confirm("Excluir este canal?")) return;
-    await base44.entities.SalesChannel.delete(id);
+    try {
+      await base44.entities.SalesChannel.delete(id);
+    } catch (err) {
+      alert(`Não foi possível excluir o canal: ${err.message}`);
+    }
     loadData();
   };
 

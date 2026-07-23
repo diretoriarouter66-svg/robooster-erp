@@ -196,7 +196,9 @@ export default function ImportSimulator() {
         resultado_importacao: resumoFinal,
         resultado_cubagem: cubageResult,
       });
-      await sincronizarRemessasFinanceiro(editing.id, form.nome, form.remessas).catch(() => {});
+      await sincronizarRemessasFinanceiro(editing.id, form.nome, form.remessas).catch((err) => {
+        alert(`Operação finalizada, mas houve erro ao sincronizar as remessas no Financeiro: ${err.message}`);
+      });
       setFinalizarOpen(false);
       setView("list");
       loadData();
@@ -228,48 +230,54 @@ export default function ImportSimulator() {
 
   const handleSave = async () => {
     setSaving(true);
-    const data = {
-      ...form,
-      resultado_cubagem: cubageResult,
-      resultado_importacao: importResult,
-      cambio: cambioEfetivo
-    };
+    try {
+      const data = {
+        ...form,
+        resultado_cubagem: cubageResult,
+        resultado_importacao: importResult,
+        cambio: cambioEfetivo
+      };
 
-    const wasRealizada = editing?.status === "realizada";
-    const isRealizada = form.status === "realizada";
+      const wasRealizada = editing?.status === "realizada";
+      const isRealizada = form.status === "realizada";
 
-    if (isRealizada && !wasRealizada && importResult?.resultados) {
-      // 1) Atualiza o custo landed de cada produto
-      await base44.entities.Product.bulkUpdate(
-        importResult.resultados
-          .filter(r => r.produto?.id)
-          .map(r => ({ id: r.produto.id, cost_landed_brl: r.custo_unitario_formacao }))
-      );
-      // 2) Dá entrada das quantidades no estoque via Kardex (o próprio Kardex garante que é uma única vez)
-      const jaEntrou = await operacaoJaDeuEntrada(editing?.id);
-      if (!jaEntrou) {
-        try {
-          await entradaImportacao(importResult.resultados, editing?.id, form.nome);
-        } catch (err) {
-          alert(`Custo atualizado, mas houve erro na entrada de estoque: ${err.message}`);
+      if (isRealizada && !wasRealizada && importResult?.resultados) {
+        // 1) Atualiza o custo landed de cada produto
+        await base44.entities.Product.bulkUpdate(
+          importResult.resultados
+            .filter(r => r.produto?.id)
+            .map(r => ({ id: r.produto.id, cost_landed_brl: r.custo_unitario_formacao }))
+        );
+        // 2) Dá entrada das quantidades no estoque via Kardex (o próprio Kardex garante que é uma única vez)
+        const jaEntrou = await operacaoJaDeuEntrada(editing?.id);
+        if (!jaEntrou) {
+          try {
+            await entradaImportacao(importResult.resultados, editing?.id, form.nome);
+          } catch (err) {
+            alert(`Custo atualizado, mas houve erro na entrada de estoque: ${err.message}`);
+          }
         }
       }
+
+      let opId = editing?.id;
+      if (editing) {
+        await base44.entities.ImportOperation.update(editing.id, data);
+      } else {
+        const created = await base44.entities.ImportOperation.create(data);
+        opId = created.id;
+      }
+
+      // Remessas viram contas pagas no Financeiro (fluxo de caixa real da importação)
+      await sincronizarRemessasFinanceiro(opId, form.nome, form.remessas).catch((err) => {
+        alert(`Operação salva, mas houve erro ao sincronizar as remessas no Financeiro: ${err.message}`);
+      });
+
+      setView("list");
+      loadData();
+    } catch (err) {
+      alert(`Não foi possível salvar a operação: ${err.message}`);
     }
-
-    let opId = editing?.id;
-    if (editing) {
-      await base44.entities.ImportOperation.update(editing.id, data);
-    } else {
-      const created = await base44.entities.ImportOperation.create(data);
-      opId = created.id;
-    }
-
-    // Remessas viram contas pagas no Financeiro (fluxo de caixa real da importação)
-    await sincronizarRemessasFinanceiro(opId, form.nome, form.remessas).catch(() => {});
-
     setSaving(false);
-    setView("list");
-    loadData();
   };
 
   const filteredProducts = products.filter(p =>

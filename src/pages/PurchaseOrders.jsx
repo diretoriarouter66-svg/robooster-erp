@@ -76,10 +76,15 @@ export default function PurchaseOrders() {
       total_brl: sub * (form.exchange_rate || 1),
       po_number: form.po_number || `PO-${Date.now().toString(36).toUpperCase()}`,
     };
-    if (editing) {
-      await base44.entities.PurchaseOrder.update(editing.id, data);
-    } else {
-      await base44.entities.PurchaseOrder.create(data);
+    try {
+      if (editing) {
+        await base44.entities.PurchaseOrder.update(editing.id, data);
+      } else {
+        await base44.entities.PurchaseOrder.create(data);
+      }
+    } catch (err) {
+      alert(`Não foi possível salvar o pedido de compra: ${err.message}`);
+      return;
     }
     setDialogOpen(false);
     loadData();
@@ -87,7 +92,11 @@ export default function PurchaseOrders() {
 
   const handleDelete = async (id) => {
     if (!confirm("Excluir este pedido de compra?")) return;
-    await base44.entities.PurchaseOrder.delete(id);
+    try {
+      await base44.entities.PurchaseOrder.delete(id);
+    } catch (err) {
+      alert(`Não foi possível excluir o pedido de compra: ${err.message}`);
+    }
     loadData();
   };
 

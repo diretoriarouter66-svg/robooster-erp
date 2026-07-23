@@ -38,20 +38,33 @@ export default function Categorias() {
   };
 
   const handleSave = async () => {
-    if (editing) await base44.entities.Categoria.update(editing.id, form);
-    else await base44.entities.Categoria.create(form);
+    try {
+      if (editing) await base44.entities.Categoria.update(editing.id, form);
+      else await base44.entities.Categoria.create(form);
+    } catch (err) {
+      alert(`Não foi possível salvar a categoria: ${err.message}`);
+      return;
+    }
     setDialogOpen(false);
     loadData();
   };
 
   const handleDelete = async (id) => {
     if (!confirm("Deseja realmente excluir esta categoria?")) return;
-    await base44.entities.Categoria.delete(id);
+    try {
+      await base44.entities.Categoria.delete(id);
+    } catch (err) {
+      alert(`Não foi possível excluir a categoria: ${err.message}`);
+    }
     loadData();
   };
 
   const toggleAtiva = async (cat) => {
-    await base44.entities.Categoria.update(cat.id, { ativa: !cat.ativa });
+    try {
+      await base44.entities.Categoria.update(cat.id, { ativa: !cat.ativa });
+    } catch (err) {
+      alert(`Não foi possível alterar a categoria: ${err.message}`);
+    }
     loadData();
   };
 

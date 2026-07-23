@@ -7,44 +7,55 @@ import StatCard from "../components/shared/StatCard";
 
 const COLORS = ["hsl(221,83%,53%)", "hsl(160,60%,45%)", "hsl(30,80%,55%)", "hsl(280,65%,60%)", "hsl(340,75%,55%)"];
 
+// Mesma régua do pedido de venda: só conta como venda o que foi faturado.
+const STATUS_VENDA = ["invoiced", "shipped", "delivered"];
+
 export default function Reports() {
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState(null);
   const [data, setData] = useState({});
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [products, orders, financial] = await Promise.all([
-      base44.entities.Product.list("-created_date", 200),
-      base44.entities.SaleOrder.list("-created_date", 200),
-      base44.entities.FinancialEntry.list("-created_date", 200),
-    ]);
+    setErro(null);
+    try {
+      const [products, orders, financial] = await Promise.all([
+        base44.entities.Product.list("-created_date", 200),
+        base44.entities.SaleOrder.list("-created_date", 200),
+        base44.entities.FinancialEntry.list("-created_date", 500),
+      ]);
 
-    const totalSales = orders.reduce((s, o) => s + (o.total || 0), 0);
-    const totalInventoryValue = products.reduce((s, p) => s + ((p.stock_quantity || 0) * (p.cost_landed_brl || 0)), 0);
-    const totalPaid = financial.filter(f => f.status === "paid" && f.type === "payable").reduce((s, f) => s + (f.amount || 0), 0);
-    const totalReceived = financial.filter(f => f.status === "paid" && f.type === "receivable").reduce((s, f) => s + (f.amount || 0), 0);
+      const vendas = orders.filter(o => STATUS_VENDA.includes(o.status));
 
-    const channels = {};
-    orders.forEach(o => {
-      const ch = o.channel || "direct";
-      channels[ch] = (channels[ch] || 0) + (o.total || 0);
-    });
-    const salesByChannel = Object.entries(channels).map(([name, value]) => ({ name, value: Math.round(value) }));
+      const totalSales = vendas.reduce((s, o) => s + (o.total || 0), 0);
+      const totalInventoryValue = products.reduce((s, p) => s + ((p.stock_quantity || 0) * (p.cost_landed_brl || 0)), 0);
+      const totalPaid = financial.filter(f => f.status === "paid" && f.type === "payable").reduce((s, f) => s + (f.amount || 0), 0);
+      const totalReceived = financial.filter(f => f.status === "paid" && f.type === "receivable").reduce((s, f) => s + (f.amount || 0), 0);
 
-    const productSales = {};
-    orders.forEach(o => {
-      (o.items || []).forEach(item => {
-        const name = item.name || "Outros";
-        productSales[name] = (productSales[name] || 0) + ((item.quantity || 0) * (item.unit_price || 0));
+      const channels = {};
+      vendas.forEach(o => {
+        const ch = o.channel || "direct";
+        channels[ch] = (channels[ch] || 0) + (o.total || 0);
       });
-    });
-    const topProducts = Object.entries(productSales)
-      .map(([name, value]) => ({ name, value: Math.round(value) }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
+      const salesByChannel = Object.entries(channels).map(([name, value]) => ({ name, value: Math.round(value) }));
 
-    setData({ totalSales, totalInventoryValue, totalPaid, totalReceived, salesByChannel, topProducts, ordersCount: orders.length });
+      const productSales = {};
+      vendas.forEach(o => {
+        (o.items || []).forEach(item => {
+          const name = item.name || "Outros";
+          productSales[name] = (productSales[name] || 0) + ((item.quantity || 0) * (item.unit_price || 0));
+        });
+      });
+      const topProducts = Object.entries(productSales)
+        .map(([name, value]) => ({ name, value: Math.round(value) }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
+
+      setData({ totalSales, totalInventoryValue, totalPaid, totalReceived, salesByChannel, topProducts, ordersCount: vendas.length });
+    } catch (err) {
+      setErro(err.message || "Erro ao carregar os relatórios.");
+    }
     setLoading(false);
   };
 
@@ -54,9 +65,21 @@ export default function Reports() {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" /></div>;
   }
 
+  if (erro) {
+    return (
+      <div>
+        <PageHeader title="Relatórios" description="Visão analítica do negócio" />
+        <div className="bg-destructive/10 text-destructive rounded-xl border border-destructive/20 p-4 text-sm">
+          Não foi possível carregar os relatórios: {erro}
+          <button onClick={() => { setLoading(true); loadData(); }} className="ml-2 underline font-medium">Tentar de novo</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <PageHeader title="Relatórios" description="Visão analítica do negócio" />
+      <PageHeader title="Relatórios" description="Visão analítica do negócio — vendas consideram pedidos faturados, enviados ou entregues" />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <StatCard icon={TrendingUp} label="Total Vendas" value={formatCurrency(data.totalSales)} color="success" />
