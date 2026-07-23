@@ -21,9 +21,9 @@ export default function Reports() {
     setErro(null);
     try {
       const [products, orders, financial] = await Promise.all([
-        base44.entities.Product.list("-created_date", 200),
-        base44.entities.SaleOrder.list("-created_date", 200),
-        base44.entities.FinancialEntry.list("-created_date", 500),
+        base44.entities.Product.list("-created_date", 1000),
+        base44.entities.SaleOrder.list("-created_date", 1000),
+        base44.entities.FinancialEntry.list("-created_date", 1000),
       ]);
 
       const vendas = orders.filter(o => STATUS_VENDA.includes(o.status));

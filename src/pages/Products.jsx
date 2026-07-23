@@ -28,10 +28,10 @@ export default function Products() {
 
   const loadData = async () => {
     const [prods, cats, chans, allPricings] = await Promise.all([
-      base44.entities.Product.list("-created_date", 200),
+      base44.entities.Product.list("-created_date", 1000),
       base44.entities.Categoria.list("-created_date", 200),
       base44.entities.SalesChannel.list("-created_date", 50),
-      base44.entities.ProductPricing.list("-created_date", 500),
+      base44.entities.ProductPricing.list("-created_date", 1000),
     ]);
     const vdChannel = chans.find(c => c.is_master) || chans.find(c => (c.commission_percent || 0) === 0 && (c.fixed_fee || 0) === 0) || chans.find(c => c.type === "venda_direta");
     const vdMap = {};
@@ -74,9 +74,22 @@ export default function Products() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("Deseja realmente excluir este produto?")) return;
+    const p = products.find(x => x.id === id);
+    // Produto com saldo não se exclui: o estoque se movimenta primeiro (Kardex)
+    if ((p?.stock_quantity || 0) > 0) {
+      alert(`"${p.name}" tem ${p.stock_quantity} unidade(s) em estoque.\n\nMovimente o estoque primeiro (venda, avaria, uso interno ou ajuste de inventário) — excluir um produto com saldo quebraria o Kardex.`);
+      return;
+    }
     try {
-      await base44.entities.Product.delete(id);
+      // Com histórico no Kardex, inativar preserva a auditoria; excluir apagaria a referência
+      const movs = await base44.entities.StockMovement.filter({ product_id: id }, "-created_date", 1);
+      if ((movs || []).length > 0) {
+        if (!confirm(`"${p?.name}" tem histórico de movimentações no Kardex.\n\nRecomendado: INATIVAR em vez de excluir (preserva a auditoria).\n\nOK = inativar o produto · Cancelar = não fazer nada`)) return;
+        await base44.entities.Product.update(id, { status: "inactive" });
+      } else {
+        if (!confirm("Deseja realmente excluir este produto?")) return;
+        await base44.entities.Product.delete(id);
+      }
     } catch (err) {
       alert(`Não foi possível excluir o produto: ${err.message}`);
     }

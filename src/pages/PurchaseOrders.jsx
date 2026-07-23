@@ -25,9 +25,9 @@ export default function PurchaseOrders() {
 
   const loadData = async () => {
     const [o, s, p] = await Promise.all([
-      base44.entities.PurchaseOrder.list("-created_date", 200),
-      base44.entities.Contato.list("-created_date", 500).then(cs => (cs || []).filter(c => (c.tipos || []).includes("Fornecedor") && c.status !== "inactive")),
-      base44.entities.Product.list("-created_date", 200),
+      base44.entities.PurchaseOrder.list("-created_date", 1000),
+      base44.entities.Contato.list("-created_date", 1000).then(cs => (cs || []).filter(c => (c.tipos || []).includes("Fornecedor") && c.status !== "inactive")),
+      base44.entities.Product.list("-created_date", 1000),
     ]);
     setOrders(o);
     setSuppliers(s);

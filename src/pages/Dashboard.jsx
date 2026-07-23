@@ -22,10 +22,10 @@ export default function Dashboard() {
       // Clientes e fornecedores moram em Contatos (campo "tipos") — as tabelas
       // customers/suppliers são legado do Base44 e ficaram vazias na migração.
       const [products, contatos, orders, financial] = await Promise.all([
-        base44.entities.Product.list("-created_date", 200),
-        base44.entities.Contato.list("-created_date", 500),
+        base44.entities.Product.list("-created_date", 1000),
+        base44.entities.Contato.list("-created_date", 1000),
         base44.entities.SaleOrder.list("-created_date", 10),
-        base44.entities.FinancialEntry.list("-created_date", 500),
+        base44.entities.FinancialEntry.list("-created_date", 1000),
       ]);
 
       const activeProducts = products.filter(p => p.status === "active");

@@ -25,7 +25,7 @@ export default function Financial() {
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const data = await base44.entities.FinancialEntry.list("-created_date", 500);
+    const data = await base44.entities.FinancialEntry.list("-created_date", 1000);
     setEntries(data);
     setLoading(false);
   };

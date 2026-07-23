@@ -39,7 +39,7 @@ export default function DRE() {
         base44.entities.Socio.list("-created_date", 50),
         base44.entities.ConfigTributaria.list("-created_date", 5),
         base44.entities.SalesChannel.list("-created_date", 50),
-        base44.entities.ProductPricing.list("-created_date", 500)
+        base44.entities.ProductPricing.list("-created_date", 1000)
       ]);
       setSavedDREs(dres || []);
       setOperations((ops || []).filter(o => o.resultado_importacao?.resultados));

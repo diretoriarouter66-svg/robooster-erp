@@ -10,7 +10,7 @@ export default function ContainerPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    base44.entities.Product.filter({ status: "active" }, "-created_date", 200).then(p => {
+    base44.entities.Product.filter({ status: "active" }, "-created_date", 1000).then(p => {
       setProducts(p || []);
       setLoading(false);
     });

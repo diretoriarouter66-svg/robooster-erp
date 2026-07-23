@@ -46,7 +46,7 @@ export default function ImportSimulator() {
     try {
       const [ops, prods, configs] = await Promise.all([
         base44.entities.ImportOperation.list("-created_date", 100),
-        base44.entities.Product.list("-created_date", 500),
+        base44.entities.Product.list("-created_date", 1000),
         base44.entities.ConfigTributaria.list("-created_date", 5)
       ]);
       setOperations(ops || []);

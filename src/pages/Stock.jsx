@@ -39,8 +39,8 @@ export default function Stock() {
 
   const loadData = async () => {
     const [p, m] = await Promise.all([
-      base44.entities.Product.filter({ status: "active" }, "-created_date", 200),
-      base44.entities.StockMovement.list("-created_date", 300),
+      base44.entities.Product.filter({ status: "active" }, "-created_date", 1000),
+      base44.entities.StockMovement.list("-created_date", 1000),
     ]);
     setProducts(p);
     setMovements(m);

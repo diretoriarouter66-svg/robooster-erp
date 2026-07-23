@@ -32,14 +32,8 @@ const TABLE = {
   StockMovement: 'stock_movements',
   SaleOrder: 'sale_orders',
   FinancialEntry: 'financial_entries',
-  Supplier: 'suppliers',
-  Customer: 'customers',
   DRESalvo: 'dre_salvos',
   PurchaseOrder: 'purchase_orders',
-  ImportItem: 'import_items',
-  ImportProcess: 'import_processes',
-  ProductCategory: 'product_categories',
-  User: 'users',
   // Cofre de acessos (migrado do app "Controle de Acessos" do Base44).
   // A visibilidade master/colaborador é garantida por RLS no Postgres — a tela
   // apenas reflete o que o banco devolve.

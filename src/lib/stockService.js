@@ -45,21 +45,23 @@ export async function registrarMovimento({ productId, tipo, quantidade, quantida
   const p = await base44.entities.Product.get(productId);
   if (!p) throw new Error("Produto não encontrado.");
 
+  // Pré-checagem só para a mensagem amigável (com o nome do produto).
+  // A autoridade é o banco: o trigger movimento_estoque_atomico tranca a linha
+  // do produto, recalcula saldo_anterior/saldo_novo, rejeita saldo negativo e
+  // atualiza products.stock_quantity na MESMA transação do INSERT — imune a
+  // dois usuários movimentando o mesmo produto ao mesmo tempo.
   const saldoAnterior = p.stock_quantity || 0;
-  const saldoNovo = saldoAnterior + delta;
-  if (saldoNovo < 0) {
+  if (saldoAnterior + delta < 0) {
     throw new Error(`Estoque insuficiente de "${p.name}": saldo atual ${saldoAnterior}, movimento ${delta}.`);
   }
 
-  await base44.entities.StockMovement.create({
+  const criado = await base44.entities.StockMovement.create({
     product_id: productId,
     product_name: p.name,
     sku: p.sku,
     product_sku: p.sku,
     tipo,
     quantidade: delta,
-    saldo_anterior: saldoAnterior,
-    saldo_novo: saldoNovo,
     origem_tipo: def.origem,
     origem_id: origemId || "",
     origem_ref: origemRef || "",
@@ -68,15 +70,12 @@ export async function registrarMovimento({ productId, tipo, quantidade, quantida
     // Campos do schema original (inglês) — mantidos para compatibilidade de validação
     type: tipo === "ajuste_inventario" ? "adjustment" : (delta > 0 ? "entry" : "exit"),
     quantity: Math.abs(delta),
-    previous_stock: saldoAnterior,
-    new_stock: saldoNovo,
     reference_type: { entrada_importacao: "import", saida_venda: "sale", devolucao_venda: "return", ajuste_inventario: "adjustment" }[tipo] || "other",
     reference_id: origemId || "",
     notes: [origemRef, motivo].filter(Boolean).join(" — "),
   });
 
-  await base44.entities.Product.update(productId, { stock_quantity: saldoNovo });
-  return saldoNovo;
+  return criado?.saldo_novo ?? saldoAnterior + delta;
 }
 
 /** Movimenta os itens de um pedido de venda. sinal -1 = baixa (venda), +1 = devolução */

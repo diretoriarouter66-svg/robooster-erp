@@ -38,7 +38,7 @@ export default function Precificacao() {
 
   const loadData = async () => {
     const [prods, chans, configs, prcs] = await Promise.all([
-      base44.entities.Product.list("-created_date", 500),
+      base44.entities.Product.list("-created_date", 1000),
       base44.entities.SalesChannel.list("-created_date", 100),
       base44.entities.ConfigTributaria.list("-created_date", 5),
       base44.entities.ProductPricing.list("-created_date", 1000),

@@ -39,7 +39,7 @@ export default function Contatos() {
 
   const loadData = async () => {
     const [c, t] = await Promise.all([
-      base44.entities.Contato.list("-created_date", 500),
+      base44.entities.Contato.list("-created_date", 1000),
       base44.entities.TipoContato.list("nome", 100),
     ]);
     setContatos(c || []);
