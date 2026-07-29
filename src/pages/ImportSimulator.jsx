@@ -280,6 +280,26 @@ export default function ImportSimulator() {
     setSaving(false);
   };
 
+  const handleDeleteOp = async (op) => {
+    try {
+      const jaEntrou = await operacaoJaDeuEntrada(op.id);
+      let msg = `Excluir a operação "${op.nome || "Sem nome"}"?`;
+      msg += `\n\n• As contas das remessas desta operação no Financeiro serão excluídas.`;
+      if (jaEntrou) {
+        msg += `\n• ATENÇÃO: esta operação JÁ DEU ENTRADA no estoque. A entrada NÃO será desfeita — o Kardex preserva o histórico. Se o estoque precisar voltar, faça um Ajuste de Inventário na tela de Estoque.`;
+      }
+      if (!confirm(msg)) return;
+      const remessas = await base44.entities.FinancialEntry.filter({ reference_id: op.id, reference_type: "import_remessa" }, "-created_date", 100);
+      for (const e of remessas || []) {
+        await base44.entities.FinancialEntry.delete(e.id);
+      }
+      await base44.entities.ImportOperation.delete(op.id);
+    } catch (err) {
+      alert(`Não foi possível excluir a operação: ${err.message}`);
+    }
+    loadData();
+  };
+
   const filteredProducts = products.filter(p =>
     !productSearch ||
     p.name?.toLowerCase().includes(productSearch.toLowerCase()) ||
@@ -331,7 +351,12 @@ export default function ImportSimulator() {
                       <td className="px-4 py-3 text-right hidden lg:table-cell font-medium">{op.resultado_importacao?.totais?.custo_formacao_preco ? fmtBRL(op.resultado_importacao.totais.custo_formacao_preco) : "—"}</td>
                       <td className="px-4 py-3 text-center"><StatusBadge status={op.status} /></td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEdit(op); }}>Abrir</Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEdit(op); }}>Abrir</Button>
+                          <button onClick={e => { e.stopPropagation(); handleDeleteOp(op); }} className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors" title="Excluir operação">
+                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
