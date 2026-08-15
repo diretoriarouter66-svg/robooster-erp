@@ -301,6 +301,11 @@ export default function Products() {
                 <Input type="number" value={form.min_stock || ""} onChange={f("min_stock")} placeholder="0" />
               </div>
               <div>
+                <Label>Lead Time de Reposição (dias)</Label>
+                <Input type="number" value={form.lead_time_dias || ""} onChange={f("lead_time_dias")} placeholder="Ex: 90 (importado)" />
+                <p className="text-[10px] text-muted-foreground mt-1">Quanto tempo demora pra repor. Máquina importada: ~90-120 dias.</p>
+              </div>
+              <div>
                 <Label>Status</Label>
                 <Select value={form.status || "active"} onValueChange={v => setForm({...form, status: v})}>
                   <SelectTrigger><SelectValue /></SelectTrigger>

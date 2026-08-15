@@ -1,0 +1,40 @@
+<?php
+/**
+ * Robooster — Pixel comportamental próprio (CRM/ERP). mu-plugin.
+ * Envia pageview e clique de WhatsApp para o Supabase da empresa (tabela site_eventos).
+ * 1ª parte, cookie próprio (rb_vid), sem terceiros. Opt-out: localStorage.rb_optout = "1".
+ */
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+add_action( 'wp_footer', function () {
+  if ( is_admin() || is_user_logged_in() ) return;
+  ?>
+  <script>
+  (function(){
+    try {
+      if (localStorage.getItem('rb_optout') === '1') return;
+      var m = document.cookie.match(/(?:^|; )rb_vid=([^;]+)/);
+      var vid = m ? m[1] : (Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+      if (!m) document.cookie = 'rb_vid=' + vid + '; max-age=34186698; path=/; SameSite=Lax';
+      var qs = new URLSearchParams(location.search);
+      var utm = {};
+      ['utm_source','utm_medium','utm_campaign','utm_term','utm_content'].forEach(function(k){ if (qs.get(k)) utm[k] = qs.get(k); });
+      var send = function(evento){
+        var payload = JSON.stringify({
+          visitor_id: vid, evento: evento, url: location.pathname,
+          titulo: document.title.slice(0,180), referrer: document.referrer.slice(0,300),
+          utm: Object.keys(utm).length ? utm : null, user_agent: navigator.userAgent.slice(0,200)
+        });
+        navigator.sendBeacon('https://supabase.robooster.com.br/rest/v1/site_eventos?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICJyb2xlIjogImFub24iLAogICJpc3MiOiAic3VwYWJhc2UiLAogICJpYXQiOiAxNzE1MDUwODAwLAogICJleHAiOiAxODcyODE3MjAwCn0.1ipRkm26SsMllqrEG_142hoCRXeQ1vfJd-oyAx1p9b8',
+          new Blob([payload], {type: 'application/json'}));
+      };
+      send('pageview');
+      document.addEventListener('click', function(e){
+        var a = e.target.closest && e.target.closest('a[href*="wa.me"], a[href*="api.whatsapp.com"]');
+        if (a) send('whatsapp_click');
+      }, true);
+    } catch(e) {}
+  })();
+  </script>
+  <?php
+} );

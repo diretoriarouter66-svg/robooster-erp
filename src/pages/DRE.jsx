@@ -12,6 +12,7 @@ import DREDistribution from "@/components/dre/DREDistribution";
 import {
   montarDRE, calcularDistribuicao, sugerirMesesIrrf, configParaMotor, DESPESAS_FIXAS_PADRAO
 } from "@/lib/simportEngine";
+import { simplesEfetivaPct } from "@/lib/taxEngine";
 
 const fmtBRL = (v) => v != null ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v) : "—";
 const fmtPct = (v) => v != null ? `${(v).toFixed(2)}%` : "—";
@@ -236,11 +237,14 @@ export default function DRE() {
     </div>
   );
 
+  if (view === "realizado") return <DRERealizado config={config} onVoltar={() => setView("list")} />;
+
   if (view === "list") return (
     <div>
-      <PageHeader title="DRE — Lucro Presumido" description={`${savedDREs.length} cenários salvos`}
+      <PageHeader title="DRE" description={`${savedDREs.length} cenários simulados`}
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setView("realizado")}><FileBarChart className="w-4 h-4 mr-1" /> DRE Realizada (mês)</Button>
             {compareIds.length >= 2 && (
               <Button variant="outline" onClick={() => setView("compare")}><GitCompare className="w-4 h-4 mr-1" /> Comparar ({compareIds.length})</Button>
             )}
@@ -463,6 +467,91 @@ export default function DRE() {
             )
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+/**
+ * DRE REALIZADA — o mês como ele foi de verdade, direto dos pedidos faturados.
+ * Receita e CMV vêm dos pedidos (status faturado/enviado/entregue no mês);
+ * imposto pelo regime da config (DAS efetivo no Simples); despesas fixas da config.
+ */
+function DRERealizado({ config, onVoltar }) {
+  const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
+  const [orders, setOrders] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      base44.entities.SaleOrder.list("-created_date", 2000),
+      base44.entities.Product.list("-created_date", 1000),
+      base44.entities.SalesChannel.list("-created_date", 50),
+    ]).then(([o, p, ch]) => { setOrders(o || []); setProducts(p || []); setChannels(ch || []); setCarregando(false); });
+  }, []);
+
+  const dre = useMemo(() => {
+    const noMes = orders.filter(o =>
+      ["invoiced", "shipped", "delivered"].includes(o.status) &&
+      ((o.order_date || (o.created_date || "").slice(0, 10)) || "").startsWith(mes)
+    );
+    let receita = 0, cmv = 0, comissoesCanal = 0, itensSemCusto = 0;
+    for (const o of noMes) {
+      receita += o.total || 0;
+      const ch = channels.find(c => c.id === o.channel_id);
+      comissoesCanal += (o.total || 0) * ((ch?.commission_percent || 0) / 100) + (ch?.fixed_fee || 0);
+      for (const i of (o.items || [])) {
+        const p = products.find(pr => pr.id === i.product_id);
+        const c = p ? (p.cost_landed_brl > 0 ? p.cost_landed_brl : (p.custo_manual_brl || 0)) : 0;
+        if (!c && i.product_id) itensSemCusto++;
+        cmv += c * (i.quantity || 0);
+      }
+    }
+    const motor = configParaMotor(config);
+    const impostos = motor.regime === "simples"
+      ? { rotulo: `DAS Simples Nacional (${simplesEfetivaPct(config?.rbt12 || 0).toFixed(2)}%)`, valor: receita * (simplesEfetivaPct(config?.rbt12 || 0) / 100) }
+      : { rotulo: "Impostos (Presumido aprox.)", valor: receita * (motor.pis_venda + motor.cofins_venda + motor.presuncao_irpj * motor.aliq_irpj + motor.presuncao_csll * motor.aliq_csll) };
+    const despesasFixas = (config?.despesas_fixas || []).reduce((s, d) => s + (d.valor || 0), 0);
+    const lucroBruto = receita - cmv;
+    const lucroOperacional = lucroBruto - impostos.valor - comissoesCanal;
+    const resultado = lucroOperacional - despesasFixas;
+    return { noMes: noMes.length, receita, cmv, lucroBruto, impostos, comissoesCanal, despesasFixas, lucroOperacional, resultado, itensSemCusto };
+  }, [orders, products, channels, mes, config]);
+
+  if (carregando) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+
+  const Row = ({ label, value, bold, negative, positive }) => (
+    <div className={`flex justify-between py-1.5 border-b border-border/40 last:border-0 text-sm ${bold ? "font-bold" : ""}`}>
+      <span>{label}</span>
+      <span className={negative ? "text-destructive" : positive ? "text-success" : ""}>{fmtBRL(value)}</span>
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <Button variant="ghost" size="sm" onClick={onVoltar}><ArrowLeft className="w-4 h-4 mr-1" /> Voltar</Button>
+        <h1 className="text-xl font-heading font-bold">DRE Realizada</h1>
+        <Input type="month" value={mes} onChange={e => setMes(e.target.value)} className="w-44 ml-auto" />
+      </div>
+
+      <div className="bg-card rounded-xl border border-border p-5 max-w-xl">
+        <p className="text-xs text-muted-foreground mb-3">{dre.noMes} pedido(s) faturado(s) no mês selecionado — números reais, não simulação.</p>
+        <Row label="Receita Bruta (pedidos faturados)" value={dre.receita} bold />
+        <Row label="(−) CMV (custo dos itens vendidos)" value={dre.cmv} negative />
+        <Row label="(=) Lucro Bruto" value={dre.lucroBruto} bold />
+        <Row label={`(−) ${dre.impostos.rotulo}`} value={dre.impostos.valor} negative />
+        <Row label="(−) Comissões de canal" value={dre.comissoesCanal} negative />
+        <Row label="(=) Lucro Operacional" value={dre.lucroOperacional} bold />
+        <Row label="(−) Despesas fixas (config)" value={dre.despesasFixas} negative />
+        <Row label="(=) RESULTADO DO MÊS" value={dre.resultado} bold positive={dre.resultado >= 0} negative={dre.resultado < 0} />
+        {dre.itensSemCusto > 0 && (
+          <p className="text-[11px] text-warning mt-3">⚠️ {dre.itensSemCusto} item(ns) vendidos sem custo cadastrado — o CMV real é maior e o resultado, menor.</p>
+        )}
+        {(config?.rbt12 || 0) <= 0 && (config?.regime || "simples") === "simples" && (
+          <p className="text-[11px] text-warning mt-1">⚠️ RBT12 zerado na Configuração — DAS calculado pela 1ª faixa (4%).</p>
+        )}
       </div>
     </div>
   );

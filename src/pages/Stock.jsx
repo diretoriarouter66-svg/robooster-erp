@@ -37,11 +37,22 @@ export default function Stock() {
 
   useEffect(() => { loadData(); }, []);
 
+  const [reservas, setReservas] = useState({});
+
   const loadData = async () => {
-    const [p, m] = await Promise.all([
+    const [p, m, orders] = await Promise.all([
       base44.entities.Product.filter({ status: "active" }, "-created_date", 1000),
       base44.entities.StockMovement.list("-created_date", 1000),
+      base44.entities.SaleOrder.list("-created_date", 1000),
     ]);
+    // Reserva = pedidos ainda NÃO faturados (pending/confirmed) — comprometem o estoque sem baixá-lo
+    const res = {};
+    (orders || []).filter(o => ["pending", "confirmed"].includes(o.status)).forEach(o => {
+      (o.items || []).forEach(i => {
+        if (i.product_id) res[i.product_id] = (res[i.product_id] || 0) + (i.quantity || 0);
+      });
+    });
+    setReservas(res);
     setProducts(p);
     setMovements(m);
     setLoading(false);
@@ -114,23 +125,32 @@ export default function Stock() {
                 <thead><tr className="border-b border-border bg-muted/30">
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">SKU</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Produto</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Estoque Atual</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Atual</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Reservado</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Disponível</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Mínimo</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground">Situação</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Kardex</th>
                 </tr></thead>
                 <tbody>
                   {filteredProducts.map((p) => {
-                    const isLow = p.stock_quantity <= (p.min_stock || 0) && p.min_stock > 0;
+                    const reservado = reservas[p.id] || 0;
+                    const disponivel = (p.stock_quantity || 0) - reservado;
+                    const isLow = disponivel <= (p.min_stock || 0) && p.min_stock > 0;
+                    const semNada = disponivel <= 0;
                     return (
-                      <tr key={p.id} className={`border-b border-border last:border-0 hover:bg-muted/20 ${isLow ? "bg-destructive/5" : ""}`}>
+                      <tr key={p.id} className={`border-b border-border last:border-0 hover:bg-muted/20 ${isLow || semNada ? "bg-destructive/5" : ""}`}>
                         <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
                         <td className="px-4 py-3 font-medium">{p.name}</td>
-                        <td className={`px-4 py-3 text-right font-bold ${isLow ? "text-destructive" : ""}`}>{p.stock_quantity || 0}</td>
+                        <td className="px-4 py-3 text-right">{p.stock_quantity || 0}</td>
+                        <td className={`px-4 py-3 text-right ${reservado > 0 ? "text-warning font-semibold" : "text-muted-foreground"}`}>{reservado}</td>
+                        <td className={`px-4 py-3 text-right font-bold ${isLow || semNada ? "text-destructive" : ""}`}>{disponivel}</td>
                         <td className="px-4 py-3 text-right text-muted-foreground hidden sm:table-cell">{p.min_stock || 0}</td>
                         <td className="px-4 py-3 text-center">
-                          {isLow ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-destructive/10 text-destructive"><AlertTriangle className="w-3 h-3" /> Baixo</span>
+                          {isLow || semNada ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-destructive/10 text-destructive">
+                              <AlertTriangle className="w-3 h-3" /> Repor{(p.lead_time_dias || 0) > 0 ? ` já (chega em ~${p.lead_time_dias}d)` : ""}
+                            </span>
                           ) : (
                             <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-success/10 text-success">OK</span>
                           )}

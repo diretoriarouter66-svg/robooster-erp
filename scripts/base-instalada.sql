@@ -22,3 +22,4 @@ CREATE POLICY base_instalada_ver ON base_instalada FOR SELECT TO authenticated U
 CREATE POLICY base_instalada_ins ON base_instalada FOR INSERT TO authenticated WITH CHECK (pode('comercial','editar'));
 CREATE POLICY base_instalada_upd ON base_instalada FOR UPDATE TO authenticated USING (pode('comercial','editar'));
 CREATE POLICY base_instalada_del ON base_instalada FOR DELETE TO authenticated USING (pode('comercial','editar'));
+ALTER TABLE products ADD COLUMN IF NOT EXISTS lead_time_dias int DEFAULT 0; -- dias entre pedir reposição e ela chegar (importação: meses)
