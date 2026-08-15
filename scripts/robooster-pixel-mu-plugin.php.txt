@@ -8,7 +8,31 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 add_action( 'wp_footer', function () {
   if ( is_admin() || is_user_logged_in() ) return;
+  $meta_view_content = '';
+  if ( function_exists( 'is_product' ) && is_product() ) {
+    $meta_view_content = "fbq('track','ViewContent',{content_name:'" . esc_js( get_the_title() ) . "',content_type:'product'});";
+  }
   ?>
+  <script>
+  // ===== Pixel da Meta (conjunto de dados Robooster Site) =====
+  (function(){
+    try {
+      if (localStorage.getItem('rb_optout') === '1') return;
+      !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+      n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+      document,'script','https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '1547298694107494');
+      fbq('track', 'PageView');
+      <?php echo $meta_view_content; ?>
+      document.addEventListener('click', function(e){
+        var a = e.target.closest && e.target.closest('a[href*="wa.me"], a[href*="api.whatsapp.com"]');
+        if (a && window.fbq) fbq('track', 'Contact');
+      }, true);
+    } catch(err) {}
+  })();
+  </script>
   <script>
   (function(){
     try {
