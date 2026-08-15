@@ -26,3 +26,4 @@ RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
     ORDER BY ate LIMIT 1
   ) f;
 $$;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS compativel_com jsonb DEFAULT '[]'::jsonb; -- peça/insumo → ids das máquinas compatíveis

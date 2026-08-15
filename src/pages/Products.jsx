@@ -313,6 +313,29 @@ export default function Products() {
               </div>
             </div>
 
+            {/* COMPATIBILIDADE peça/insumo ↔ máquina */}
+            {["Peças de Reposição", "Insumos"].includes(form.category_name) && (
+              <div className="mt-3 border border-border rounded-lg p-3 bg-muted/20">
+                <Label className="mb-1 block">Compatível com quais máquinas?</Label>
+                <p className="text-[10px] text-muted-foreground mb-2">É isso que responde "qual peça serve na WF-802?" em segundos — marque todas que se aplicam.</p>
+                <div className="flex flex-wrap gap-2">
+                  {products.filter(p => ["Coladeira de Borda", "Coletor de Pó"].includes(p.category_name) && p.id !== form.id).map(m => {
+                    const sel = (form.compativel_com || []).includes(m.id);
+                    return (
+                      <button key={m.id} type="button"
+                        onClick={() => setForm(prev => ({ ...prev, compativel_com: sel ? (prev.compativel_com || []).filter(x => x !== m.id) : [ ...(prev.compativel_com || []), m.id ] }))}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${sel ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border hover:border-primary/50"}`}>
+                        {m.model || m.name}
+                      </button>
+                    );
+                  })}
+                  {products.filter(p => ["Coladeira de Borda", "Coletor de Pó"].includes(p.category_name)).length === 0 && (
+                    <p className="text-xs text-muted-foreground">Cadastre primeiro as máquinas (Coladeiras / Coletores) para vinculá-las aqui.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* DESCRIÇÃO */}
             <div className="mt-3">
               <Label>Descrição</Label>
