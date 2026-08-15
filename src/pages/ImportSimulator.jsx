@@ -469,6 +469,33 @@ export default function ImportSimulator() {
             )}
           </div>
 
+          <div className="bg-card rounded-xl border border-border p-4">
+            <h3 className="font-heading font-semibold text-sm mb-1">Conciliação do Numerário (despachante)</h3>
+            <p className="text-[11px] text-muted-foreground mb-3">Quanto você adiantou em R$ para a nacionalização (impostos + despesas). Após o Calcular, o sistema aponta ressarcimento ou diferença a pagar.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="text-xs">Numerário enviado (R$)</Label><Input type="number" step="0.01" value={form.numerario_enviado_brl ?? ""} onChange={f("numerario_enviado_brl")} placeholder="0,00" /></div>
+              <div><Label className="text-xs">Observação</Label><Input value={form.numerario_obs || ""} onChange={e => setForm({ ...form, numerario_obs: e.target.value })} placeholder="Ex: adiantado à Pesti em 10/08" /></div>
+            </div>
+            {(() => {
+              const enviado = parseFloat(form.numerario_enviado_brl) || 0;
+              const t = importResult?.totais;
+              if (!enviado || !t) return null;
+              const nacionalizacao = (t.ii || 0) + (t.ipi || 0) + (t.pis_imp || 0) + (t.cofins_imp || 0) + (t.icms_imp || 0) + (t.despesas_brl || 0);
+              const saldo = Math.round((enviado - nacionalizacao) * 100) / 100;
+              const fmt = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+              return (
+                <div className={`mt-3 rounded-lg p-3 border ${saldo >= 0 ? "bg-success/10 border-success/30" : "bg-destructive/10 border-destructive/30"}`}>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Numerário enviado</span><span className="font-semibold">{fmt(enviado)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Custo real da nacionalização (impostos + despesas)</span><span className="font-semibold">{fmt(nacionalizacao)}</span></div>
+                  <div className="flex justify-between text-sm border-t border-border mt-1.5 pt-1.5">
+                    <span className="font-medium">{saldo > 0 ? "💰 A RESSARCIR (sobrou)" : saldo < 0 ? "⚠️ DIFERENÇA A PAGAR" : "Conta exata"}</span>
+                    <span className={`font-bold ${saldo >= 0 ? "text-success" : "text-destructive"}`}>{saldo === 0 ? "✓" : fmt(Math.abs(saldo))}</span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
           <div className="flex gap-2">
             <Button className="flex-1" variant="outline" onClick={handleCalculate} disabled={!form.itens?.length}>
               <Calculator className="w-4 h-4 mr-1" /> Calcular

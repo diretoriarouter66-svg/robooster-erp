@@ -26,3 +26,4 @@ INSERT INTO nfe_config (id, ambiente, token, serie, ativo, cnpj_emitente) VALUES
  ('homologacao', 'homologacao', 'n8tKLcBw7q9opX7mCYfB56K1FmZAuy4G', 1, true,  '43926449000198'),
  ('producao',    'producao',    'zAAD6cvNTrxo59DnTNor9rkpCJtgqlyT', 2, false, '43926449000198')
 ON CONFLICT (id) DO UPDATE SET token = EXCLUDED.token, serie = EXCLUDED.serie;
+ALTER TABLE import_operations ADD COLUMN IF NOT EXISTS numerario_enviado_brl numeric, ADD COLUMN IF NOT EXISTS numerario_obs text;
