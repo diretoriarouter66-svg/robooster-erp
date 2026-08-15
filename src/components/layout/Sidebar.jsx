@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Package, Users, Truck, ShoppingCart, Factory,
+  LayoutDashboard, Package, Users, Truck, ShoppingCart, Factory, BookOpen,
   FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse,
   Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container, KeyRound } from
@@ -80,7 +80,8 @@ const menuGroups = [
 {
   label: "Empresa",
   items: [
-  { icon: KeyRound, label: "Controle de Acessos", path: "/acessos" }]
+  { icon: KeyRound, label: "Controle de Acessos", path: "/acessos" },
+  { icon: BookOpen, label: "Manual de Operação", path: "/manual" }]
 
 }];
 
@@ -133,14 +134,14 @@ export default function Sidebar() {
 
   const navContent =
   <div className="flex flex-col h-full">
-      <div className="p-4 flex items-center gap-3 border-b border-sidebar-border">
-        <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center bg-white">
+      <div className="p-4 flex items-center gap-3 border-b border-sidebar-border bg-gradient-to-b from-white/[0.03] to-transparent">
+        <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-white ring-1 ring-white/10 shadow-[0_0_18px_-4px_hsl(26_88%_48%/.55)]">
           <img src="/logo.png" alt="Robooster" className="w-full h-full object-contain" />
         </div>
         {!collapsed &&
       <div>
-            <h1 className="font-heading font-bold text-sm text-sidebar-foreground">Gestor Robooster</h1>
-            <p className="text-[10px] text-sidebar-foreground/50">Gestão de Negócio</p>
+            <h1 className="font-heading font-bold text-sm tracking-wide text-sidebar-foreground">GESTOR <span className="text-sidebar-primary">ROBOOSTER</span></h1>
+            <p className="text-[10px] tracking-[0.18em] uppercase text-sidebar-foreground/40">Máquinas · Peças · Coletores</p>
           </div>
       }
       </div>
@@ -170,10 +171,10 @@ export default function Sidebar() {
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-all duration-150 ${
+                className={`relative flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-all duration-150 ${
                 isActive ?
-                "bg-sidebar-primary text-sidebar-primary-foreground font-medium shadow-sm" :
-                "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"}`
+                "bg-gradient-to-r from-sidebar-primary to-sidebar-primary/80 text-sidebar-primary-foreground font-medium shadow-[0_4px_14px_-4px_hsl(26_88%_48%/.6)]" :
+                "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground hover:translate-x-0.5"}`
                 }
                 title={collapsed ? item.label : undefined}>
                 
