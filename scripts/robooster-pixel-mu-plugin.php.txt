@@ -31,7 +31,15 @@ add_action( 'wp_footer', function () {
       send('pageview');
       document.addEventListener('click', function(e){
         var a = e.target.closest && e.target.closest('a[href*="wa.me"], a[href*="api.whatsapp.com"]');
-        if (a) send('whatsapp_click');
+        if (!a) return;
+        send('whatsapp_click');
+        try {
+          // Assinatura do visitante na mensagem: liga a navegação ao WhatsApp dele
+          var u = new URL(a.href);
+          var ref = ' (ref ' + vid.slice(0, 8) + ')';
+          var t = u.searchParams.get('text') || 'Ol\u00e1! Vim pelo site da Robooster.';
+          if (t.indexOf('(ref ') === -1) { u.searchParams.set('text', t + ref); a.href = u.toString(); }
+        } catch(err) {}
       }, true);
     } catch(e) {}
   })();

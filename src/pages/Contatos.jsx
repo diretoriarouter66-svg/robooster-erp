@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44, supabase } from "@/api/base44Client";
-import { Users, Search, Plus, Pencil, Trash2, Settings2, KeyRound } from "lucide-react";
+import { Users, Search, Plus, Pencil, Trash2, Settings2, KeyRound, Activity } from "lucide-react";
+import TimelineCliente from "../components/contatos/TimelineCliente";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,7 @@ export default function Contatos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [tiposDialogOpen, setTiposDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [timelineContato, setTimelineContato] = useState(null);
   const [form, setForm] = useState({});
   const [novoTipo, setNovoTipo] = useState("");
   const [senhaAcesso, setSenhaAcesso] = useState("");
@@ -236,6 +238,7 @@ export default function Contatos() {
                     <td className="px-4 py-3 hidden lg:table-cell">{c.city || "—"}{c.country && c.country !== "Brasil" ? ` · ${c.country}` : ""}</td>
                     <td className="px-4 py-3 hidden sm:table-cell text-xs">{c.whatsapp || c.phone || "—"}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button onClick={() => setTimelineContato(c)} title="Atividade do cliente (pedidos, máquinas, WhatsApp, site)" className="p-1.5 hover:bg-primary/10 rounded-lg"><Activity className="w-4 h-4 text-primary" /></button>
                       <button onClick={() => openEdit(c)} className="p-1.5 hover:bg-muted rounded-lg"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
                       <button onClick={() => handleDelete(c)} className="p-1.5 hover:bg-muted rounded-lg"><Trash2 className="w-4 h-4 text-destructive" /></button>
                     </td>
@@ -359,6 +362,8 @@ export default function Contatos() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <TimelineCliente contato={timelineContato} open={!!timelineContato} onClose={() => setTimelineContato(null)} />
     </div>
   );
 }
