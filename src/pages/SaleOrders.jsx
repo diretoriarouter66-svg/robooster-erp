@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { Plus, Search, ShoppingCart, Edit, Trash2, Eye } from "lucide-react";
+import { base44, supabase } from "@/api/base44Client";
+import { Plus, Search, ShoppingCart, Edit, Trash2, Eye, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -32,6 +32,53 @@ export default function SaleOrders() {
   const [pricings, setPricings] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
   const [configTrib, setConfigTrib] = useState(null);
+  const [nfeBusy, setNfeBusy] = useState(null);
+
+  // Chama a edge function emitir-nfe com o login do usuário (tokens ficam no servidor)
+  const chamarNfe = async (acao, orderId) => {
+    const { data: sessao } = await supabase.auth.getSession();
+    const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/emitir-nfe`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${sessao?.session?.access_token ?? ""}`,
+      },
+      body: JSON.stringify({ acao, sale_order_id: orderId }),
+    });
+    return r;
+  };
+
+  const handleEmitirNfe = async (o) => {
+    if (!confirm(`Emitir NF-e do pedido ${o.order_number}?`)) return;
+    setNfeBusy(o.id);
+    try {
+      const r = await chamarNfe("emitir", o.id);
+      const resp = await r.json();
+      if (!r.ok) { alert(resp.error || resp.mensagem || "Erro ao emitir."); }
+      else {
+        await new Promise(res => setTimeout(res, 9000));
+        const s = await (await chamarNfe("status", o.id)).json();
+        if (s.status === "autorizado") alert(`✅ NF-e AUTORIZADA!\nNúmero ${s.numero} série ${s.serie}\n${s.chave_nfe}`);
+        else alert(`Status: ${s.status}\n${s.mensagem_sefaz || s.mensagem || "Consulte novamente em instantes."}`);
+      }
+    } catch (err) { alert(`Falha na emissão: ${err.message}`); }
+    setNfeBusy(null);
+    loadData();
+  };
+
+  const handleDanfe = async (o) => {
+    setNfeBusy(o.id);
+    try {
+      const r = await chamarNfe("danfe", o.id);
+      if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || "DANFE indisponível."); }
+      else {
+        const blob = await r.blob();
+        window.open(URL.createObjectURL(blob), "_blank");
+      }
+    } catch (err) { alert(err.message); }
+    setNfeBusy(null);
+  };
 
   useEffect(() => { loadData(); }, []);
 
@@ -115,12 +162,20 @@ export default function SaleOrders() {
     const customer = customers.find(c => c.id === form.customer_id);
     const deveBaixar = STATUS_BAIXA.includes(form.status);
 
+    // CARIMBO FISCAL: grava o regime e a alíquota VIGENTES no momento do pedido.
+    // Mudar a chave Simples→Presumido no futuro NÃO reescreve o histórico — cada
+    // pedido carrega o imposto do seu tempo.
+    const impSnap = calcImpostosPct(configTrib, products.find(p => p.id === orderItems.find(i => i.product_id)?.product_id) || null, canalDoPedido());
+
     const data = {
       ...form,
       customer_name: customer?.name || form.customer_name || "",
       items: orderItems,
       subtotal: sub,
       total,
+      imposto_regime: impSnap.regime,
+      imposto_aliquota: impSnap.total,
+      imposto_valor: Math.round(total * impSnap.total) / 100,
       order_number: form.order_number || `PV-${Date.now().toString(36).toUpperCase()}`,
     };
 
@@ -321,6 +376,18 @@ export default function SaleOrders() {
                       <td className="px-4 py-3 text-center hidden sm:table-cell"><StatusBadge status={o.payment_status} /></td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {o.nfe_status === "autorizado" ? (
+                            <button onClick={() => handleDanfe(o)} disabled={nfeBusy === o.id} title={`NF-e ${o.nfe_numero} autorizada — ver DANFE`}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-success/10 text-success hover:bg-success/20">
+                              {nfeBusy === o.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />} NF {o.nfe_numero}
+                            </button>
+                          ) : STATUS_BAIXA.includes(o.status) ? (
+                            <button onClick={() => handleEmitirNfe(o)} disabled={nfeBusy === o.id} title={o.nfe_mensagem || "Emitir NF-e"}
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium ${o.nfe_status && o.nfe_status !== "autorizado" ? "bg-destructive/10 text-destructive hover:bg-destructive/20" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
+                              {nfeBusy === o.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                              {o.nfe_status && o.nfe_status !== "autorizado" ? "Reemitir" : "Emitir NF-e"}
+                            </button>
+                          ) : null}
                           <button onClick={() => openEdit(o)} className="p-1.5 hover:bg-muted rounded-lg"><Edit className="w-3.5 h-3.5 text-muted-foreground" /></button>
                           <button onClick={() => handleDelete(o.id)} className="p-1.5 hover:bg-destructive/10 rounded-lg"><Trash2 className="w-3.5 h-3.5 text-destructive" /></button>
                         </div>

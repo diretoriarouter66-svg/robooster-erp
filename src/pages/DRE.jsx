@@ -497,8 +497,12 @@ function DRERealizado({ config, onVoltar }) {
       ((o.order_date || (o.created_date || "").slice(0, 10)) || "").startsWith(mes)
     );
     let receita = 0, cmv = 0, comissoesCanal = 0, itensSemCusto = 0;
+    let impostosCarimbados = 0, receitaSemCarimbo = 0;
     for (const o of noMes) {
       receita += o.total || 0;
+      // Preferir o CARIMBO fiscal do pedido (regime/alíquota da época); sem carimbo, cai no cálculo pela config atual
+      if (o.imposto_valor != null && o.imposto_valor >= 0 && o.imposto_regime) impostosCarimbados += o.imposto_valor;
+      else receitaSemCarimbo += o.total || 0;
       const ch = channels.find(c => c.id === o.channel_id);
       comissoesCanal += (o.total || 0) * ((ch?.commission_percent || 0) / 100) + (ch?.fixed_fee || 0);
       for (const i of (o.items || [])) {
@@ -509,9 +513,15 @@ function DRERealizado({ config, onVoltar }) {
       }
     }
     const motor = configParaMotor(config);
-    const impostos = motor.regime === "simples"
-      ? { rotulo: `DAS Simples Nacional (${simplesEfetivaPct(config?.rbt12 || 0).toFixed(2)}%)`, valor: receita * (simplesEfetivaPct(config?.rbt12 || 0) / 100) }
-      : { rotulo: "Impostos (Presumido aprox.)", valor: receita * (motor.pis_venda + motor.cofins_venda + motor.presuncao_irpj * motor.aliq_irpj + motor.presuncao_csll * motor.aliq_csll) };
+    const fallback = motor.regime === "simples"
+      ? receitaSemCarimbo * (simplesEfetivaPct(config?.rbt12 || 0) / 100)
+      : receitaSemCarimbo * (motor.pis_venda + motor.cofins_venda + motor.presuncao_irpj * motor.aliq_irpj + motor.presuncao_csll * motor.aliq_csll);
+    const impostos = {
+      rotulo: motor.regime === "simples"
+        ? `DAS Simples Nacional${impostosCarimbados > 0 ? " (carimbo dos pedidos)" : ` (${simplesEfetivaPct(config?.rbt12 || 0).toFixed(2)}%)`}`
+        : "Impostos (Presumido)",
+      valor: impostosCarimbados + fallback,
+    };
     const despesasFixas = (config?.despesas_fixas || []).reduce((s, d) => s + (d.valor || 0), 0);
     const lucroBruto = receita - cmv;
     const lucroOperacional = lucroBruto - impostos.valor - comissoesCanal;
