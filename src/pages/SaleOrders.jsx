@@ -10,6 +10,7 @@ import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import EmptyState from "../components/shared/EmptyState";
 import { reconciliarPedidoVenda } from "@/lib/stockService";
+import { getCustoVigente, calcImpostosPct } from "@/lib/pricingCalc";
 
 const CHANNEL_TYPE_MAP = {
   direct: "venda_direta",
@@ -30,22 +31,25 @@ export default function SaleOrders() {
   const [channels, setChannels] = useState([]);
   const [pricings, setPricings] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
+  const [configTrib, setConfigTrib] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [o, c, p, ch, pr] = await Promise.all([
+    const [o, c, p, ch, pr, cfgs] = await Promise.all([
       base44.entities.SaleOrder.list("-created_date", 1000),
       base44.entities.Contato.list("-created_date", 1000).then(cs => (cs || []).filter(c => (c.tipos || []).includes("Cliente") && c.status !== "inactive")),
       base44.entities.Product.list("-created_date", 1000),
       base44.entities.SalesChannel.list("-created_date", 50),
       base44.entities.ProductPricing.list("-created_date", 1000),
+      base44.entities.ConfigTributaria.list("-created_date", 5),
     ]);
     setOrders(o);
     setCustomers(c);
     setProducts(p);
     setChannels(ch);
     setPricings(pr);
+    setConfigTrib(cfgs?.[0] || null);
     setLoading(false);
   };
 
@@ -411,6 +415,46 @@ export default function SaleOrders() {
             <div><Label className="text-xs">Frete</Label><Input type="number" step="0.01" value={form.shipping_cost || ""} onChange={e => setForm({...form, shipping_cost: parseFloat(e.target.value) || 0})} /></div>
             <div><Label className="text-xs">Total</Label><Input readOnly className="bg-muted font-bold" value={formatCurrency(calcTotal())} /></div>
           </div>
+
+          {/* MARGEM EM TEMPO REAL — o vendedor nunca fecha no escuro */}
+          {(() => {
+            const receita = calcTotal();
+            if (receita <= 0) return null;
+            const ch = canalDoPedido();
+            const primeiroProduto = products.find(p => p.id === orderItems.find(i => i.product_id)?.product_id) || null;
+            const imp = calcImpostosPct(configTrib, primeiroProduto, ch);
+            const impostosRs = receita * imp.total / 100;
+            const comissaoCanalRs = receita * ((ch?.commission_percent || 0) / 100) + (ch?.fixed_fee || 0);
+            const comissaoVendPct = configTrib?.comissao_vendedor_padrao || 0;
+            const comissaoVendRs = receita * (1 - imp.total / 100) * (comissaoVendPct / 100);
+            let custoProdutos = 0; let itensSemCusto = [];
+            orderItems.forEach(i => {
+              if (!i.product_id) { if (i.name || i.unit_price) itensSemCusto.push(i.name || "item manual"); return; }
+              const p = products.find(pr => pr.id === i.product_id);
+              const c = p ? getCustoVigente(p) : 0;
+              if (!c) itensSemCusto.push(p?.model || p?.name || "produto");
+              custoProdutos += c * (i.quantity || 0);
+            });
+            const freteRs = parseFloat(form.shipping_cost) || 0;
+            const margem = receita - impostosRs - comissaoCanalRs - comissaoVendRs - custoProdutos - freteRs;
+            const margemPct = receita > 0 ? (margem / receita) * 100 : 0;
+            const cor = margem < 0 ? "text-destructive" : margemPct < 12 ? "text-warning" : "text-success";
+            return (
+              <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3">
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs">
+                  <div><p className="text-muted-foreground">Receita</p><p className="font-semibold">{formatCurrency(receita)}</p></div>
+                  <div><p className="text-muted-foreground">{imp.regime === "simples" ? `DAS (${imp.total.toFixed(2)}%)` : `Impostos (${imp.total.toFixed(1)}%)`}</p><p className="font-semibold text-destructive">−{formatCurrency(impostosRs)}</p></div>
+                  <div><p className="text-muted-foreground">Comissão canal</p><p className="font-semibold text-destructive">−{formatCurrency(comissaoCanalRs)}</p></div>
+                  <div><p className="text-muted-foreground">Comissão vendedor</p><p className="font-semibold text-destructive">−{formatCurrency(comissaoVendRs)}</p></div>
+                  <div><p className="text-muted-foreground">Custo + frete</p><p className="font-semibold text-destructive">−{formatCurrency(custoProdutos + freteRs)}</p></div>
+                  <div><p className="text-muted-foreground">MARGEM LÍQUIDA</p><p className={`font-bold text-sm ${cor}`}>{formatCurrency(margem)} <span className="text-xs">({margemPct.toFixed(1)}%)</span></p></div>
+                </div>
+                {itensSemCusto.length > 0 && (
+                  <p className="text-[10px] text-warning mt-2">⚠️ Sem custo cadastrado: {itensSemCusto.join(", ")} — a margem real é MENOR que a exibida. Cadastre o custo (landed ou manual) no produto.</p>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="mt-3">
             <Label>Observações</Label>
