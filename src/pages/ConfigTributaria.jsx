@@ -4,11 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Plus, Trash2, Save, Users, SlidersHorizontal, Loader2 } from "lucide-react";
+import { Plus, Trash2, Save, Users, SlidersHorizontal, Loader2, Landmark, AlertTriangle } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
+import { SIMPLES_ANEXO_I, simplesFaixa, simplesEfetivaPct, simplesAlertas } from "@/lib/taxEngine";
 
 const DEFAULT_CONFIG = {
   nome: "Padrão",
+  regime: "simples",
+  rbt12: 0,
   presuncao_irpj: 8,
   presuncao_csll: 12,
   aliq_irpj: 15,
@@ -85,19 +88,66 @@ export default function ConfigTributaria() {
     </div>
   );
 
+  const regime = config.regime || "simples";
+  const faixa = simplesFaixa(config.rbt12 || 0);
+  const efetiva = simplesEfetivaPct(config.rbt12 || 0);
+  const alertas = simplesAlertas(config.rbt12 || 0);
+  const fmtBRL = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v || 0);
+
   return (
     <div>
-      <PageHeader title="Configuração Tributária" description="Parâmetros do Lucro Presumido e sócios" actions={
+      <PageHeader title="Configuração Tributária" description="Regime, parâmetros fiscais e sócios" actions={
         <Button onClick={handleSave} disabled={saving}>
           {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />} Salvar Configuração
         </Button>
       } />
 
+      <Card className="p-4 mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Landmark className="w-4 h-4 text-primary" />
+          <h3 className="font-heading font-semibold text-sm">Regime Tributário</h3>
+        </div>
+        <div className="flex flex-wrap items-start gap-6">
+          <div>
+            <Label className="mb-2 block">Regime vigente</Label>
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              <button onClick={() => setConfig(p => ({ ...p, regime: "simples" }))}
+                className={`px-4 py-2 text-sm font-medium ${regime === "simples" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}>
+                Simples Nacional
+              </button>
+              <button onClick={() => setConfig(p => ({ ...p, regime: "presumido" }))}
+                className={`px-4 py-2 text-sm font-medium ${regime === "presumido" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}>
+                Lucro Presumido
+              </button>
+            </div>
+          </div>
+          {regime === "simples" && (<>
+            <div className="w-52">
+              <Label>RBT12 — receita bruta dos últimos 12 meses (R$)</Label>
+              <Input type="number" step="1000" value={config.rbt12 ?? 0} onChange={f("rbt12")} />
+              <p className="text-[10px] text-muted-foreground mt-1">Pegue com o contador ou no PGDAS. Define a alíquota efetiva de TODO o sistema.</p>
+            </div>
+            <div className="bg-muted/40 rounded-lg px-4 py-3 text-sm">
+              <div className="flex gap-6">
+                <div><p className="text-[10px] text-muted-foreground">Anexo I · Faixa</p><p className="font-bold">{faixa.faixa}ª (até {fmtBRL(faixa.ate)})</p></div>
+                <div><p className="text-[10px] text-muted-foreground">Alíq. nominal</p><p className="font-bold">{faixa.aliq.toFixed(2)}%</p></div>
+                <div><p className="text-[10px] text-muted-foreground">Alíquota EFETIVA (DAS)</p><p className="font-bold text-primary text-lg">{efetiva.toFixed(2)}%</p></div>
+              </div>
+              {(config.rbt12 || 0) <= 0 && <p className="text-[11px] text-warning mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> RBT12 zerado — usando a 1ª faixa (4%). Preencha para o cálculo real.</p>}
+              {alertas.map((a, i) => <p key={i} className="text-[11px] text-destructive mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> {a.msg}</p>)}
+            </div>
+          </>)}
+          {regime === "presumido" && (
+            <p className="text-sm text-muted-foreground self-center">Usando os parâmetros do Lucro Presumido abaixo.</p>
+          )}
+        </div>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="p-4">
+        <Card className={`p-4 ${regime === "simples" ? "opacity-60" : ""}`}>
           <div className="flex items-center gap-2 mb-3">
             <SlidersHorizontal className="w-4 h-4 text-primary" />
-            <h3 className="font-heading font-semibold text-sm">Parâmetros Lucro Presumido</h3>
+            <h3 className="font-heading font-semibold text-sm">Parâmetros Lucro Presumido{regime === "simples" ? " (inativos — regime Simples)" : ""}</h3>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Presunção IRPJ (%)</Label><Input type="number" step="0.1" value={config.presuncao_irpj ?? 8} onChange={f("presuncao_irpj")} /></div>

@@ -7,19 +7,26 @@ export function hasCostLanded(product) {
   return product.cost_landed_brl != null && product.cost_landed_brl > 0;
 }
 
+import { isSimples, simplesEfetivaPct } from "@/lib/taxEngine";
+
 /**
- * Impostos sobre a venda (Lucro Presumido), por canal:
- * ICMS de saída = alíquota do CANAL (aliq_icms_venda) quando definida;
- * senão, 8,8% se o produto tem benefício Conv. 52/91; senão, a alíquota do produto.
+ * Impostos sobre a venda, por regime:
+ * — SIMPLES (padrão): DAS pela alíquota efetiva do Anexo I (RBT12 na config).
+ *   O DAS engloba ICMS/PIS/COFINS/IRPJ/CSLL — a alíquota de ICMS do canal é ignorada.
+ * — LUCRO PRESUMIDO: PIS + COFINS + ICMS (canal ou produto) + IRPJ/CSLL sobre presunção.
  */
 export function calcImpostosPct(config, product, channel) {
+  if (isSimples(config)) {
+    const das = simplesEfetivaPct(config?.rbt12 || 0);
+    return { regime: "simples", pis: 0, cofins: 0, icms: 0, irpjEfetivo: 0, csllEfetiva: 0, das, total: das };
+  }
   const pis = config?.pis_venda || 0;
   const cofins = config?.cofins_venda || 0;
   const icmsProduto = product?.beneficio_5291 ? 8.8 : (product?.icms_rate || 0);
   const icms = (channel?.aliq_icms_venda != null && channel?.aliq_icms_venda !== "") ? channel.aliq_icms_venda : icmsProduto;
   const irpjEfetivo = (config?.presuncao_irpj || 0) * (config?.aliq_irpj || 0) / 100;
   const csllEfetiva = (config?.presuncao_csll || 0) * (config?.aliq_csll || 0) / 100;
-  return { pis, cofins, icms, irpjEfetivo, csllEfetiva, total: pis + cofins + icms + irpjEfetivo + csllEfetiva };
+  return { regime: "presumido", pis, cofins, icms, irpjEfetivo, csllEfetiva, das: 0, total: pis + cofins + icms + irpjEfetivo + csllEfetiva };
 }
 
 export function getMasterChannel(channels) {

@@ -37,18 +37,22 @@ export default function DREResults({ dre }) {
       <Row label="(−) CMV (Custo Formação)" value={dre.cmv} negative />
       <Row label="(=) Lucro Bruto" value={dre.lucro_bruto} bold total />
 
-      <Row label="(−) PIS s/ Venda" value={dre.pis_venda} negative indent />
-      <Row label="(−) COFINS s/ Venda" value={dre.cofins_venda} negative indent />
-      <Row label="(−) ICMS débito" value={dre.icms_debito} negative indent />
-      {dre.icms_credito_utilizado > 0 && (
-        <Row label="(+) ICMS crédito utilizado" value={dre.icms_credito_utilizado} positive indent />
-      )}
-      <Row label="ICMS a pagar" value={dre.icms_a_pagar} negative indent />
-      {dre.saldo_credor_icms_remanescente > 0 && (
-        <Row label="  Crédito ICMS remanescente" value={dre.saldo_credor_icms_remanescente} positive indent />
-      )}
-      <Row label="(−) IRPJ" value={dre.irpj + dre.adicional_irpj} negative indent />
-      <Row label="(−) CSLL" value={dre.csll} negative indent />
+      {dre.regime === "simples" ? (
+        <Row label={`(−) DAS Simples Nacional (alíq. efetiva ${(dre.aliquota_efetiva_simples || 0).toFixed(2)}%)`} value={dre.das} negative indent />
+      ) : (<>
+        <Row label="(−) PIS s/ Venda" value={dre.pis_venda} negative indent />
+        <Row label="(−) COFINS s/ Venda" value={dre.cofins_venda} negative indent />
+        <Row label="(−) ICMS débito" value={dre.icms_debito} negative indent />
+        {dre.icms_credito_utilizado > 0 && (
+          <Row label="(+) ICMS crédito utilizado" value={dre.icms_credito_utilizado} positive indent />
+        )}
+        <Row label="ICMS a pagar" value={dre.icms_a_pagar} negative indent />
+        {dre.saldo_credor_icms_remanescente > 0 && (
+          <Row label="  Crédito ICMS remanescente" value={dre.saldo_credor_icms_remanescente} positive indent />
+        )}
+        <Row label="(−) IRPJ" value={dre.irpj + dre.adicional_irpj} negative indent />
+        <Row label="(−) CSLL" value={dre.csll} negative indent />
+      </>)}
       <Row label="(=) Total Impostos" value={dre.total_impostos} negative bold total />
 
       <Row label="(=) Lucro Operacional" value={dre.lucro_operacional} bold total />

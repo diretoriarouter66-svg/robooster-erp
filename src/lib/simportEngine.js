@@ -3,9 +3,16 @@
  * Portado integralmente do app SimPort/Lucro Presumido (calcEngine.js validado).
  * NÃO ALTERAR A MATEMÁTICA DESTE ARQUIVO — é a fonte única de verdade dos cálculos.
  *
+ * REGIME SIMPLES NACIONAL (15/08/2026): adicionado como CAMADA, sem tocar nas
+ * fórmulas do Presumido — quando config.regime === 'simples':
+ *  · importação: NENHUM crédito (ICMS-imp, IPI, PIS/COFINS-imp viram custo);
+ *  · venda: DAS único pela alíquota efetiva do Anexo I (lib/taxEngine.js).
+ *
  * Inclui adaptadores no final: produtoFromProduct() e configParaMotor()
  * para converter as entidades do ERP (Product, ConfigTributaria) ao formato do motor.
  */
+
+import { simplesEfetivaPct } from "@/lib/taxEngine";
 
 // ============================================================
 // A) CUSTO DE IMPORTAÇÃO
@@ -83,7 +90,7 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
     };
   }
 
-  return {
+  const resultado = {
     quantidade,
     fob_total_usd: arred(fob_total_usd),
     fob_total_brl: arred(fob_total_brl),
@@ -109,6 +116,20 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
     ex_tarifario_vigente: exTarifarioVigente,
     economia_ex_tarifario,
   };
+
+  // SIMPLES: nada se recupera — ICMS-imp e IPI (mesmo "recuperável") entram no custo.
+  if ((config?.regime || "") === "simples") {
+    const custoSimples = custo_formacao_preco + icms_imp + (produto.ipi_recuperavel ? ipi : 0);
+    resultado.custo_formacao_preco = arred(custoSimples);
+    resultado.desembolso_caixa = arred(custoSimples);
+    resultado.custo_unitario_formacao = arred(custoSimples / quantidade);
+    resultado.custo_unitario_desembolso = arred(custoSimples / quantidade);
+    resultado.credito_icms = 0;
+    resultado.credito_ipi = 0;
+    resultado.regime = "simples";
+  }
+
+  return resultado;
 }
 
 /**
@@ -182,6 +203,9 @@ export function calcularOperacaoImportacao(itens, operacao, config, dataCompeten
 // ============================================================
 
 export function calcularImpostosVenda(vendas, config, saldoCredorIcms = 0, saldoCredorIpi = 0, dataCompetencia = "2026-01-01", mixGeografico = null) {
+  if ((config?.regime || "") === "simples") {
+    return calcularImpostosVendaSimples(vendas, config);
+  }
   const regime = selecionarRegime(dataCompetencia);
   if (regime === 'CBS') {
     return calcularImpostosVendaCBS(vendas, config, saldoCredorIcms, saldoCredorIpi);
@@ -294,6 +318,36 @@ export function calcularImpostosVenda(vendas, config, saldoCredorIcms = 0, saldo
     ...irpj_csll,
     total_impostos: arred(total_impostos),
     alerta_acumulo_credito: saldo_credor_icms_remanescente > 0,
+  };
+}
+
+/**
+ * SIMPLES NACIONAL — venda: DAS único pela alíquota efetiva do Anexo I.
+ * Devolve o MESMO formato do Presumido (chaves zeradas onde não se aplica)
+ * para as telas não quebrarem, + campos das/aliquota_efetiva.
+ */
+export function calcularImpostosVendaSimples(vendas, config) {
+  const receita = vendas.reduce((s, v) => s + v.preco_unitario * v.quantidade, 0);
+  const aliqEfetivaPct = simplesEfetivaPct(config?.rbt12 || 0);
+  const das = receita * (aliqEfetivaPct / 100);
+  return {
+    regime: "simples",
+    receita: arred(receita),
+    pis_venda: 0,
+    cofins_venda: 0,
+    icms_debito: 0,
+    icms_credito_utilizado: 0,
+    icms_a_pagar: 0,
+    saldo_credor_icms_remanescente: 0,
+    detalhe_icms: [],
+    detalhe_icms_por_faixa: null,
+    irpj: 0,
+    adicional_irpj: 0,
+    csll: 0,
+    das: arred(das),
+    aliquota_efetiva: aliqEfetivaPct,
+    total_impostos: arred(das),
+    alerta_acumulo_credito: false,
   };
 }
 
@@ -421,6 +475,9 @@ export function montarDRE(importacao, vendas, config, socios, saldoCredorIcms = 
     irpj: impostos.irpj,
     adicional_irpj: impostos.adicional_irpj,
     csll: impostos.csll,
+    das: impostos.das || 0,
+    aliquota_efetiva_simples: impostos.aliquota_efetiva || 0,
+    regime: impostos.regime || "presumido",
     total_impostos: impostos.total_impostos,
     lucro_operacional: arred(lucro_operacional),
     comissoes: arred(comissoes),
@@ -630,6 +687,8 @@ export const DESPESAS_FIXAS_PADRAO = [
 export function configParaMotor(dbConfig) {
   const c = dbConfig || {};
   return {
+    regime: c.regime || "simples",
+    rbt12: c.rbt12 || 0,
     cambio_usd: c.cambio_usd || CONFIG_DEFAULTS.cambio_usd,
     pis_venda: (c.pis_venda ?? CONFIG_DEFAULTS.pis_venda) / 100,
     cofins_venda: (c.cofins_venda ?? CONFIG_DEFAULTS.cofins_venda) / 100,

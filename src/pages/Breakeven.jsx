@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PageHeader from "../components/shared/PageHeader";
 import { configParaMotor, DESPESAS_FIXAS_PADRAO } from "@/lib/simportEngine";
+import { simplesEfetivaPct } from "@/lib/taxEngine";
 
 const formatBRL = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
 
@@ -51,7 +52,10 @@ export default function Breakeven() {
     const preco = vendaDiretaPrices[r.produto.id] || 0;
     const custoUnit = r.custo_unitario_formacao || 0;
     const aliqIcms = r.produto.beneficio_5291 ? 0.088 : ((r.produto.aliq_icms || 18) / 100);
-    const impostosPorUnidade = preco * (motorConfig.pis_venda + motorConfig.cofins_venda + aliqIcms + motorConfig.presuncao_irpj * motorConfig.aliq_irpj + motorConfig.presuncao_csll * motorConfig.aliq_csll);
+    const fracImpostos = motorConfig.regime === "simples"
+      ? simplesEfetivaPct(motorConfig.rbt12) / 100
+      : (motorConfig.pis_venda + motorConfig.cofins_venda + aliqIcms + motorConfig.presuncao_irpj * motorConfig.aliq_irpj + motorConfig.presuncao_csll * motorConfig.aliq_csll);
+    const impostosPorUnidade = preco * fracImpostos;
     const lucroUnit = preco - custoUnit - impostosPorUnidade;
     const breakevenUn = lucroUnit > 0 ? fixasMes / lucroUnit : null;
     return { produto: r.produto, preco, custoUnit, impostosPorUnidade, lucroUnit, breakevenUn, quantidade: r.quantidade };
