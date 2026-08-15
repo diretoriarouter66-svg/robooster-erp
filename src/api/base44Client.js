@@ -31,6 +31,7 @@ const TABLE = {
   ImportOperation: 'import_operations',
   StockMovement: 'stock_movements',
   SaleOrder: 'sale_orders',
+  BaseInstalada: 'base_instalada',
   FinancialEntry: 'financial_entries',
   DRESalvo: 'dre_salvos',
   PurchaseOrder: 'purchase_orders',

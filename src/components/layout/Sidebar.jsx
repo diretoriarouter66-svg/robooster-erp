@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Package, Users, Truck, ShoppingCart,
+  LayoutDashboard, Package, Users, Truck, ShoppingCart, Factory,
   FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse,
   Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container, KeyRound } from
@@ -19,6 +19,7 @@ const MODULO_DO_ITEM = {
   "/categorias": "produtos",
   "/purchase-orders": "comercial",
   "/sale-orders": "comercial",
+  "/base-instalada": "comercial",
   "/precificacao": "comercial",
   "/stock": "estoque",
   "/import-simulator": "importacao",
@@ -54,6 +55,7 @@ const menuGroups = [
   items: [
   { icon: FileText, label: "Pedidos de Compra", path: "/purchase-orders" },
   { icon: ShoppingCart, label: "Pedidos de Venda", path: "/sale-orders" },
+  { icon: Factory, label: "Base Instalada", path: "/base-instalada" },
   { icon: Percent, label: "Precificação", path: "/precificacao" },
   { icon: Warehouse, label: "Estoque", path: "/stock" }]
 

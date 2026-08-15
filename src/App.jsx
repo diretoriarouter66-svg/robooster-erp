@@ -21,6 +21,7 @@ import Precificacao from './pages/Precificacao';
 
 import PurchaseOrders from './pages/PurchaseOrders';
 import SaleOrders from './pages/SaleOrders';
+import BaseInstalada from './pages/BaseInstalada';
 import Stock from './pages/Stock';
 import Financial from './pages/Financial';
 import Reports from './pages/Reports';
@@ -72,6 +73,7 @@ const AuthenticatedApp = () => {
 
           <Route path="/purchase-orders" element={<PurchaseOrders />} />
           <Route path="/sale-orders" element={<SaleOrders />} />
+          <Route path="/base-instalada" element={<BaseInstalada />} />
           <Route path="/stock" element={<Stock />} />
           <Route path="/financial" element={<Financial />} />
           <Route path="/reports" element={<Reports />} />

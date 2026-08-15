@@ -146,6 +146,30 @@ export default function SaleOrders() {
       return;
     }
 
+    // 2b) Base instalada: pedido faturado com MÁQUINA → cliente passa a "possuir" a máquina.
+    // Reconciliação simples: apaga os registros deste pedido e recria (edições não duplicam).
+    try {
+      const existentes = await base44.entities.BaseInstalada.filter({ sale_order_id: orderId }, "-created_date", 100);
+      for (const b of (existentes || [])) await base44.entities.BaseInstalada.delete(b.id);
+      if (deveBaixar && form.customer_id) {
+        for (const item of orderItems) {
+          const p = products.find(pr => pr.id === item.product_id);
+          if (!p || !["Coladeira de Borda", "Coletor de Pó"].includes(p.category_name)) continue;
+          for (let n = 0; n < (item.quantity || 1); n++) {
+            await base44.entities.BaseInstalada.create({
+              contato_id: form.customer_id,
+              product_id: p.id,
+              sale_order_id: orderId,
+              data_venda: (form.order_date || new Date().toISOString().slice(0, 10)),
+              origem: "pedido",
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Base instalada não atualizada:", err);
+    }
+
     // 3) Financeiro: contas a receber automáticas (parcelas + liberação do marketplace).
     // Erro aqui precisa aparecer: engolir a consulta duplicaria parcelas.
     try {
