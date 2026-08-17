@@ -39,7 +39,11 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
   // estimativa antiga (percentual global).
   const va_real = fob_total_brl + frete_rateado_brl + seguro_rateado_brl;
   let va;
-  if (produto.fob_declarado_unitario_usd !== undefined && produto.fob_declarado_unitario_usd !== null) {
+  if (produto.nao_declarado) {
+    // item que NÃO aparece na invoice (acompanha a máquina): sem VA, sem impostos,
+    // sem rateios — o custo dele é só o preço real × câmbio.
+    va = 0;
+  } else if (produto.fob_declarado_unitario_usd !== undefined && produto.fob_declarado_unitario_usd !== null) {
     const fob_declarado_brl = produto.fob_declarado_unitario_usd * quantidade * cambio;
     va = fob_declarado_brl + frete_rateado_brl + seguro_rateado_brl;
   } else {
@@ -164,11 +168,15 @@ function volumesEfetivos(itens, operacao) {
 }
 
 export function calcularRateios(itens, operacao) {
-  const totalFobUsd = itens.reduce((s, i) => s + i.produto.fob_unitario_usd * i.quantidade, 0);
+  const conta = (i) => !i.produto.nao_declarado; // não declarado não participa dos rateios
+  const totalFobUsd = itens.reduce((s, i) => s + (conta(i) ? i.produto.fob_unitario_usd * i.quantidade : 0), 0);
   const vols = volumesEfetivos(itens, operacao);
-  const totalVolM3 = vols.reduce((s, v) => s + v, 0);
+  const totalVolM3 = vols.reduce((s, v, ix) => s + (conta(itens[ix]) ? v : 0), 0);
 
   return itens.map((item, _idx) => {
+    if (!conta(item)) {
+      return { produto_id: item.produto.id || item.produto.nome, frete_rateado_usd: 0, despesas_rateadas_usd: 0, seguro_rateado_usd: 0 };
+    }
     const fobUsd = item.produto.fob_unitario_usd * item.quantidade;
     const volM3 = vols[_idx];
 

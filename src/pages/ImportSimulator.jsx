@@ -110,6 +110,7 @@ export default function ImportSimulator() {
       // valor declarado POR ITEM (padrão = FOB real do cadastro)
       const decl = parseFloat(it.fob_declarado_usd);
       produto.fob_declarado_unitario_usd = isNaN(decl) ? produto.fob_unitario_usd : decl;
+      produto.nao_declarado = !!it.nao_declarado;
       return { produto, quantidade: it.qty };
     }).filter(it => it.produto && it.quantidade > 0);
   };
@@ -230,7 +231,7 @@ export default function ImportSimulator() {
 
     const result = calcularOperacaoImportacao(engineItems, operacaoEngine, configMotor, form.data || "2026-01-01", 1.0);
     // Comparativo: mesmo mix com declaração 100% (declarado = real)
-    const itensCheio = engineItems.map(it => ({ ...it, produto: { ...it.produto, fob_declarado_unitario_usd: it.produto.fob_unitario_usd } }));
+    const itensCheio = engineItems.map(it => ({ ...it, produto: { ...it.produto, fob_declarado_unitario_usd: it.produto.fob_unitario_usd, nao_declarado: false } }));
     const resultCheio = calcularOperacaoImportacao(itensCheio, operacaoEngine, configMotor, form.data || "2026-01-01", 1.0);
     const somaImp = (t) => (t.ii || 0) + (t.ipi || 0) + (t.pis_imp || 0) + (t.cofins_imp || 0) + (t.icms_imp || 0);
     result.comparativo_cheio = {
@@ -574,10 +575,17 @@ export default function ImportSimulator() {
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <Input type="number" min="1" value={item.qty || ""} onChange={e => updateItem(i, "qty", parseInt(e.target.value) || 0)} className="h-7 w-16 text-sm" placeholder="Qtd" />
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">Declarado US$/un</span>
-                      <Input type="number" step="0.01" value={item.fob_declarado_usd ?? ""} onChange={e => updateItem(i, "fob_declarado_usd", e.target.value)} className="h-7 w-24 text-sm" placeholder={String(products.find(pr => pr.id === item.product_id)?.cost_fob_usd ?? "")} />
-                    </div>
+                    {!item.nao_declarado && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">Declarado US$/un</span>
+                        <Input type="number" step="0.01" value={item.fob_declarado_usd ?? ""} onChange={e => updateItem(i, "fob_declarado_usd", e.target.value)} className="h-7 w-24 text-sm" placeholder={String(products.find(pr => pr.id === item.product_id)?.cost_fob_usd ?? "")} />
+                      </div>
+                    )}
+                    <button type="button" onClick={() => updateItem(i, "nao_declarado", !item.nao_declarado)}
+                      title="Item que NÃO aparece na invoice (acompanha a máquina como reposição): sem impostos e sem rateios — custo = preço real × câmbio"
+                      className={`px-2 py-1 rounded text-[10px] font-medium ${item.nao_declarado ? "bg-warning/20 text-warning" : "bg-muted text-muted-foreground"}`}>
+                      {item.nao_declarado ? "🚫 não declarado" : "declarado"}
+                    </button>
                     <button type="button" onClick={() => updateItem(i, "consolidado", !(item.consolidado ?? products.find(pr => pr.id === item.product_id)?.embalagem_consolidada))}
                       title="Nesta operação, esta peça embarca dentro da caixa de peças consolidada?"
                       className={`px-2 py-1 rounded text-[10px] font-medium ${(item.consolidado ?? products.find(pr => pr.id === item.product_id)?.embalagem_consolidada) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
