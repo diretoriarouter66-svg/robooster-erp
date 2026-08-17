@@ -34,9 +34,17 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
   const frete_rateado_brl = rateio.frete_rateado_usd * cambio;
   const seguro_rateado_brl = (rateio.seguro_rateado_usd || 0) * cambio;
 
-  // Valor Aduaneiro DECLARADO = VA real × pctDeclarado
+  // Valor Aduaneiro: se o produto traz FOB DECLARADO próprio (por item da operação),
+  // o VA usa o declarado + frete/seguro REAIS (como na DI). Senão, cai no modo
+  // estimativa antiga (percentual global).
   const va_real = fob_total_brl + frete_rateado_brl + seguro_rateado_brl;
-  const va = va_real * pctDeclarado;
+  let va;
+  if (produto.fob_declarado_unitario_usd !== undefined && produto.fob_declarado_unitario_usd !== null) {
+    const fob_declarado_brl = produto.fob_declarado_unitario_usd * quantidade * cambio;
+    va = fob_declarado_brl + frete_rateado_brl + seguro_rateado_brl;
+  } else {
+    va = va_real * pctDeclarado;
+  }
 
   // II — zerado se ex-tarifário vigente
   const exTarifarioVigente = produto.ex_tarifario && isExTarifarioValido(produto.ex_tarifario_validade, dataCompetencia);
@@ -98,7 +106,7 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
     seguro_rateado_brl: arred(seguro_rateado_brl),
     va_real: arred(va_real),
     va: arred(va),
-    pct_declarado: pctDeclarado,
+    pct_declarado: va_real > 0 ? arred(va / va_real) : 1,
     ii: arred(ii),
     ipi: arred(ipi),
     pis_imp: arred(pis_imp),
