@@ -135,16 +135,34 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
 /**
  * Rateios: frete por volume (m³); despesas locais e seguro por valor FOB.
  */
+export const CAIXA_PECAS_PADRAO = { c_mm: 600, l_mm: 400, a_mm: 400 };
+
+/* Peças com embalagem_consolidada viajam TODAS dentro de uma caixa única:
+ * o volume individual delas não existe — o que ocupa espaço (e paga frete por m³)
+ * é a caixa consolidada. O volume da caixa é repartido entre as peças por valor FOB. */
+function volumesEfetivos(itens, operacao) {
+  const caixa = operacao?.caixa_pecas || CAIXA_PECAS_PADRAO;
+  const caixaVol = ((caixa.c_mm || 0) * (caixa.l_mm || 0) * (caixa.a_mm || 0)) / 1e9;
+  const consolidados = itens.filter(i => i.produto.embalagem_consolidada);
+  const fobConsolidado = consolidados.reduce((s, i) => s + i.produto.fob_unitario_usd * i.quantidade, 0);
+  return itens.map(i => {
+    if (i.produto.embalagem_consolidada) {
+      if (!consolidados.length) return 0;
+      const fobItem = i.produto.fob_unitario_usd * i.quantidade;
+      return fobConsolidado > 0 ? caixaVol * (fobItem / fobConsolidado) : caixaVol / consolidados.length;
+    }
+    return (i.produto.caixa_c_mm * i.produto.caixa_l_mm * i.produto.caixa_a_mm) / 1e9 * i.quantidade;
+  });
+}
+
 export function calcularRateios(itens, operacao) {
   const totalFobUsd = itens.reduce((s, i) => s + i.produto.fob_unitario_usd * i.quantidade, 0);
-  const totalVolM3 = itens.reduce((s, i) => {
-    const vol = (i.produto.caixa_c_mm * i.produto.caixa_l_mm * i.produto.caixa_a_mm) / 1e9 * i.quantidade;
-    return s + vol;
-  }, 0);
+  const vols = volumesEfetivos(itens, operacao);
+  const totalVolM3 = vols.reduce((s, v) => s + v, 0);
 
-  return itens.map(item => {
+  return itens.map((item, _idx) => {
     const fobUsd = item.produto.fob_unitario_usd * item.quantidade;
-    const volM3 = (item.produto.caixa_c_mm * item.produto.caixa_l_mm * item.produto.caixa_a_mm) / 1e9 * item.quantidade;
+    const volM3 = vols[_idx];
 
     const frete_rateado_usd = totalVolM3 > 0
       ? (operacao.frete_internacional_usd * volM3 / totalVolM3)
@@ -492,12 +510,28 @@ export function montarDRE(importacao, vendas, config, socios, saldoCredorIcms = 
 // E) CUBAGEM DE CONTAINER
 // ============================================================
 
-export function calcularCubagem(itens, container) {
+export function calcularCubagem(itens, container, caixaPecas) {
   const { comprimento_mm, largura_mm, altura_mm } = container;
   let comprimentoUsado = 0;
   const detalhe = [];
 
-  for (const item of itens) {
+  // Peças consolidadas: saem do laço individual e entram como UMA caixa única
+  const consolidados = itens.filter(i => i.produto.embalagem_consolidada);
+  let itensCubagem = itens.filter(i => !i.produto.embalagem_consolidada);
+  if (consolidados.length) {
+    const cx = caixaPecas || CAIXA_PECAS_PADRAO;
+    const conteudo = consolidados.map(i => `${i.quantidade}× ${i.produto.nome}`).join(', ');
+    itensCubagem = itensCubagem.concat([{
+      produto: {
+        nome: `Caixa de peças consolidada (${conteudo})`,
+        caixa_c_mm: cx.c_mm || 600, caixa_l_mm: cx.l_mm || 400, caixa_a_mm: cx.a_mm || 400,
+        empilhavel: true, pode_deitar: true,
+      },
+      quantidade: 1,
+    }]);
+  }
+
+  for (const item of itensCubagem) {
     const { produto, quantidade } = item;
     const c = produto.caixa_c_mm;
     const l = produto.caixa_l_mm;
@@ -652,6 +686,7 @@ export function produtoFromProduct(p) {
     caixa_a_mm: (p.height_cm || 0) * 10,
     pode_deitar: !!p.pode_deitar,
     empilhavel: p.empilhavel !== false,
+    embalagem_consolidada: !!p.embalagem_consolidada,
     peso_kg: p.weight_kg || 0,
   };
 }

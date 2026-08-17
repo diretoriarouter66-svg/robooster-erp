@@ -117,6 +117,7 @@ export default function ImportSimulator() {
     return totalUsd > 0 ? totalBrl / totalUsd : null;
   };
   const cambioMedio = calcCambioMedio(form.remessas);
+  const temConsolidada = (form.itens || []).some(it => products.find(pr => pr.id === it.product_id)?.embalagem_consolidada);
   const cambioEfetivo = cambioMedio ?? (form.cambio || config?.cambio_usd || 5.3);
 
   // Quitação do fornecedor: as remessas devem cobrir o valor da compra (FOB do mix)
@@ -167,10 +168,10 @@ export default function ImportSimulator() {
     const engineItems = buildEngineItems();
     if (!engineItems.length) { alert("A operação não tem produtos."); return; }
     const configMotor = configParaMotor(config);
-    const operacaoEngine = { cambio: cambioEfetivo, frete_internacional_usd: form.frete_internacional_usd || 0, despesas_locais_usd: form.despesas_locais_usd || 0, seguro_usd: form.seguro_usd || 0 };
+    const operacaoEngine = { cambio: cambioEfetivo, frete_internacional_usd: form.frete_internacional_usd || 0, despesas_locais_usd: form.despesas_locais_usd || 0, seguro_usd: form.seguro_usd || 0, caixa_pecas: form.caixa_pecas };
     const result = calcularOperacaoImportacao(engineItems, operacaoEngine, configMotor, form.data || "2026-01-01", (form.pct_declarado ?? 100) / 100);
     const container = CONTAINERS_PADRAO.find(c => c.nome === form.container_tipo) || CONTAINERS_PADRAO[2];
-    const cubage = calcularCubagem(engineItems, container);
+    const cubage = calcularCubagem(engineItems, container, form.caixa_pecas);
     setImportResult(result);
     setCubageResult(cubage);
     setResumoFinal(result);
@@ -218,13 +219,14 @@ export default function ImportSimulator() {
       frete_internacional_usd: form.frete_internacional_usd || 0,
       despesas_locais_usd: form.despesas_locais_usd || 0,
       seguro_usd: form.seguro_usd || 0,
+      caixa_pecas: form.caixa_pecas,
     };
 
     const result = calcularOperacaoImportacao(engineItems, operacaoEngine, configMotor, form.data || "2026-01-01", (form.pct_declarado ?? 100) / 100);
     setImportResult(result);
 
     const container = CONTAINERS_PADRAO.find(c => c.nome === form.container_tipo) || CONTAINERS_PADRAO[2];
-    const cubage = calcularCubagem(engineItems, container);
+    const cubage = calcularCubagem(engineItems, container, form.caixa_pecas);
     setCubageResult(cubage);
   };
 
@@ -415,6 +417,17 @@ export default function ImportSimulator() {
               <div><Label>Frete Internacional (USD)</Label><Input type="number" step="0.01" value={form.frete_internacional_usd ?? ""} onChange={f("frete_internacional_usd")} /></div>
               <div><Label>Seguro (USD)</Label><Input type="number" step="0.01" value={form.seguro_usd ?? ""} onChange={f("seguro_usd")} /></div>
               <div><Label>Despesas Locais (USD)</Label><Input type="number" step="0.01" value={form.despesas_locais_usd ?? ""} onChange={f("despesas_locais_usd")} /></div>
+              {temConsolidada && (
+                <div className="sm:col-span-2 border border-dashed rounded-lg p-3">
+                  <Label className="font-semibold">Caixa de peças consolidada (mm)</Label>
+                  <p className="text-xs text-muted-foreground mb-2">As peças de reposição marcadas como "consolidadas" viajam TODAS dentro desta caixa única — é ela que entra na cubagem do container e no rateio do frete.</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><Label className="text-xs">Comprimento</Label><Input type="number" value={form.caixa_pecas?.c_mm ?? 600} onChange={e => setForm({ ...form, caixa_pecas: { ...(form.caixa_pecas || {}), c_mm: parseFloat(e.target.value) || 0, l_mm: form.caixa_pecas?.l_mm ?? 400, a_mm: form.caixa_pecas?.a_mm ?? 400 } })} /></div>
+                    <div><Label className="text-xs">Largura</Label><Input type="number" value={form.caixa_pecas?.l_mm ?? 400} onChange={e => setForm({ ...form, caixa_pecas: { ...(form.caixa_pecas || {}), c_mm: form.caixa_pecas?.c_mm ?? 600, l_mm: parseFloat(e.target.value) || 0, a_mm: form.caixa_pecas?.a_mm ?? 400 } })} /></div>
+                    <div><Label className="text-xs">Altura</Label><Input type="number" value={form.caixa_pecas?.a_mm ?? 400} onChange={e => setForm({ ...form, caixa_pecas: { ...(form.caixa_pecas || {}), c_mm: form.caixa_pecas?.c_mm ?? 600, l_mm: form.caixa_pecas?.l_mm ?? 400, a_mm: parseFloat(e.target.value) || 0 } })} /></div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

@@ -539,8 +539,15 @@ export default function Products() {
                       </button>
                       <Label className="cursor-pointer" onClick={() => setForm(prev => ({ ...prev, pode_deitar: !prev.pode_deitar }))}>Pode Deitar</Label>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setForm(prev => ({ ...prev, embalagem_consolidada: !prev.embalagem_consolidada }))}
+                        className={`px-2 py-1 rounded text-xs font-medium ${form.embalagem_consolidada ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        {form.embalagem_consolidada ? "Sim" : "Não"}
+                      </button>
+                      <Label className="cursor-pointer" onClick={() => setForm(prev => ({ ...prev, embalagem_consolidada: !prev.embalagem_consolidada }))}>Peça consolidada</Label>
+                    </div>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Dimensões da caixa/embalagem usadas no cálculo de cubagem do container</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">Dimensões da caixa/embalagem usadas no cálculo de cubagem do container. "Peça consolidada" = peça de reposição que embarca junto com as outras numa caixa única (as dimensões individuais dela são ignoradas na cubagem e no frete — quem conta é a caixa de peças definida na operação de importação).</p>
                 </div>
               </div>
             )}
