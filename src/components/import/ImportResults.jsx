@@ -104,6 +104,19 @@ export default function ImportResults({ result }) {
       )}
 
       <div className="space-y-2">
+        {result.comparativo_cheio && (result.comparativo_cheio.impostos_cheio - result.comparativo_cheio.impostos_declarado) > 0.01 && (
+          <div className="mb-4 border border-dashed border-border rounded-lg p-3">
+            <p className="text-xs font-semibold mb-2">Comparativo: declaração da fatura × declaração 100%</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+              <div><p className="text-[10px] text-muted-foreground">Impostos como está (fatura)</p><p className="font-semibold">{fmtBRL(result.comparativo_cheio.impostos_declarado)}</p></div>
+              <div><p className="text-[10px] text-muted-foreground">Impostos se declarasse 100%</p><p className="font-semibold">{fmtBRL(result.comparativo_cheio.impostos_cheio)}</p></div>
+              <div><p className="text-[10px] text-muted-foreground">Diferença de impostos</p><p className="font-bold text-success">{fmtBRL(result.comparativo_cheio.impostos_cheio - result.comparativo_cheio.impostos_declarado)}</p></div>
+              <div><p className="text-[10px] text-muted-foreground">Desembolso como está</p><p className="font-semibold">{fmtBRL(result.comparativo_cheio.desembolso_declarado)}</p></div>
+              <div><p className="text-[10px] text-muted-foreground">Desembolso se 100%</p><p className="font-semibold">{fmtBRL(result.comparativo_cheio.desembolso_cheio)}</p></div>
+              <div><p className="text-[10px] text-muted-foreground">Economia no desembolso</p><p className="font-bold text-success">{fmtBRL(result.comparativo_cheio.desembolso_cheio - result.comparativo_cheio.desembolso_declarado)}</p></div>
+            </div>
+          </div>
+        )}
         <p className="text-xs font-medium text-muted-foreground mb-1">Detalhe por Produto</p>
         {result.resultados.map((r, i) => <ProductBreakdown key={i} r={r} />)}
       </div>

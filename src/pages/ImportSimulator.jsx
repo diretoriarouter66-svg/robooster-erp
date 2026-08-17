@@ -229,6 +229,16 @@ export default function ImportSimulator() {
     };
 
     const result = calcularOperacaoImportacao(engineItems, operacaoEngine, configMotor, form.data || "2026-01-01", 1.0);
+    // Comparativo: mesmo mix com declaração 100% (declarado = real)
+    const itensCheio = engineItems.map(it => ({ ...it, produto: { ...it.produto, fob_declarado_unitario_usd: it.produto.fob_unitario_usd } }));
+    const resultCheio = calcularOperacaoImportacao(itensCheio, operacaoEngine, configMotor, form.data || "2026-01-01", 1.0);
+    const somaImp = (t) => (t.ii || 0) + (t.ipi || 0) + (t.pis_imp || 0) + (t.cofins_imp || 0) + (t.icms_imp || 0);
+    result.comparativo_cheio = {
+      impostos_declarado: somaImp(result.totais),
+      impostos_cheio: somaImp(resultCheio.totais),
+      desembolso_declarado: result.totais.desembolso_caixa,
+      desembolso_cheio: resultCheio.totais.desembolso_caixa,
+    };
     setImportResult(result);
 
     const container = CONTAINERS_PADRAO.find(c => c.nome === form.container_tipo) || CONTAINERS_PADRAO[2];
