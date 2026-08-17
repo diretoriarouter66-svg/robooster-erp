@@ -444,6 +444,9 @@ export default function ImportSimulator() {
             <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>10%</span><span>50%</span><span>100% (real)</span></div>
           </div>
 
+        </div>
+
+        <div className="space-y-4">
           <div className="bg-card rounded-xl border border-border p-4">
             <div className="flex items-center justify-between mb-1">
               <h3 className="font-heading font-semibold text-sm">Remessas de Pagamento</h3>
