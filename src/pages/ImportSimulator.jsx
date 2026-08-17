@@ -88,7 +88,7 @@ export default function ImportSimulator() {
   const addProduct = (product) => {
     setForm(prev => ({
       ...prev,
-      itens: [...(prev.itens || []), { product_id: product.id, product_name: product.name, sku: product.sku, qty: 1 }]
+      itens: [...(prev.itens || []), { product_id: product.id, product_name: product.name, sku: product.sku, qty: 1, consolidado: !!product.embalagem_consolidada }]
     }));
     setProductSearch("");
   };
@@ -104,7 +104,10 @@ export default function ImportSimulator() {
   const buildEngineItems = () => {
     return (form.itens || []).map(it => {
       const product = products.find(p => p.id === it.product_id);
-      return { produto: produtoFromProduct(product || { id: it.product_id, name: it.product_name }), quantidade: it.qty };
+      const produto = produtoFromProduct(product || { id: it.product_id, name: it.product_name });
+      // decisão de embarque é POR OPERAÇÃO: o cadastro é só o padrão inicial
+      produto.embalagem_consolidada = it.consolidado ?? produto.embalagem_consolidada;
+      return { produto, quantidade: it.qty };
     }).filter(it => it.produto && it.quantidade > 0);
   };
 
@@ -117,7 +120,7 @@ export default function ImportSimulator() {
     return totalUsd > 0 ? totalBrl / totalUsd : null;
   };
   const cambioMedio = calcCambioMedio(form.remessas);
-  const temConsolidada = (form.itens || []).some(it => products.find(pr => pr.id === it.product_id)?.embalagem_consolidada);
+  const temConsolidada = (form.itens || []).some(it => it.consolidado ?? products.find(pr => pr.id === it.product_id)?.embalagem_consolidada);
   const cambioEfetivo = cambioMedio ?? (form.cambio || config?.cambio_usd || 5.3);
 
   // Quitação do fornecedor: as remessas devem cobrir o valor da compra (FOB do mix)
@@ -563,6 +566,11 @@ export default function ImportSimulator() {
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <Input type="number" min="1" value={item.qty || ""} onChange={e => updateItem(i, "qty", parseInt(e.target.value) || 0)} className="h-7 w-20 text-sm" placeholder="Qtd" />
+                    <button type="button" onClick={() => updateItem(i, "consolidado", !(item.consolidado ?? products.find(pr => pr.id === item.product_id)?.embalagem_consolidada))}
+                      title="Nesta operação, esta peça embarca dentro da caixa de peças consolidada?"
+                      className={`px-2 py-1 rounded text-[10px] font-medium ${(item.consolidado ?? products.find(pr => pr.id === item.product_id)?.embalagem_consolidada) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                      {(item.consolidado ?? products.find(pr => pr.id === item.product_id)?.embalagem_consolidada) ? "📦 consolidada" : "caixa própria"}
+                    </button>
                   </div>
                 </div>
               ))}
