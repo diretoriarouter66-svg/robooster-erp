@@ -10,8 +10,8 @@ export default function CubageResults({ result }) {
     <div className="bg-card rounded-xl border border-border p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-heading font-semibold text-sm">Cubagem do Container</h3>
-        <span className={`px-2 py-1 rounded text-xs font-medium ${result.cabe ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
-          {result.cabe ? "Cabe no container" : "Não cabe"}
+        <span className={`px-2 py-1 rounded text-xs font-medium ${result.cabe ? "bg-success/10 text-success" : (result.cabe_area ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive")}`}>
+          {result.cabe ? "Cabe no container" : (result.cabe_area ? "Cabe (carga mista)" : "Não cabe")}
         </span>
       </div>
 
@@ -28,6 +28,24 @@ export default function CubageResults({ result }) {
           <span>Folga: {fmt(result.folga)} mm</span>
         </div>
       </div>
+
+      {result.area_necessaria_m2 !== undefined && (
+        <div className="mb-3 border border-dashed border-border rounded-lg p-2">
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-muted-foreground">Leitura realista (área de piso, carga mista)</span>
+            <span className={`font-medium ${result.cabe_area ? "text-success" : "text-destructive"}`}>
+              {result.cabe_area ? "Cabe" : "Não cabe"} · {result.ocupacao_area_perc}%
+            </span>
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            {result.area_necessaria_m2} m² de piso necessários (com empilhamento) de {result.area_util_m2} m² úteis
+            ({result.area_disponivel_m2} m² × 85% de acomodação real).
+            {result.altura_estoura && " ⚠️ Há caixa mais ALTA que o container!"}
+            {" "}A barra acima é o modo conservador (fileiras por produto); no carregamento real os volumes dividem
+            fileiras — o romaneio do exportador é a palavra final.
+          </p>
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full text-xs">

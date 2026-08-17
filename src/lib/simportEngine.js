@@ -593,6 +593,26 @@ export function calcularCubagem(itens, container, caixaPecas) {
   const folga = comprimento_mm - comprimentoUsado;
   const ocupacao_perc = Math.min(100, (comprimentoUsado / comprimento_mm) * 100);
 
+  /* Estimativa REALISTA por área de piso: no carregamento de verdade os produtos
+   * dividem fileiras e aproveitam sobras de largura — o modo fileiras acima é o
+   * teto conservador. Aqui: área de piso de cada pilha (caixa × unidades no chão,
+   * considerando empilhamento em altura) contra a área útil do container. */
+  const areaDisponivel = (comprimento_mm / 1000) * (largura_mm / 1000);
+  let areaNecessaria = 0;
+  let alturaEstoura = false;
+  for (const item of itensCubagem) {
+    const p = item.produto;
+    if (!p.caixa_c_mm || !p.caixa_l_mm || !p.caixa_a_mm) continue;
+    const empilha = p.empilhavel !== false ? Math.max(1, Math.floor(altura_mm / p.caixa_a_mm)) : 1;
+    if (p.caixa_a_mm > altura_mm) alturaEstoura = true;
+    const caixasNoChao = Math.ceil(item.quantidade / empilha);
+    areaNecessaria += caixasNoChao * (p.caixa_c_mm / 1000) * (p.caixa_l_mm / 1000);
+  }
+  // fator de acomodação: carga mista real não aproveita 100% do piso
+  const FATOR_ACOMODACAO = 0.85;
+  const areaUtil = areaDisponivel * FATOR_ACOMODACAO;
+  const cabe_area = !alturaEstoura && areaNecessaria <= areaUtil;
+
   return {
     container_nome: container.nome,
     comprimento_total: comprimento_mm,
@@ -601,6 +621,13 @@ export function calcularCubagem(itens, container, caixaPecas) {
     cabe,
     ocupacao_perc: arred(ocupacao_perc),
     detalhe,
+    // leitura realista por área de piso
+    area_disponivel_m2: arred(areaDisponivel),
+    area_util_m2: arred(areaUtil),
+    area_necessaria_m2: arred(areaNecessaria),
+    ocupacao_area_perc: arred(Math.min(100, (areaNecessaria / areaUtil) * 100)),
+    cabe_area,
+    altura_estoura: alturaEstoura,
   };
 }
 
