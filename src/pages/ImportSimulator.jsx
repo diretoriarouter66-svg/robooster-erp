@@ -579,7 +579,7 @@ export default function ImportSimulator() {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 lg:col-span-3">
           {cubageResult && <CubageResults result={cubageResult} />}
           {importResult && <ImportResults result={importResult} />}
           {!cubageResult && !importResult && (
