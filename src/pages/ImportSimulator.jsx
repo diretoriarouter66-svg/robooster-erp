@@ -573,11 +573,11 @@ export default function ImportSimulator() {
                     </div>
                     <button onClick={() => removeItem(i)} className="p-1 hover:bg-destructive/10 rounded"><Trash2 className="w-3 h-3 text-destructive" /></button>
                   </div>
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
                     <Input type="number" min="1" value={item.qty || ""} onChange={e => updateItem(i, "qty", parseInt(e.target.value) || 0)} className="h-7 w-16 text-sm" placeholder="Qtd" />
                     {!item.nao_declarado && (
                       <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">Declarado US$/un</span>
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">Declarado US$</span>
                         <Input type="number" step="0.01" value={item.fob_declarado_usd ?? ""} onChange={e => updateItem(i, "fob_declarado_usd", e.target.value)} className="h-7 w-24 text-sm" placeholder={String(products.find(pr => pr.id === item.product_id)?.cost_fob_usd ?? "")} />
                       </div>
                     )}
