@@ -32,6 +32,13 @@ import DRE from './pages/DRE';
 import Breakeven from './pages/Breakeven';
 import ContainerPage from './pages/Container';
 import ConfigTributaria from './pages/ConfigTributaria';
+import ServiceOrders from './pages/ServiceOrders';
+import NotasFiscais from './pages/NotasFiscais';
+import EstoqueCaixa from './pages/EstoqueCaixa';
+import MLCallback from './pages/MLCallback';
+import Patrimonio from './pages/Patrimonio';
+import Sites from './pages/Sites';
+import RequireModulo from '@/components/RequireModulo';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -61,30 +68,37 @@ const AuthenticatedApp = () => {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+        {/* Popup do OAuth do Mercado Livre — sem o layout com sidebar */}
+        <Route path="/ml-callback" element={<MLCallback />} />
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/products" element={<Products />} />
+          <Route path="/products" element={<RequireModulo modulo="produtos"><Products /></RequireModulo>} />
           <Route path="/acessos" element={<Acessos />} />
-          <Route path="/suppliers" element={<Contatos />} />
-          <Route path="/contatos" element={<Contatos />} />
-          <Route path="/customers" element={<Contatos />} />
-          <Route path="/sales-channels" element={<SalesChannels />} />
-          <Route path="/categorias" element={<Categorias />} />
-          <Route path="/precificacao" element={<Precificacao />} />
+          <Route path="/suppliers" element={<RequireModulo modulo="contatos"><Contatos /></RequireModulo>} />
+          <Route path="/contatos" element={<RequireModulo modulo="contatos"><Contatos /></RequireModulo>} />
+          <Route path="/customers" element={<RequireModulo modulo="contatos"><Contatos /></RequireModulo>} />
+          <Route path="/sales-channels" element={<RequireModulo modulo="comercial"><SalesChannels /></RequireModulo>} />
+          <Route path="/categorias" element={<RequireModulo modulo="produtos"><Categorias /></RequireModulo>} />
+          <Route path="/precificacao" element={<RequireModulo modulo="precificador"><Precificacao /></RequireModulo>} />
 
-          <Route path="/purchase-orders" element={<PurchaseOrders />} />
-          <Route path="/sale-orders" element={<SaleOrders />} />
-          <Route path="/base-instalada" element={<BaseInstalada />} />
+          <Route path="/purchase-orders" element={<RequireModulo modulo="custos"><PurchaseOrders /></RequireModulo>} />
+          <Route path="/sale-orders" element={<RequireModulo modulo="comercial"><SaleOrders /></RequireModulo>} />
+          <Route path="/ordens-servico" element={<RequireModulo modulo="servicos"><ServiceOrders /></RequireModulo>} />
+          <Route path="/notas-fiscais" element={<RequireModulo modulo="custos"><NotasFiscais /></RequireModulo>} />
+          <Route path="/estoque-caixa" element={<RequireModulo modulo="custos"><EstoqueCaixa /></RequireModulo>} />
+          <Route path="/patrimonio" element={<RequireModulo modulo="custos"><Patrimonio /></RequireModulo>} />
+          <Route path="/base-instalada" element={<RequireModulo modulo="comercial"><BaseInstalada /></RequireModulo>} />
           <Route path="/manual" element={<Manual />} />
-          <Route path="/stock" element={<Stock />} />
-          <Route path="/financial" element={<Financial />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/import-simulator" element={<ImportSimulator />} />
-          <Route path="/dre" element={<DRE />} />
-          <Route path="/breakeven" element={<Breakeven />} />
-          <Route path="/container" element={<ContainerPage />} />
-          <Route path="/config-tributaria" element={<ConfigTributaria />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/stock" element={<RequireModulo modulo="estoque"><Stock /></RequireModulo>} />
+          <Route path="/financial" element={<RequireModulo modulo="financeiro"><Financial /></RequireModulo>} />
+          <Route path="/reports" element={<RequireModulo modulo="financeiro"><Reports /></RequireModulo>} />
+          <Route path="/import-simulator" element={<RequireModulo modulo="importacao"><ImportSimulator /></RequireModulo>} />
+          <Route path="/dre" element={<RequireModulo modulo="financeiro"><DRE /></RequireModulo>} />
+          <Route path="/sites" element={<RequireModulo modulo="comercial"><Sites /></RequireModulo>} />
+          <Route path="/breakeven" element={<RequireModulo modulo="financeiro"><Breakeven /></RequireModulo>} />
+          <Route path="/container" element={<RequireModulo modulo="importacao"><ContainerPage /></RequireModulo>} />
+          <Route path="/config-tributaria" element={<RequireModulo modulo="config"><ConfigTributaria /></RequireModulo>} />
+          <Route path="/settings" element={<RequireModulo modulo="config"><Settings /></RequireModulo>} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
@@ -96,7 +110,7 @@ function App() {
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
-        <Router>
+        <Router basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
           <AuthenticatedApp />
         </Router>
         <Toaster />

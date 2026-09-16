@@ -4,8 +4,8 @@ import {
   LayoutDashboard, Package, Users, Truck, ShoppingCart, Factory, BookOpen,
   FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse,
-  Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container, KeyRound } from
-"lucide-react";
+  Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container, KeyRound, Wrench, Coins, Gem,
+  Globe } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 // Módulo de cada item — precisa bater com o mapa de public.permissoes.
@@ -17,10 +17,15 @@ const MODULO_DO_ITEM = {
   "/contatos": "contatos",
   "/sales-channels": "comercial",
   "/categorias": "produtos",
-  "/purchase-orders": "comercial",
+  "/purchase-orders": "custos",     // compras mostram custo — só quem pode ver custos
   "/sale-orders": "comercial",
+  "/ordens-servico": "servicos",
+  "/notas-fiscais": "custos",
+  "/estoque-caixa": "custos",
+  "/patrimonio": "custos",
   "/base-instalada": "comercial",
-  "/precificacao": "comercial",
+  "/precificacao": "precificador",  // margens — fora do alcance do perfil restrito
+  "/settings": "config",
   "/stock": "estoque",
   "/import-simulator": "importacao",
   "/dre": "financeiro",
@@ -55,9 +60,11 @@ const menuGroups = [
   items: [
   { icon: FileText, label: "Pedidos de Compra", path: "/purchase-orders" },
   { icon: ShoppingCart, label: "Pedidos de Venda", path: "/sale-orders" },
+  { icon: Wrench, label: "Ordens de Serviço", path: "/ordens-servico" },
   { icon: Factory, label: "Base Instalada", path: "/base-instalada" },
   { icon: Percent, label: "Precificação", path: "/precificacao" },
-  { icon: Warehouse, label: "Estoque", path: "/stock" }]
+  { icon: Warehouse, label: "Estoque", path: "/stock" },
+  { icon: Coins, label: "Estoque & Caixa", path: "/estoque-caixa" }]
 
 },
 {
@@ -74,12 +81,15 @@ const menuGroups = [
   label: "Financeiro",
   items: [
   { icon: DollarSign, label: "Financeiro", path: "/financial" },
+  { icon: FileText, label: "Notas Fiscais", path: "/notas-fiscais" },
+  { icon: Gem, label: "Patrimônio & Valor", path: "/patrimonio" },
   { icon: BarChart3, label: "Relatórios", path: "/reports" }]
 
 },
 {
   label: "Empresa",
   items: [
+  { icon: Globe, label: "Central de Análise", path: "/sites" },
   { icon: KeyRound, label: "Controle de Acessos", path: "/acessos" },
   { icon: BookOpen, label: "Manual de Operação", path: "/manual" }]
 
@@ -190,13 +200,13 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-2 border-t border-sidebar-border space-y-0.5">
-        <Link
+        {podeVerItem("/settings") && <Link
         to="/settings"
         className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
         
           <Settings className="w-4 h-4" />
           {!collapsed && <span>Configurações</span>}
-        </Link>
+        </Link>}
         <button
         onClick={handleLogout}
         className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-destructive/20 hover:text-destructive transition-colors">

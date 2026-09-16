@@ -141,6 +141,9 @@ export async function reconciliarPedidoVenda(orderId, orderNumber, itens, deveBa
 
 /** Dá entrada dos itens de uma operação de importação realizada */
 export async function entradaImportacao(resultados, operacaoId, operacaoNome) {
+  // Sem id da operação os movimentos nasceriam ÓRFÃOS (origem_id vazio) e a
+  // checagem de "já deu entrada" nunca os acharia — entrada em dobro garantida.
+  if (!operacaoId) throw new Error("Entrada de importação sem id da operação — salve a operação antes de dar entrada.");
   for (const r of resultados || []) {
     if (!r.produto?.id || !r.quantidade) continue;
     await registrarMovimento({
@@ -153,6 +156,49 @@ export async function entradaImportacao(resultados, operacaoId, operacaoNome) {
       unitCost: r.custo_unitario_formacao,
     });
   }
+}
+
+/** Fechamento final da importação: atualiza o unit_cost dos movimentos da prévia
+ * E RECONCILIA as quantidades com o mix final — item adicionado depois da prévia
+ * entra agora; quantidade corrigida gera o acerto (a mais = entrada, a menos =
+ * ajuste com justificativa automática). Sem isto, o Kardex ficava congelado na
+ * prévia e vendia estoque fantasma. */
+export async function atualizarCustoEntradaImportacao(operacaoId, resultados, operacaoNome = "") {
+  if (!operacaoId) return 0;
+  const alvo = {};
+  for (const r of resultados || []) {
+    if (r.produto?.id) alvo[r.produto.id] = { qtd: r.quantidade || 0, custo: r.custo_unitario_formacao };
+  }
+  const movs = await base44.entities.StockMovement.filter({ origem_id: operacaoId, tipo: "entrada_importacao" }, "-created_date", 500);
+  let atualizados = 0;
+  const atualPorProduto = {};
+  for (const m of movs || []) {
+    atualPorProduto[m.product_id] = (atualPorProduto[m.product_id] || 0) + Math.abs(m.quantidade || 0);
+    const novo = alvo[m.product_id]?.custo;
+    if (novo != null && novo !== m.unit_cost) {
+      await base44.entities.StockMovement.update(m.id, { unit_cost: novo });
+      atualizados++;
+    }
+  }
+  for (const [pid, a] of Object.entries(alvo)) {
+    const delta = (a.qtd || 0) - (atualPorProduto[pid] || 0);
+    if (delta > 0) {
+      await registrarMovimento({
+        productId: pid, tipo: "entrada_importacao", quantidade: delta,
+        origemId: operacaoId, origemRef: operacaoNome,
+        unitCost: a.custo,
+      });
+      atualizados++;
+    } else if (delta < 0) {
+      await registrarMovimento({
+        productId: pid, tipo: "ajuste_inventario", quantidadeAssinada: delta,
+        origemId: operacaoId, origemRef: operacaoNome,
+        motivo: `Acerto do fechamento da importação "${operacaoNome}": quantidade real (${a.qtd}) menor que a prévia.`,
+      });
+      atualizados++;
+    }
+  }
+  return atualizados;
 }
 
 /** Verifica no Kardex se a operação já deu entrada no estoque (fonte da verdade, não memória) */

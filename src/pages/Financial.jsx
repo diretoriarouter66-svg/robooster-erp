@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { statusFinanceiro, emAberto } from "@/lib/utils";
-import { Plus, Search, DollarSign, Edit, Trash2, TrendingUp, TrendingDown } from "lucide-react";
+import { Plus, Search, DollarSign, Edit, Trash2, TrendingUp, TrendingDown, Tag, Power } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -21,13 +21,96 @@ export default function Financial() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
+  const [categories, setCategories] = useState([]);
+  const [catOpen, setCatOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [contas, setContas] = useState([]);
+  const [contasOpen, setContasOpen] = useState(false);
+  const [novaConta, setNovaConta] = useState({ nome: "", saldo_inicial: "" });
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     const data = await base44.entities.FinancialEntry.list("-created_date", 1000);
     setEntries(data);
+    const cats = await base44.entities.FinancialCategory.list("nome", 100).catch(() => []);
+    setCategories(cats || []);
+    try {
+      const cx = await base44.entities.CashAccount.list("nome", 100);
+      setContas(cx || []);
+    } catch (err) {
+      // erro visível, nunca engolido (regra da casa): sem contas o financeiro
+      // continua funcionando, só sem os saldos por caixa.
+      console.error("Falha ao carregar contas/caixas:", err);
+      setContas([]);
+    }
     setLoading(false);
+  };
+
+  // ==== Cadastro de categorias (as de "sistema" são usadas pelos lançamentos
+  // automáticos de pedidos/importação — não podem ser excluídas) ====
+  const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const addCategory = async () => {
+    const nome = newCatName.trim();
+    if (!nome) return;
+    const slug = slugify(nome);
+    if (categories.some(c => c.slug === slug)) { alert("Já existe uma categoria com esse nome."); return; }
+    await base44.entities.FinancialCategory.create({ nome, slug, sistema: false, ativo: true });
+    setNewCatName("");
+    loadData();
+  };
+  const renameCategory = async (c, nome) => {
+    const n = (nome || "").trim();
+    if (!n || n === c.nome) return;
+    await base44.entities.FinancialCategory.update(c.id, { nome: n });
+    loadData();
+  };
+  const toggleCategory = async (c) => {
+    await base44.entities.FinancialCategory.update(c.id, { ativo: !(c.ativo !== false) });
+    loadData();
+  };
+  const deleteCategory = async (c) => {
+    if (c.sistema) { alert("Categoria de sistema (usada pelos lançamentos automáticos) — não pode ser excluída."); return; }
+    const usados = entries.filter(e => e.category === c.slug).length;
+    if (usados > 0) { alert(`${usados} lançamento(s) usam esta categoria. Desative-a em vez de excluir.`); return; }
+    if (!confirm(`Excluir a categoria "${c.nome}"?`)) return;
+    await base44.entities.FinancialCategory.delete(c.id);
+    loadData();
+  };
+
+  // ==== Contas / caixas (Itaú, PayPal, Caixinha...): onde o dinheiro mora.
+  // Pedido do dono em 28/08/2026 — cada lançamento pago aponta a conta, e o
+  // painel mostra o saldo por conta (saldo inicial + recebidos − pagos).
+  const addConta = async () => {
+    const nome = (novaConta.nome || "").trim();
+    if (!nome) return;
+    if (contas.some(c => c.nome.toLowerCase() === nome.toLowerCase())) { alert("Já existe uma conta com esse nome."); return; }
+    await base44.entities.CashAccount.create({ nome, saldo_inicial: parseFloat(novaConta.saldo_inicial) || 0, ativo: true });
+    setNovaConta({ nome: "", saldo_inicial: "" });
+    loadData();
+  };
+  const renameConta = async (c, nome) => {
+    const n = (nome || "").trim();
+    if (!n || n === c.nome) return;
+    await base44.entities.CashAccount.update(c.id, { nome: n });
+    loadData();
+  };
+  const toggleConta = async (c) => {
+    await base44.entities.CashAccount.update(c.id, { ativo: !(c.ativo !== false) });
+    loadData();
+  };
+  const deleteConta = async (c) => {
+    const usados = entries.filter(e => e.account_id === c.id).length;
+    if (usados > 0) { alert(`${usados} lançamento(s) usam esta conta. Desative-a em vez de excluir.`); return; }
+    if (!confirm(`Excluir a conta "${c.nome}"?`)) return;
+    await base44.entities.CashAccount.delete(c.id);
+    loadData();
+  };
+  const saldoConta = (c) => {
+    const pagos = entries.filter(e => e.account_id === c.id && e.status === "paid");
+    const entrou = pagos.filter(e => e.type === "receivable").reduce((t, e) => t + (e.amount || 0), 0);
+    const saiu = pagos.filter(e => e.type === "payable").reduce((t, e) => t + (e.amount || 0), 0);
+    return (parseFloat(c.saldo_inicial) || 0) + entrou - saiu;
   };
 
   const openNew = (type) => {
@@ -44,10 +127,37 @@ export default function Financial() {
 
   const handleSave = async () => {
     try {
-      if (editing) {
-        await base44.entities.FinancialEntry.update(editing.id, form);
+      const nParcelas = Math.max(1, parseInt(form.parcelas) || 1);
+      // Conta automática pelo método ("qual método cai em qual conta"), quando o usuário não apontou
+      const contaPadrao = (m) => contas.find(c => c.ativo !== false && (c.metodos || []).includes(m))?.id || null;
+      if (!form.account_id && form.payment_method) form.account_id = contaPadrao(form.payment_method);
+      if (editing || nParcelas === 1) {
+        const { parcelas, ...payload } = form;
+        if (editing) await base44.entities.FinancialEntry.update(editing.id, payload);
+        else await base44.entities.FinancialEntry.create(payload);
       } else {
-        await base44.entities.FinancialEntry.create(form);
+        // PARCELADO (ex.: seguro do imóvel em 10x): o VALOR informado é o TOTAL,
+        // dividido em N lançamentos com vencimentos mensais a partir do 1º vencimento.
+        const total = parseFloat(form.amount) || 0;
+        const valorParcela = Math.round((total / nParcelas) * 100) / 100;
+        const base = form.due_date ? new Date(form.due_date + "T12:00:00") : new Date();
+        const { parcelas, payment_date, ...payload } = form;
+        for (let i = 0; i < nParcelas; i++) {
+          // Soma meses SEM rollover: 31/01 + 1 mês = 28/02 (e não 03/03) —
+          // senão fevereiro fica sem parcela e as demais deslizam de dia.
+          const venc = new Date(base.getFullYear(), base.getMonth() + i, 1, 12);
+          const ultimoDiaDoMes = new Date(venc.getFullYear(), venc.getMonth() + 1, 0).getDate();
+          venc.setDate(Math.min(base.getDate(), ultimoDiaDoMes));
+          const ultima = i === nParcelas - 1;
+          const valor = ultima ? Math.round((total - valorParcela * (nParcelas - 1)) * 100) / 100 : valorParcela;
+          await base44.entities.FinancialEntry.create({
+            ...payload,
+            description: `${form.description} (parcela ${i + 1}/${nParcelas})`,
+            amount: valor,
+            due_date: venc.toISOString().slice(0, 10),
+            status: "pending",
+          });
+        }
       }
     } catch (err) {
       alert(`Não foi possível salvar o lançamento: ${err.message}`);
@@ -129,10 +239,16 @@ export default function Financial() {
     return true;
   });
 
-  const categoryLabels = {
-    sale: "Venda", import: "Importação", freight: "Frete", tax: "Imposto",
-    salary: "Salário", rent: "Aluguel", supplier: "Fornecedor", marketplace_fee: "Taxa Marketplace", other: "Outro"
-  };
+  // Rótulos vêm do cadastro de categorias; a lista fixa é só fallback de segurança
+  const categoryLabels = categories.length
+    ? Object.fromEntries(categories.map(c => [c.slug, c.nome]))
+    : {
+        sale: "Venda", import: "Importação", freight: "Frete", tax: "Imposto",
+        salary: "Salário", rent: "Aluguel", supplier: "Fornecedor", marketplace_fee: "Taxa Marketplace", other: "Outro"
+      };
+  const categoriasAtivas = categories.length
+    ? categories.filter(c => c.ativo !== false)
+    : Object.entries(categoryLabels).map(([slug, nome]) => ({ slug, nome }));
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" /></div>;
@@ -145,6 +261,8 @@ export default function Financial() {
         description="Contas a pagar e receber"
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setCatOpen(true)}><Tag className="w-4 h-4 mr-1" /> Categorias</Button>
+            <Button variant="outline" onClick={() => setContasOpen(true)}><DollarSign className="w-4 h-4 mr-1" /> Contas</Button>
             <Button variant="outline" onClick={gerarContasDoMes}><Plus className="w-4 h-4 mr-1" /> Gerar Contas do Mês</Button>
             <Button variant="outline" onClick={() => openNew("receivable")}><TrendingUp className="w-4 h-4 mr-1" /> A Receber</Button>
             <Button onClick={() => openNew("payable")}><TrendingDown className="w-4 h-4 mr-1" /> A Pagar</Button>
@@ -173,6 +291,33 @@ export default function Financial() {
         </div>
         <p className="text-[10px] text-muted-foreground mt-2">Considera contas pendentes/atrasadas pela data de vencimento — incluindo a liberação prevista dos marketplaces e as parcelas de vendas a prazo.</p>
       </div>
+
+      {contas.filter(c => c.ativo !== false).length > 0 && (
+        <div className="bg-card rounded-xl border border-border p-4 mb-6">
+          <h3 className="font-heading font-semibold text-sm mb-3">Saldos por conta</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {contas.filter(c => c.ativo !== false).map(c => {
+              const s = saldoConta(c);
+              return (
+                <div key={c.id} className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">{c.nome}</p>
+                  <p className={`font-semibold ${s < 0 ? "text-destructive" : ""}`}>{formatCurrency(s)}</p>
+                </div>
+              );
+            })}
+            {(() => {
+              const semConta = entries.filter(e => !e.account_id && e.status === "paid").length;
+              return semConta > 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-3">
+                  <p className="text-xs text-muted-foreground">Sem conta definida</p>
+                  <p className="text-xs mt-1">{semConta} lançamento(s) pagos — edite e aponte a conta para o saldo fechar.</p>
+                </div>
+              ) : null;
+            })()}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-2">Saldo = saldo inicial + recebidos − pagos (só lançamentos com status Pago e conta apontada).</p>
+        </div>
+      )}
 
       <Tabs value={tab} onValueChange={setTab} className="mb-4">
         <TabsList>
@@ -252,14 +397,36 @@ export default function Financial() {
               <Select value={form.category || "other"} onValueChange={v => setForm({...form, category: v})}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(categoryLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                  {categoriasAtivas.map(c => <SelectItem key={c.slug} value={c.slug}>{c.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="sm:col-span-2"><Label>Descrição *</Label><Input value={form.description || ""} onChange={e => setForm({...form, description: e.target.value})} /></div>
-            <div><Label>Valor *</Label><Input type="number" step="0.01" value={form.amount || ""} onChange={e => setForm({...form, amount: parseFloat(e.target.value) || 0})} /></div>
-            <div><Label>Vencimento</Label><Input type="date" value={form.due_date || ""} onChange={e => setForm({...form, due_date: e.target.value})} /></div>
+            <div><Label>Valor {parseInt(form.parcelas) > 1 ? "TOTAL " : ""}*</Label><Input type="number" step="0.01" value={form.amount || ""} onChange={e => setForm({...form, amount: parseFloat(e.target.value) || 0})} /></div>
+            <div><Label>{parseInt(form.parcelas) > 1 ? "1º Vencimento" : "Vencimento"}</Label><Input type="date" value={form.due_date || ""} onChange={e => setForm({...form, due_date: e.target.value})} /></div>
+            {!editing && (
+              <div>
+                <Label>Parcelas</Label>
+                <Select value={String(form.parcelas || 1)} onValueChange={v => setForm({...form, parcelas: parseInt(v)})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[1,2,3,4,5,6,7,8,9,10,11,12,18,24].map(n => <SelectItem key={n} value={String(n)}>{n === 1 ? "À vista / única" : `${n}x mensais`}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {parseInt(form.parcelas) > 1 && <p className="text-[10px] text-muted-foreground mt-1">O valor TOTAL será dividido em {form.parcelas} lançamentos com vencimentos mensais a partir do 1º vencimento (ex.: seguro do imóvel em 10x).</p>}
+              </div>
+            )}
             <div><Label>Data Pagamento</Label><Input type="date" value={form.payment_date || ""} onChange={e => setForm({...form, payment_date: e.target.value})} /></div>
+            <div>
+              <Label>Conta / Caixa</Label>
+              <Select value={form.account_id || "none"} onValueChange={v => setForm({...form, account_id: v === "none" ? null : v})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— sem conta —</SelectItem>
+                  {contas.filter(c => c.ativo !== false).map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label>Status</Label>
               <Select value={form.status || "pending"} onValueChange={v => setForm({...form, status: v})}>
@@ -290,6 +457,86 @@ export default function Financial() {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={!form.description || !form.amount}>Salvar</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==== Cadastro de Categorias do Financeiro ==== */}
+      <Dialog open={catOpen} onOpenChange={setCatOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Categorias do Financeiro</DialogTitle></DialogHeader>
+          <div className="flex gap-2 mb-3">
+            <Input placeholder="Nova categoria (ex.: Marketing)" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => e.key === "Enter" && addCategory()} />
+            <Button onClick={addCategory} disabled={!newCatName.trim()}><Plus className="w-4 h-4" /></Button>
+          </div>
+          <div className="space-y-1 max-h-80 overflow-y-auto">
+            {categories.map(c => (
+              <div key={c.id} className={`flex items-center gap-2 border border-border rounded-lg px-2 py-1.5 ${c.ativo === false ? "opacity-50" : ""}`}>
+                <Input defaultValue={c.nome} onBlur={e => renameCategory(c, e.target.value)} className="h-7 text-sm border-0 shadow-none focus-visible:ring-1 flex-1" />
+                {c.sistema && <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground whitespace-nowrap" title="Usada pelos lançamentos automáticos (pedidos/importação) — não pode ser excluída">sistema</span>}
+                <span className="text-[10px] text-muted-foreground">{entries.filter(e => e.category === c.slug).length} lçtos</span>
+                <button onClick={() => toggleCategory(c)} className="p-1 hover:bg-muted rounded" title={c.ativo === false ? "Reativar" : "Desativar (some do seletor; lançamentos antigos continuam)"}>
+                  <Power className={`w-3.5 h-3.5 ${c.ativo === false ? "text-muted-foreground" : "text-success"}`} />
+                </button>
+                {!c.sistema && (
+                  <button onClick={() => deleteCategory(c)} className="p-1 hover:bg-destructive/10 rounded" title="Excluir (só sem lançamentos)">
+                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-2">Renomear: clique no nome, edite e saia do campo. Desativar tira do seletor de novos lançamentos sem mexer no histórico. Categorias de sistema (Venda, Importação, Outro) são geradas automaticamente por pedidos e importações.</p>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==== Contas / caixas: onde o dinheiro mora (Itaú, PayPal, Caixinha...) ==== */}
+      <Dialog open={contasOpen} onOpenChange={setContasOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Contas / Caixas</DialogTitle></DialogHeader>
+          <div className="flex gap-2">
+            <Input placeholder="Nome (ex.: Nubank)" value={novaConta.nome} onChange={e => setNovaConta(p => ({ ...p, nome: e.target.value }))} />
+            <Input type="number" step="0.01" className="w-32" placeholder="Saldo inicial" value={novaConta.saldo_inicial} onChange={e => setNovaConta(p => ({ ...p, saldo_inicial: e.target.value }))} />
+            <Button onClick={addConta}>Criar</Button>
+          </div>
+          <div className="mt-3 space-y-1 max-h-72 overflow-auto">
+            {contas.map(c => (
+              <div key={c.id} className={`flex items-center gap-2 rounded-lg border border-border px-3 py-2 ${c.ativo === false ? "opacity-50" : ""}`}>
+                <Input defaultValue={c.nome} className="h-8 border-0 shadow-none px-1" onBlur={e => renameConta(c, e.target.value)} />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{formatCurrency(saldoConta(c))}</span>
+                <button className="text-xs underline text-muted-foreground" onClick={() => toggleConta(c)}>{c.ativo === false ? "ativar" : "desativar"}</button>
+                <button className="text-destructive text-xs" onClick={() => deleteConta(c)}>excluir</button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs font-medium">Qual método cai em qual conta (automático nos novos lançamentos):</p>
+            {contas.filter(c => c.ativo !== false).map(c => (
+              <div key={c.id} className="flex flex-wrap items-center gap-1">
+                <span className="text-xs w-24 shrink-0 text-muted-foreground">{c.nome}:</span>
+                {[["pix","Pix"],["credit_card","Crédito"],["debit_card","Débito"],["boleto","Boleto"],["paypal","PayPal"],["transfer","Transf."],["cash","Dinheiro"]].map(([m, label]) => {
+                  const on = (c.metodos || []).includes(m);
+                  const outra = !on && contas.some(x => x.id !== c.id && x.ativo !== false && (x.metodos || []).includes(m));
+                  return (
+                    <button key={m} type="button"
+                      className={`text-[10px] px-2 py-0.5 rounded-full border ${on ? "bg-primary text-primary-foreground border-primary" : outra ? "opacity-35 border-border" : "border-border"}`}
+                      title={outra ? "Já mapeado em outra conta — clique para trazer para cá" : ""}
+                      onClick={async () => {
+                        const novos = on ? (c.metodos || []).filter(x => x !== m) : [...(c.metodos || []), m];
+                        await base44.entities.CashAccount.update(c.id, { metodos: novos });
+                        if (!on) {
+                          // um método mora numa conta só — tira das outras
+                          for (const x of contas.filter(x => x.id !== c.id && (x.metodos || []).includes(m))) {
+                            await base44.entities.CashAccount.update(x.id, { metodos: x.metodos.filter(y => y !== m) });
+                          }
+                        }
+                        loadData();
+                      }}>{label}</button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-2">Renomear: clique no nome, edite e saia do campo. O saldo inicial é o ponto de partida; daí em diante cada lançamento PAGO com a conta apontada entra na soma. Desativar tira do seletor sem mexer no histórico. <strong>Métodos:</strong> lançamento novo (pedido, importação ou manual) sem conta escolhida cai sozinho na conta dona do método — Pix no Itaú, PayPal no PayPal. Você sempre pode trocar depois, editando o lançamento.</p>
         </DialogContent>
       </Dialog>
     </div>

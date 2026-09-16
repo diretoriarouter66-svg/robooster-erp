@@ -11,8 +11,48 @@ import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import EmptyState from "../components/shared/EmptyState";
 import ProductPricingSection from "../components/products/ProductPricingSection";
+import { usePermissoes } from "@/hooks/usePermissoes";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+
+// ---- Histórico de custo (product_cost_history) --------------------------------
+// Ordena do mais recente ao mais antigo: data desc, desempate por created_date
+// (prévia e fechamento real da mesma importação podem cair no mesmo dia).
+const ordenarHistorico = (regs) => [...(regs || [])].sort((a, b) =>
+  String(b.data || "").localeCompare(String(a.data || "")) ||
+  String(b.created_date || "").localeCompare(String(a.created_date || ""))
+);
+const fmtDataBR = (d) => {
+  if (!d) return "—";
+  const [y, m, dd] = String(d).slice(0, 10).split("-");
+  return y && m && dd ? `${dd}/${m}/${y}` : d;
+};
+const fmtPct = (v) => `${Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+// Variação % de `atual` em relação a `anterior` (null se não dá pra comparar)
+const variacaoPct = (atual, anterior) => {
+  const a = parseFloat(atual), b = parseFloat(anterior);
+  if (!isFinite(a) || !isFinite(b) || b === 0) return null;
+  return ((a - b) / b) * 100;
+};
+const rotuloOrigem = (h) => h?.origem === "importacao" ? (h.referencia || "importação") : (h?.referencia === "cadastro" ? "custo manual" : (h?.referencia || "manual"));
+const rotuloAnterior = (h) => h?.origem === "importacao" ? "importação anterior" : "custo manual anterior";
+
+// Setinha + % colorida: verde se caiu, vermelho se subiu, cinza se igual
+function Variacao({ pct, sufixo = "", className = "" }) {
+  if (pct == null) return null;
+  if (Math.abs(pct) < 0.05) return <span className={`text-muted-foreground ${className}`}>= sem variação{sufixo}</span>;
+  const subiu = pct > 0;
+  return (
+    <span className={`${subiu ? "text-destructive" : "text-emerald-600"} ${className}`}>
+      {subiu ? "▲" : "▼"} {fmtPct(pct)}{sufixo}
+    </span>
+  );
+}
 
 export default function Products() {
+  // Custo e margem só aparecem para quem tem o módulo "custos" (master,
+  // administrador, contador). Perfil restrito vê o produto sem o lado financeiro.
+  const { pode } = usePermissoes();
+  const verCustos = pode("custos");
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -23,8 +63,31 @@ export default function Products() {
   const [vdPriceMap, setVdPriceMap] = useState({});
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showTech, setShowTech] = useState(false);
+  // Histórico de custo: mapa product_id -> registros (mais recente primeiro),
+  // carregado de uma vez para a tabela. Só ele pode falhar em silêncio.
+  const [costHistoryMap, setCostHistoryMap] = useState({});
+  const [editHistory, setEditHistory] = useState([]);
+  const [editHistoryLoading, setEditHistoryLoading] = useState(false);
+  const [editHistoryErro, setEditHistoryErro] = useState(false);
+  const [showAllHistory, setShowAllHistory] = useState(false);
 
   useEffect(() => { loadData(); }, []);
+  // verCustos começa false enquanto a permissão carrega — recarrega quando liberar
+  useEffect(() => { if (verCustos) loadCostHistoryMap(); }, [verCustos]);
+
+  const loadCostHistoryMap = async () => {
+    if (!verCustos) return;
+    try {
+      const regs = await base44.entities.ProductCostHistory.list("-data", 2000);
+      const mapa = {};
+      (regs || []).forEach(h => { (mapa[h.product_id] = mapa[h.product_id] || []).push(h); });
+      Object.keys(mapa).forEach(k => { mapa[k] = ordenarHistorico(mapa[k]); });
+      setCostHistoryMap(mapa);
+    } catch (err) {
+      console.error("Histórico de custo não carregado (tabela segue sem a variação):", err);
+      setCostHistoryMap({});
+    }
+  };
 
   const loadData = async () => {
     const [prods, cats, chans, allPricings] = await Promise.all([
@@ -33,6 +96,7 @@ export default function Products() {
       base44.entities.SalesChannel.list("-created_date", 50),
       base44.entities.ProductPricing.list("-created_date", 1000),
     ]);
+    loadCostHistoryMap(); // fora do Promise.all: erro aqui não pode travar a tela
     const vdChannel = chans.find(c => c.is_master) || chans.find(c => (c.commission_percent || 0) === 0 && (c.fixed_fee || 0) === 0) || chans.find(c => c.type === "venda_direta");
     const vdMap = {};
     if (vdChannel) {
@@ -58,19 +122,68 @@ export default function Products() {
     setDialogOpen(true);
   };
 
+  // Histórico do produto em edição — carrega quando o diálogo abre
+  useEffect(() => {
+    if (!dialogOpen || !editing?.id || !verCustos) { setEditHistory([]); setEditHistoryErro(false); setShowAllHistory(false); return; }
+    let ativo = true;
+    setEditHistoryLoading(true);
+    setEditHistoryErro(false);
+    setShowAllHistory(false);
+    base44.entities.ProductCostHistory.filter({ product_id: editing.id }, "-data", 100)
+      .then(regs => { if (ativo) setEditHistory(ordenarHistorico(regs)); })
+      .catch(err => { console.error("Histórico de custo do produto não carregado:", err); if (ativo) { setEditHistory([]); setEditHistoryErro(true); } })
+      .finally(() => { if (ativo) setEditHistoryLoading(false); });
+    return () => { ativo = false; };
+  }, [dialogOpen, editing?.id, verCustos]);
+
+  // Registro manual no histórico quando o custo manual muda no cadastro
+  // (só sem custo de importação — com cost_landed_brl quem manda é a importação).
+  const registrarCustoManual = async (productId, custoNovo, custoAnterior) => {
+    const novo = Math.round((parseFloat(custoNovo) || 0) * 100) / 100;
+    const antes = Math.round((parseFloat(custoAnterior) || 0) * 100) / 100;
+    if (novo <= 0 || Math.abs(novo - antes) < 0.01) return;
+    try {
+      await base44.entities.ProductCostHistory.create({
+        product_id: productId,
+        custo: novo,
+        origem: "manual",
+        referencia: "cadastro",
+        data: new Date().toISOString().slice(0, 10),
+      });
+    } catch (err) {
+      console.error("Histórico de custo manual não gravado (produto foi salvo normalmente):", err);
+    }
+  };
+
+  const [savingProduct, setSavingProduct] = useState(false);
   const handleSave = async () => {
+    if (savingProduct) return; // duplo clique = SKU duplicado (agora também travado por índice único no banco)
+    setSavingProduct(true);
     try {
       const data = { ...form };
       // Estoque nunca é salvo pelo cadastro — só por movimentação (Kardex)
       if (editing) delete data.stock_quantity;
-      if (editing) await base44.entities.Product.update(editing.id, data);
-      else await base44.entities.Product.create({ ...data, stock_quantity: 0 });
+      // Caixa extra sem as 3 dimensões não entra: sumiria da cubagem em silêncio
+      // e subfaturaria o rateio de frete por m³.
+      if (Array.isArray(data.volumes_extras)) {
+        const incompletos = data.volumes_extras.filter(v => (parseFloat(v.c_cm) || 0) <= 0 || (parseFloat(v.l_cm) || 0) <= 0 || (parseFloat(v.a_cm) || 0) <= 0).length;
+        data.volumes_extras = data.volumes_extras.filter(v => (parseFloat(v.c_cm) || 0) > 0 && (parseFloat(v.l_cm) || 0) > 0 && (parseFloat(v.a_cm) || 0) > 0);
+        if (incompletos > 0 && !confirm(`${incompletos} caixa(s) extra(s) sem as 3 medidas (C×L×A) serão DESCARTADAS. Continuar?`)) return;
+      }
+      if (editing) {
+        await base44.entities.Product.update(editing.id, data);
+        if (verCustos && !data.cost_landed_brl) await registrarCustoManual(editing.id, data.custo_manual_brl, editing.custo_manual_brl);
+      } else {
+        const criado = await base44.entities.Product.create({ ...data, stock_quantity: 0 });
+        if (verCustos && criado?.id && !data.cost_landed_brl) await registrarCustoManual(criado.id, data.custo_manual_brl, 0);
+      }
+      setDialogOpen(false);
+      loadData();
     } catch (err) {
       alert(`Não foi possível salvar o produto: ${err.message}`);
-      return;
+    } finally {
+      setSavingProduct(false);
     }
-    setDialogOpen(false);
-    loadData();
   };
 
   const handleDelete = async (id) => {
@@ -162,7 +275,7 @@ export default function Products() {
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Produto</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">NCM</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Estoque</th>
-                    <th className="text-right px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Custo Landed</th>
+                    {verCustos && <th className="text-right px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Custo Landed</th>}
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Preço Venda</th>
                     <th className="text-center px-4 py-3 font-medium text-muted-foreground">Status</th>
                     <th className="text-right px-4 py-3 font-medium text-muted-foreground">Ações</th>
@@ -187,14 +300,25 @@ export default function Products() {
                       }`}>
                         {product.stock_quantity || 0}
                       </td>
-                      <td className="px-4 py-3 text-right hidden lg:table-cell">{formatCurrency(product.cost_landed_brl)}</td>
+                      {verCustos && (() => {
+                        const hist = costHistoryMap[product.id] || [];
+                        const pct = hist.length >= 2 ? variacaoPct(hist[0].custo, hist[1].custo) : null;
+                        return (
+                          <td className="px-4 py-3 text-right hidden lg:table-cell">
+                            <div>{formatCurrency(product.cost_landed_brl)}</div>
+                            {pct != null && (
+                              <Variacao pct={pct} sufixo={` vs ${rotuloAnterior(hist[1])}`} className="text-[10px] whitespace-nowrap" />
+                            )}
+                          </td>
+                        );
+                      })()}
                       <td className="px-4 py-3 text-right font-medium">{formatCurrency(vdPriceMap[product.id])}</td>
                       <td className="px-4 py-3 text-center"><StatusBadge status={product.status} /></td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Link to={`/precificacao?produto=${product.id}`} className="p-1.5 hover:bg-muted rounded-lg transition-colors" title="Precificar">
+                          {verCustos && <Link to={`/precificacao?produto=${product.id}`} className="p-1.5 hover:bg-muted rounded-lg transition-colors" title="Precificar">
                             <Calculator className="w-3.5 h-3.5 text-primary" />
-                          </Link>
+                          </Link>}
                           <button onClick={() => openEdit(product)} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
                             <Edit className="w-3.5 h-3.5 text-muted-foreground" />
                           </button>
@@ -306,6 +430,11 @@ export default function Products() {
                 <p className="text-[10px] text-muted-foreground mt-1">Quanto tempo demora pra repor. Máquina importada: ~90-120 dias.</p>
               </div>
               <div>
+                <Label>Garantia (meses)</Label>
+                <Input type="number" min="0" value={form.garantia_meses ?? ""} onChange={f("garantia_meses")} placeholder="Ex: 12" />
+                <p className="text-[10px] text-muted-foreground mt-1">Tempo de garantia dado ao cliente na venda deste produto.</p>
+              </div>
+              <div>
                 <Label>Status</Label>
                 <Select value={form.status || "active"} onValueChange={v => setForm({...form, status: v})}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -367,7 +496,7 @@ export default function Products() {
             </div>
 
             {/* CUSTO DO PRODUTO */}
-            <div className="mt-3">
+            {verCustos && <div className="mt-3">
               <Label>Custo do Produto (R$)</Label>
               {form.cost_landed_brl ? (
                 <>
@@ -380,7 +509,62 @@ export default function Products() {
                   <p className="text-[10px] text-muted-foreground mt-1">Custo manual do produto — usado quando não há importação realizada</p>
                 </>
               )}
-            </div>
+
+              {/* HISTÓRICO DE CUSTO — evolução a cada importação / ajuste manual */}
+              {editing?.id && (() => {
+                const visiveis = showAllHistory ? editHistory : editHistory.slice(0, 12);
+                const serie = [...editHistory].reverse().map((h, i) => ({ i, data: fmtDataBR(h.data), custo: parseFloat(h.custo) || 0, ref: rotuloOrigem(h) }));
+                return (
+                  <div className="mt-3 border border-border rounded-lg p-3 bg-muted/20">
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="font-semibold">Histórico de custo</Label>
+                      {editHistory.length > 0 && <span className="text-[10px] text-muted-foreground">{editHistory.length} registro(s)</span>}
+                    </div>
+                    {editHistoryLoading ? (
+                      <p className="text-xs text-muted-foreground">Carregando histórico...</p>
+                    ) : editHistory.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">{editHistoryErro ? "Sem histórico (não foi possível consultar agora)." : "Sem histórico — o primeiro registro entra na próxima importação finalizada ou ao alterar o custo manual."}</p>
+                    ) : (
+                      <>
+                        {serie.length >= 2 && (
+                          <div className="h-28 mb-2">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={serie} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+                                <XAxis dataKey="data" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                                <YAxis tick={{ fontSize: 10 }} width={64} domain={["auto", "auto"]} tickFormatter={(v) => v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} />
+                                <Tooltip formatter={(v) => [formatCurrency(v), "Custo"]} labelFormatter={(l, p) => `${l} · ${p?.[0]?.payload?.ref || ""}`} />
+                                <Line type="monotone" dataKey="custo" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                        <div className="divide-y divide-border">
+                          {visiveis.map((h, idx) => {
+                            const anterior = editHistory[idx + 1];
+                            const pct = anterior ? variacaoPct(h.custo, anterior.custo) : null;
+                            return (
+                              <div key={h.id} className="flex items-center gap-2 py-1 text-xs">
+                                <span className="font-mono text-muted-foreground w-20 flex-shrink-0">{fmtDataBR(h.data)}</span>
+                                <span className="font-medium w-24 flex-shrink-0 text-right">{formatCurrency(parseFloat(h.custo))}</span>
+                                <span className="text-muted-foreground truncate flex-1" title={rotuloOrigem(h)}>{h.origem === "importacao" ? "Importação" : "Manual"} · {rotuloOrigem(h)}</span>
+                                <span className="w-20 flex-shrink-0 text-right">
+                                  {pct != null ? <Variacao pct={pct} /> : <span className="text-muted-foreground">—</span>}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {editHistory.length > 12 && (
+                          <button type="button" onClick={() => setShowAllHistory(v => !v)} className="text-xs text-primary hover:underline mt-2">
+                            {showAllHistory ? "Mostrar só os 12 mais recentes" : `Ver todos (${editHistory.length})`}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>}
           </div>
 
           {/* === DADOS TÉCNICOS DE IMPORTAÇÃO === */}
@@ -412,11 +596,11 @@ export default function Products() {
                 </div>
 
                 {/* CUSTO FOB */}
-                <div>
+                {verCustos && <div>
                   <Label>Custo FOB (USD)</Label>
                   <Input type="number" step="0.01" value={form.cost_fob_usd || ""} onChange={f("cost_fob_usd")} placeholder="0.00" />
                   <p className="text-[10px] text-muted-foreground mt-0.5">Preço de compra do produto no fornecedor, em dólares</p>
-                </div>
+                </div>}
 
                 {/* ALÍQUOTAS */}
                 <div>
@@ -496,11 +680,11 @@ export default function Products() {
                   </div>
                 </div>
 
-                {/* COMISSÃO DO VENDEDOR */}
+                {/* COMISSÃO DO REPRESENTANTE COMERCIAL */}
                 <div className="mt-3">
-                  <Label>Comissão do Vendedor (%)</Label>
+                  <Label>Comissão do Representante (%)</Label>
                   <Input type="number" step="0.1" value={form.seller_commission_percent || ""} onChange={f("seller_commission_percent")} placeholder="0" />
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Percentual sobre o preço à vista líquido de impostos — vazio usa o padrão da Configuração Tributária</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Só para produtos com representante comercial. Quando preenchida (&gt; 0), SUBSTITUI a comissão padrão do vendedor (Config. Tributária) — o vendedor fica sem comissão neste produto. Vazio/zero = vale a comissão padrão do vendedor.</p>
                 </div>
 
                 {/* DIMENSÕES E PESO */}
@@ -524,6 +708,27 @@ export default function Products() {
                       <Input type="number" step="0.001" value={form.weight_kg || ""} onChange={f("weight_kg")} placeholder="0" />
                     </div>
                   </div>
+
+                  {/* MULTI-VOLUME: produto que embarca em mais de uma caixa por unidade.
+                      As medidas acima são o VOLUME 1; aqui entram as caixas 2, 3... */}
+                  <div className="mt-3 border border-dashed border-border rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="font-semibold">Volumes adicionais (produto em mais de uma caixa)</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setForm(prev => ({ ...prev, volumes_extras: [ ...(prev.volumes_extras || []), { c_cm: "", l_cm: "", a_cm: "", peso_kg: "" } ] }))}>+ Adicionar caixa</Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mb-2">As medidas acima são a CAIXA 1. Se a unidade viaja em mais caixas (ex.: máquina + cavalete), adicione cada caixa extra — a cubagem e o frete calculam todas.</p>
+                    {(form.volumes_extras || []).map((v, vi) => (
+                      <div key={vi} className="grid grid-cols-5 gap-2 items-end mb-2">
+                        <div><Label className="text-xs">Caixa {vi + 2} — C (cm)</Label><Input type="number" step="0.1" value={v.c_cm} onChange={e => setForm(prev => ({ ...prev, volumes_extras: prev.volumes_extras.map((x, xi) => xi === vi ? { ...x, c_cm: e.target.value } : x) }))} /></div>
+                        <div><Label className="text-xs">L (cm)</Label><Input type="number" step="0.1" value={v.l_cm} onChange={e => setForm(prev => ({ ...prev, volumes_extras: prev.volumes_extras.map((x, xi) => xi === vi ? { ...x, l_cm: e.target.value } : x) }))} /></div>
+                        <div><Label className="text-xs">A (cm)</Label><Input type="number" step="0.1" value={v.a_cm} onChange={e => setForm(prev => ({ ...prev, volumes_extras: prev.volumes_extras.map((x, xi) => xi === vi ? { ...x, a_cm: e.target.value } : x) }))} /></div>
+                        <div><Label className="text-xs">Peso (kg)</Label><Input type="number" step="0.1" value={v.peso_kg} onChange={e => setForm(prev => ({ ...prev, volumes_extras: prev.volumes_extras.map((x, xi) => xi === vi ? { ...x, peso_kg: e.target.value } : x) }))} /></div>
+                        <button type="button" className="h-9 px-2 text-destructive hover:bg-destructive/10 rounded text-sm" onClick={() => setForm(prev => ({ ...prev, volumes_extras: prev.volumes_extras.filter((_, xi) => xi !== vi) }))}>Remover</button>
+                      </div>
+                    ))}
+                    {!(form.volumes_extras || []).length && <p className="text-[10px] text-muted-foreground">Nenhuma caixa extra — este produto viaja em 1 volume.</p>}
+                  </div>
+
                   <div className="flex items-center gap-4 mt-2">
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => setForm(prev => ({ ...prev, empilhavel: !prev.empilhavel }))}
@@ -554,7 +759,7 @@ export default function Products() {
           </div>
 
           {/* PREÇOS POR CANAL */}
-          {editing?.id && (
+          {editing?.id && verCustos && (
             <div className="mt-4">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Preços por Canal</p>
               <ProductPricingSection productId={editing.id} costLandedBrl={form.cost_landed_brl} />
@@ -563,7 +768,7 @@ export default function Products() {
 
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={!form.name || !form.sku}>Salvar</Button>
+            <Button onClick={handleSave} disabled={!form.name || !form.sku || savingProduct}>{savingProduct ? "Salvando..." : "Salvar"}</Button>
           </div>
         </DialogContent>
       </Dialog>

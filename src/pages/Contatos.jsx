@@ -45,9 +45,12 @@ export default function Contatos() {
       base44.entities.TipoContato.list("nome", 100),
     ]);
     setContatos(c || []);
-    setTipos((t || []).filter(x => x.ativa !== false));
+    // TODOS os tipos ficam no estado (senão desativado some do "Gerenciar Tipos"
+    // e o Reativar fica inacessível); as telas filtram os ativos onde precisa.
+    setTipos(t || []);
     setLoading(false);
   };
+  const tiposAtivos = tipos.filter(x => x.ativa !== false);
 
   const openNew = () => {
     setEditing(null);
@@ -74,12 +77,15 @@ export default function Contatos() {
 
   const precisaLogin = (form.tipos || []).some((t) => TIPOS_COM_LOGIN.includes(t));
 
+  const [savingContato, setSavingContato] = useState(false);
   const handleSave = async () => {
+    if (savingContato) return;
     if (!form.name?.trim()) { alert("Informe o nome / razão social."); return; }
     if (!form.tipos?.length) { alert("Selecione pelo menos um tipo (Cliente, Fornecedor...)."); return; }
     if (senhaAcesso && senhaAcesso.length < 8) { alert("A senha de acesso precisa ter ao menos 8 caracteres."); return; }
     if (senhaAcesso && !form.email?.trim()) { alert("Informe o e-mail: é com ele que a pessoa faz login."); return; }
 
+    setSavingContato(true);
     const data = { ...form };
     delete data.user_id; // quem define o vínculo é a função no servidor
     let salvo;
@@ -89,6 +95,7 @@ export default function Contatos() {
         : await base44.entities.Contato.create(data);
     } catch (err) {
       alert(`Não foi possível salvar o contato: ${err.message}`);
+      setSavingContato(false);
       return;
     }
 
@@ -123,6 +130,7 @@ export default function Contatos() {
     }
     setSenhaAcesso("");
     setDialogOpen(false);
+    setSavingContato(false);
     loadData();
   };
 
@@ -136,17 +144,19 @@ export default function Contatos() {
     loadData();
   };
 
+  const [addingTipo, setAddingTipo] = useState(false);
   const handleAddTipo = async () => {
+    if (addingTipo) return;
     const nome = novoTipo.trim();
     if (!nome) return;
     if (tipos.some(t => t.nome.toLowerCase() === nome.toLowerCase())) { alert("Este tipo já existe."); return; }
-    await base44.entities.TipoContato.create({ nome, ativa: true });
-    setNovoTipo("");
-    loadData();
+    setAddingTipo(true);
+    try { await base44.entities.TipoContato.create({ nome, ativa: true }); setNovoTipo(""); await loadData(); }
+    finally { setAddingTipo(false); }
   };
 
   const handleToggleTipoAtivo = async (t) => {
-    await base44.entities.TipoContato.update(t.id, { ativa: !t.ativa });
+    await base44.entities.TipoContato.update(t.id, { ativa: t.ativa === false });
     const all = await base44.entities.TipoContato.list("nome", 100);
     setTipos(all || []);
   };
@@ -175,6 +185,82 @@ export default function Contatos() {
     setBuscandoCep(false);
   };
 
+  /* Pedido da Larissa (28/08/2026): digitou o CNPJ, puxa o cadastro inteiro.
+     A fonte é a base pública da Receita Federal via BrasilAPI (sem chave, com CORS).
+     Inscrição Estadual NÃO vem daí — consulta de IE exige convênio por estado —
+     então o campo continua manual. Nunca sobrescreve o que já foi digitado. */
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false);
+  const buscarCnpj = async (docRaw) => {
+    const cnpj = (docRaw || "").replace(/\D/g, "");
+    if (cnpj.length !== 14) return;
+    setBuscandoCnpj(true);
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+      if (res.ok) {
+        const d = await res.json();
+        const fone = (d.ddd_telefone_1 || "").replace(/\D/g, "");
+        setForm(prev => ({
+          ...prev,
+          person_type: "PJ",
+          name: prev.name || d.razao_social || "",
+          trade_name: prev.trade_name || d.nome_fantasia || "",
+          email: prev.email || (d.email ? String(d.email).toLowerCase() : ""),
+          phone: prev.phone || fone,
+          zip_code: prev.zip_code || (d.cep ? String(d.cep).replace(/\D/g, "").replace(/(\d{5})(\d{3})/, "$1-$2") : ""),
+          address: prev.address || d.logradouro || "",
+          address_number: prev.address_number || (d.numero ? String(d.numero) : ""),
+          neighborhood: prev.neighborhood || d.bairro || "",
+          city: prev.city || d.municipio || "",
+          state: prev.state || d.uf || "",
+          country: "Brasil",
+        }));
+      }
+    } catch { /* API fora do ar — preenchimento manual segue funcionando */ }
+    setBuscandoCnpj(false);
+  };
+
+  /* IE pela SEFAZ (CNPJá, plano de 50 consultas/mês — 28/08/2026): por isso NÃO é
+     automática — só gasta crédito quando alguém CLICA no botão. Preenche a IE do
+     estado do contato (ou a primeira habilitada) e ajusta o "Contribuinte ICMS". */
+  const [buscandoIe, setBuscandoIe] = useState(false);
+  const [avisoIe, setAvisoIe] = useState("");
+  const buscarIe = async () => {
+    const cnpj = (form.document || "").replace(/\D/g, "");
+    if (cnpj.length !== 14) { setAvisoIe("Preencha um CNPJ válido primeiro."); return; }
+    setBuscandoIe(true); setAvisoIe("");
+    try {
+      const { data: sessao } = await supabase.auth.getSession();
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/consultar-ie`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${sessao?.session?.access_token ?? ""}`,
+        },
+        body: JSON.stringify({ cnpj }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setAvisoIe(d.error || `Erro ${r.status}.`); }
+      else {
+        const regs = d.registrations || [];
+        const doEstado = regs.find(x => x.state === form.state && x.enabled) || regs.find(x => x.enabled) || regs[0];
+        if (!doEstado) {
+          setForm(prev => ({ ...prev, contribuinte_icms: "nao_contribuinte" }));
+          setAvisoIe("Nenhuma IE encontrada — marcado como Não contribuinte.");
+        } else {
+          setForm(prev => ({
+            ...prev,
+            state_registration: doEstado.number || prev.state_registration,
+            contribuinte_icms: doEstado.enabled ? "contribuinte" : prev.contribuinte_icms,
+            state: prev.state || doEstado.state,
+          }));
+          setAvisoIe(`IE ${doEstado.number} (${doEstado.state}) — ${doEstado.enabled ? "habilitada" : "NÃO habilitada"}${doEstado.status ? " · " + doEstado.status : ""}${regs.length > 1 ? ` · +${regs.length - 1} outra(s) UF` : ""}`);
+        }
+      }
+    } catch { setAvisoIe("Serviço fora do ar — preencha manualmente."); }
+    setBuscandoIe(false);
+  };
+
   const filtered = contatos.filter(c => {
     const matchTipo = filtroTipo === "Todos" || (c.tipos || []).includes(filtroTipo);
     const q = search.toLowerCase();
@@ -200,7 +286,7 @@ export default function Contatos() {
       />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        {["Todos", ...tipos.map(t => t.nome)].map(t => (
+        {["Todos", ...tiposAtivos.map(t => t.nome)].map(t => (
           <button key={t} onClick={() => setFiltroTipo(t)} className={`px-3 py-1.5 rounded-full text-xs font-medium ${filtroTipo === t ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}>
             {t} {t !== "Todos" && <span className="opacity-70">({contatos.filter(c => (c.tipos || []).includes(t)).length})</span>}
           </button>
@@ -228,7 +314,7 @@ export default function Contatos() {
               <tbody>
                 {filtered.map(c => (
                   <tr key={c.id} className={`border-b border-border last:border-0 hover:bg-muted/20 ${c.status === "inactive" ? "opacity-50" : ""}`}>
-                    <td className="px-4 py-3"><span className="font-medium">{c.name}</span>{c.trade_name && c.trade_name !== c.name && <span className="block text-xs text-muted-foreground">{c.trade_name}</span>}</td>
+                    <td className="px-4 py-3"><span className="font-medium">{c.name}</span>{c.credito_aprovado && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-success/10 text-success" title="Crédito pré-aprovado — pode comprar faturado">💳 Crédito OK</span>}{c.trade_name && c.trade_name !== c.name && <span className="block text-xs text-muted-foreground">{c.trade_name}</span>}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1 flex-wrap">
                         {(c.tipos || []).map(t => <span key={t} className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${TIPO_CORES[t] || "bg-muted text-muted-foreground"}`}>{t}</span>)}
@@ -257,7 +343,7 @@ export default function Contatos() {
             <div>
               <Label className="mb-2 block">Tipos (selecione um ou mais)</Label>
               <div className="flex gap-2 flex-wrap">
-                {tipos.map(t => (
+                {tiposAtivos.map(t => (
                   <button key={t.id} type="button" onClick={() => toggleTipo(t.nome)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium border ${(form.tipos || []).includes(t.nome) ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:border-primary/50"}`}>
                     {t.nome}
@@ -301,8 +387,35 @@ export default function Contatos() {
                 </Select>
               </div>
               <div><Label>Nome Fantasia</Label><Input value={form.trade_name || ""} onChange={f("trade_name")} /></div>
-              <div><Label>{form.person_type === "PF" ? "CPF" : "CNPJ / Tax ID"}</Label><Input value={form.document || ""} onChange={f("document")} /></div>
-              <div><Label>Inscrição Estadual</Label><Input value={form.state_registration || ""} onChange={f("state_registration")} /></div>
+              <div>
+                <Label>{form.person_type === "PF" ? "CPF" : "CNPJ / Tax ID"} {buscandoCnpj && <span className="text-[10px] text-primary">buscando na Receita...</span>}</Label>
+                <Input value={form.document || ""} onChange={f("document")} onBlur={e => form.person_type !== "PF" && buscarCnpj(e.target.value)} />
+                {form.person_type !== "PF" && <p className="text-[10px] text-muted-foreground mt-1">Digite o CNPJ e saia do campo: razão social, fantasia, endereço e telefone preenchem sozinhos (base da Receita). A Inscrição Estadual continua manual.</p>}
+              </div>
+              <div>
+                <Label>Contribuinte ICMS</Label>
+                <Select value={form.contribuinte_icms || "contribuinte"} onValueChange={v => setForm({ ...form, contribuinte_icms: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="contribuinte">Contribuinte ICMS</SelectItem>
+                    <SelectItem value="isento">Isento de IE</SelectItem>
+                    <SelectItem value="nao_contribuinte">Não contribuinte</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Inscrição Estadual</Label>
+                <div className="flex gap-1">
+                  <Input value={form.state_registration || ""} onChange={f("state_registration")} placeholder={form.contribuinte_icms === "isento" ? "ISENTO" : ""} />
+                  {form.person_type !== "PF" && (
+                    <Button type="button" variant="outline" size="sm" className="shrink-0 h-9" disabled={buscandoIe} onClick={buscarIe} title="Consulta o cadastro de contribuintes (gasta 1 crédito da CNPJá — use quando precisar)">
+                      {buscandoIe ? "..." : "Buscar IE"}
+                    </Button>
+                  )}
+                </div>
+                {avisoIe && <p className="text-[10px] mt-1 text-muted-foreground">{avisoIe}</p>}
+              </div>
+              <div><Label>Inscrição Municipal</Label><Input value={form.municipal_registration || ""} onChange={f("municipal_registration")} /></div>
               <div><Label>Pessoa de Contato</Label><Input value={form.contact_name || ""} onChange={f("contact_name")} placeholder="Ex: Cindy" /></div>
               <div><Label>E-mail</Label><Input value={form.email || ""} onChange={f("email")} /></div>
               <div><Label>Telefone</Label><Input value={form.phone || ""} onChange={f("phone")} /></div>
@@ -335,11 +448,19 @@ export default function Contatos() {
                 </Select>
               </div>
             </div>
+            <label className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/5 p-3 cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={!!form.credito_aprovado}
+                onChange={e => setForm(prev => ({ ...prev, credito_aprovado: e.target.checked }))} />
+              <span className="text-sm">
+                <b>Crédito pré-aprovado</b>
+                <span className="block text-[11px] text-muted-foreground">Cliente já passou por análise de crédito — pode comprar faturado sem nova avaliação.</span>
+              </span>
+            </label>
             <div><Label>Observações</Label><textarea className="w-full min-h-[60px] px-3 py-2 rounded-lg border border-input bg-background text-sm resize-none" value={form.notes || ""} onChange={f("notes")} /></div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave}>Salvar</Button>
+            <Button onClick={handleSave} disabled={savingContato}>{savingContato ? "Salvando..." : "Salvar"}</Button>
           </div>
         </DialogContent>
       </Dialog>

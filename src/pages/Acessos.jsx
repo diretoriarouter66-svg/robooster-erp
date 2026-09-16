@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   KeyRound, Search, Eye, EyeOff, Copy, Check, ExternalLink,
-  Lock, Unlock, ShieldAlert, Plus, Pencil, Trash2, Files } from
+  Lock, Unlock, ShieldAlert, Plus, Pencil, Trash2, Files, Building2 } from
 "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import CredencialForm from "@/components/cofre/CredencialForm";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -80,12 +81,18 @@ export default function Acessos() {
   const [nivelMaster, setNivelMaster] = useState(false);
   const [form, setForm] = useState({ aberto: false, credencial: null, modo: "novo" });
   const [excluindo, setExcluindo] = useState(null);
+  const [empresasCad, setEmpresasCad] = useState([]);   // cadastro (cofre_empresas)
+  const [empDialogOpen, setEmpDialogOpen] = useState(false);
+  const [novaEmpresa, setNovaEmpresa] = useState("");
+  const [renomeando, setRenomeando] = useState(null);   // { id, nome, novoNome }
+  const [empBusy, setEmpBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
         const lista = await base44.entities.Credential.list("service_name");
         setCredenciais(lista || []);
+        base44.entities.CofreEmpresa.list("nome", 100).then((e) => setEmpresasCad(e || [])).catch(() => {});
         // Nível do usuário: se esta consulta falhar, a tela some com os botões de
         // master — então o erro precisa aparecer, não ser engolido.
         try {
@@ -102,10 +109,71 @@ export default function Acessos() {
     })();
   }, []);
 
-  const empresas = useMemo(
-    () => ["todas", ...Array.from(new Set(credenciais.map((c) => c.company).filter(Boolean))).sort()],
+  // Filtros: nascem do CADASTRO de empresas; valores legados que ainda não
+  // foram para o cadastro continuam aparecendo (para nenhuma credencial sumir).
+  const empresas = useMemo(() => {
+    const doCadastro = empresasCad.filter((e) => e.ativa !== false).map((e) => e.nome);
+    const legadas = Array.from(new Set(credenciais.map((c) => c.company).filter(Boolean)))
+      .filter((n) => !empresasCad.some((e) => e.nome === n));
+    return ["todas", ...[...doCadastro, ...legadas].sort((a, b) => a.localeCompare(b))];
+  }, [credenciais, empresasCad]);
+
+  const categorias = useMemo(
+    () => Array.from(new Set(credenciais.map((c) => c.category).filter(Boolean))).sort(),
     [credenciais]
   );
+
+  const usosPorEmpresa = useMemo(() => {
+    const m = {};
+    credenciais.forEach((c) => { if (c.company) m[c.company] = (m[c.company] || 0) + 1; });
+    return m;
+  }, [credenciais]);
+
+  const recarregarEmpresas = async () => {
+    const e = await base44.entities.CofreEmpresa.list("nome", 100).catch(() => []);
+    setEmpresasCad(e || []);
+  };
+
+  const addEmpresa = async () => {
+    const nome = novaEmpresa.trim();
+    if (!nome) return;
+    if (empresasCad.some((e) => e.nome.toLowerCase() === nome.toLowerCase())) { alert("Esta empresa já está cadastrada."); return; }
+    setEmpBusy(true);
+    try { await base44.entities.CofreEmpresa.create({ nome, ativa: true }); setNovaEmpresa(""); await recarregarEmpresas(); }
+    catch (e) { alert(`Não foi possível cadastrar: ${e.message}`); }
+    setEmpBusy(false);
+  };
+
+  // Renomear em CASCATA: muda o cadastro e TODAS as credenciais que usam o nome
+  // antigo — é assim que "MRS" e "MRS CORPORATION S A" viram uma coisa só.
+  const renomearEmpresa = async () => {
+    const { id, nome, novoNome } = renomeando || {};
+    const novo = (novoNome || "").trim();
+    if (!novo || novo === nome) { setRenomeando(null); return; }
+    const afetadas = credenciais.filter((c) => c.company === nome);
+    if (!confirm(`Renomear "${nome}" para "${novo}"?\n${afetadas.length} credencial(is) serão atualizadas junto.${empresasCad.some(e => e.nome === novo) ? "\n\nJá existe uma empresa com o nome novo — as duas serão FUNDIDAS." : ""}`)) return;
+    setEmpBusy(true);
+    try {
+      for (const c of afetadas) await base44.entities.Credential.update(c.id, { company: novo });
+      const jaExiste = empresasCad.find((e) => e.nome === novo);
+      if (jaExiste) await base44.entities.CofreEmpresa.delete(id);
+      else await base44.entities.CofreEmpresa.update(id, { nome: novo });
+      setCredenciais((cs) => cs.map((c) => c.company === nome ? { ...c, company: novo } : c));
+      if (empresa === nome) setEmpresa(novo);
+      await recarregarEmpresas();
+      setRenomeando(null);
+    } catch (e) { alert(`Não foi possível renomear: ${e.message}`); }
+    setEmpBusy(false);
+  };
+
+  const excluirEmpresa = async (emp) => {
+    const usos = usosPorEmpresa[emp.nome] || 0;
+    if (usos > 0) { alert(`${usos} credencial(is) usam "${emp.nome}". Renomeie (fundindo em outra) em vez de excluir.`); return; }
+    if (!confirm(`Excluir a empresa "${emp.nome}" do cadastro?`)) return;
+    await base44.entities.CofreEmpresa.delete(emp.id).catch((e) => alert(`Não foi possível excluir: ${e.message}`));
+    if (empresa === emp.nome) setEmpresa("todas");
+    await recarregarEmpresas();
+  };
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -175,9 +243,14 @@ export default function Acessos() {
           </p>
         </div>
         {nivelMaster &&
-        <Button onClick={() => setForm({ aberto: true, credencial: null, modo: "novo" })} className="gap-2">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setEmpDialogOpen(true)} className="gap-2">
+            <Building2 className="h-4 w-4" />Empresas
+          </Button>
+          <Button onClick={() => setForm({ aberto: true, credencial: null, modo: "novo" })} className="gap-2">
             <Plus className="h-4 w-4" />Nova credencial
           </Button>
+        </div>
         }
       </div>
 
@@ -303,7 +376,54 @@ export default function Acessos() {
         credencial={form.credencial}
         modo={form.modo}
         onFechar={() => setForm({ aberto: false, credencial: null, modo: "novo" })}
-        onSalvar={salvar} />
+        onSalvar={salvar}
+        empresas={empresasCad.filter((e) => e.ativa !== false).map((e) => e.nome)}
+        categorias={categorias} />
+
+      {/* Cadastro de empresas do cofre */}
+      <Dialog open={empDialogOpen} onOpenChange={setEmpDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Empresas do cofre</DialogTitle></DialogHeader>
+          <p className="text-xs text-slate-500 -mt-1">
+            Estas são as opções do campo "Empresa" e os filtros do topo. Renomear
+            atualiza TODAS as credenciais junto — renomeie para um nome já existente
+            para fundir duplicatas (ex.: "MRS CORPORATION S A" → "MRS").
+          </p>
+          <div className="flex gap-2 mt-2">
+            <Input value={novaEmpresa} onChange={(e) => setNovaEmpresa(e.target.value)}
+              placeholder="Nova empresa (ex: Panamá)" onKeyDown={(e) => e.key === "Enter" && !empBusy && addEmpresa()} />
+            <Button onClick={addEmpresa} disabled={empBusy}><Plus className="h-4 w-4" /></Button>
+          </div>
+          <div className="space-y-1 mt-3 max-h-[320px] overflow-y-auto">
+            {empresasCad.map((emp) => (
+              <div key={emp.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50">
+                {renomeando?.id === emp.id ? (
+                  <>
+                    <Input className="h-8 text-sm" value={renomeando.novoNome} autoFocus
+                      onChange={(e) => setRenomeando((r) => ({ ...r, novoNome: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && !empBusy && renomearEmpresa()} />
+                    <Button size="sm" onClick={renomearEmpresa} disabled={empBusy}>OK</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setRenomeando(null)}>✕</Button>
+                  </>
+                ) : (
+                  <>
+                    <span className={`text-sm font-medium ${emp.ativa === false ? "line-through text-slate-400" : ""}`}>
+                      {emp.nome} <span className="text-[10px] text-slate-400">({usosPorEmpresa[emp.nome] || 0})</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setRenomeando({ id: emp.id, nome: emp.nome, novoNome: emp.nome })}
+                        className="text-xs text-orange-700 hover:underline px-1">renomear</button>
+                      <button onClick={async () => { await base44.entities.CofreEmpresa.update(emp.id, { ativa: emp.ativa === false }); if (emp.ativa !== false && empresa === emp.nome) setEmpresa("todas"); recarregarEmpresas(); }}
+                        className="text-xs text-slate-500 hover:underline px-1">{emp.ativa === false ? "reativar" : "desativar"}</button>
+                      <button onClick={() => excluirEmpresa(emp)} className="text-xs text-red-600 hover:underline px-1">excluir</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!excluindo} onOpenChange={(o) => !o && setExcluindo(null)}>
         <AlertDialogContent>

@@ -36,8 +36,16 @@ export function getMasterChannel(channels) {
     || channels[0];
 }
 
+/** Comissão para FORMAÇÃO DE PREÇO (regra 18/08/2026): na venda real a comissão
+ * segue QUEM VENDEU (campo "Vendido por" do pedido — vendedor usa a % padrão da
+ * Config. Tributária; representante usa a % do produto). Aqui, na precificação,
+ * assumimos o cenário de MAIOR comissão aplicável ao produto (representante se
+ * cadastrada, senão a padrão do vendedor), para o preço cobrir o pior caso. */
 export function getSellerCommissionPct(product, config) {
-  return product?.seller_commission_percent ?? config?.comissao_vendedor_padrao ?? 0;
+  const rep = parseFloat(product?.seller_commission_percent);
+  const padrao = config?.comissao_vendedor_padrao ?? 0;
+  if (!isNaN(rep) && rep > 0) return Math.max(rep, padrao);
+  return padrao;
 }
 
 export function calcSellerCommissionRs(masterPrice, impostosPctTotal, sellerCommissionPct) {
@@ -73,7 +81,9 @@ export function calcChannelPrice(margemBrutaAlvo, channel, custo, impostosPctTot
 export function calcChannelBreakdown(price, channel, custo, impostosPctTotal, sellerCommissionRs, frete, clientePagaFrete, indiceCustoFixo) {
   const freteEff = clientePagaFrete ? 0 : (frete || 0);
   const impostos = price * impostosPctTotal / 100;
-  const comissaoCanal = price * (channel.commission_percent || 0) / 100;
+  // Tarifa fixa do canal entra na comissão — as fórmulas de preço já a incluem
+  // no numerador; sem ela aqui, a margem exibida ficava inflada nesse valor.
+  const comissaoCanal = price * (channel.commission_percent || 0) / 100 + (channel.fixed_fee || 0);
   const margemBruta = price - custo - impostos - comissaoCanal - sellerCommissionRs - freteEff;
   const margemBrutaPct = price > 0 ? (margemBruta / price) * 100 : 0;
   const custoFixoAlocado = indiceCustoFixo * custo;

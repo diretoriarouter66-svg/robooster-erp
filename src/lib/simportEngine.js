@@ -24,19 +24,24 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
     return calcularCustoImportacaoCBS(produto, quantidade, operacao, rateio, config);
   }
 
+  /* DOIS CÂMBIOS (regra 18/08/2026): a mercadoria foi paga no câmbio das REMESSAS
+   * (operacao.cambio, médio ponderado) — é o custo do fornecedor. Mas a carga chega
+   * 30-40 dias depois, e IMPOSTOS + FRETE são calculados no dólar da CHEGADA/DI
+   * (operacao.cambio_chegada). Sem cambio_chegada informado, usa o das remessas. */
   const cambio = operacao.cambio;
+  const cambio_di = parseFloat(operacao.cambio_chegada) || cambio;
 
-  // FOB total em BRL — valor REAL (base de custo, inalterado)
+  // FOB total em BRL — valor REAL pago ao fornecedor (câmbio das remessas)
   const fob_total_usd = produto.fob_unitario_usd * quantidade;
   const fob_total_brl = fob_total_usd * cambio;
 
-  // Frete e seguro rateados em BRL
-  const frete_rateado_brl = rateio.frete_rateado_usd * cambio;
-  const seguro_rateado_brl = (rateio.seguro_rateado_usd || 0) * cambio;
+  // Frete e seguro rateados em BRL — pagos na chegada (câmbio da DI)
+  const frete_rateado_brl = rateio.frete_rateado_usd * cambio_di;
+  const seguro_rateado_brl = (rateio.seguro_rateado_usd || 0) * cambio_di;
 
   // Valor Aduaneiro: se o produto traz FOB DECLARADO próprio (por item da operação),
   // o VA usa o declarado + frete/seguro REAIS (como na DI). Senão, cai no modo
-  // estimativa antiga (percentual global).
+  // estimativa antiga (percentual global). VA declarado usa o câmbio da CHEGADA.
   const va_real = fob_total_brl + frete_rateado_brl + seguro_rateado_brl;
   let va;
   if (produto.nao_declarado) {
@@ -44,7 +49,7 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
     // sem rateios — o custo dele é só o preço real × câmbio.
     va = 0;
   } else if (produto.fob_declarado_unitario_usd !== undefined && produto.fob_declarado_unitario_usd !== null) {
-    const fob_declarado_brl = produto.fob_declarado_unitario_usd * quantidade * cambio;
+    const fob_declarado_brl = produto.fob_declarado_unitario_usd * quantidade * cambio_di;
     va = fob_declarado_brl + frete_rateado_brl + seguro_rateado_brl;
   } else {
     va = va_real * pctDeclarado;
@@ -67,6 +72,7 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
 
   // Despesas aduaneiras rateadas em BRL
   const despesas_brl = rateio.despesas_rateadas_usd * cambio;
+  const desconto_brl = (rateio.desconto_rateado_usd || 0) * cambio;
 
   // ICMS importação — base NÃO inclui despesas aduaneiras
   const aliq_icms_efetiva = produto.beneficio_5291 ? 0.088 : produto.aliq_icms / 100;
@@ -76,7 +82,7 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
 
   // CUSTO_FORMACAO_PRECO usa VA REAL, impostos calculados sobre VA declarado
   const ipi_no_custo = produto.ipi_recuperavel ? 0 : ipi;
-  const custo_formacao_preco = va_real + ii + ipi_no_custo + pis_imp + cofins_imp + despesas_brl;
+  const custo_formacao_preco = va_real + ii + ipi_no_custo + pis_imp + cofins_imp + despesas_brl - desconto_brl;
 
   // DESEMBOLSO_CAIXA = CUSTO_FORMACAO_PRECO + ICMS_imp + [IPI se recuperável]
   const ipi_desembolso = produto.ipi_recuperavel ? ipi : 0;
@@ -104,6 +110,8 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
 
   const resultado = {
     quantidade,
+    cambio_mercadoria: cambio,
+    cambio_di,
     fob_total_usd: arred(fob_total_usd),
     fob_total_brl: arred(fob_total_brl),
     frete_rateado_brl: arred(frete_rateado_brl),
@@ -116,6 +124,7 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
     pis_imp: arred(pis_imp),
     cofins_imp: arred(cofins_imp),
     despesas_brl: arred(despesas_brl),
+    desconto_brl: arred(desconto_brl),
     aliq_icms_efetiva,
     base_icms: arred(base_icms),
     icms_imp: arred(icms_imp),
@@ -147,14 +156,24 @@ export function calcularCustoImportacao(produto, quantidade, operacao, rateio, c
 /**
  * Rateios: frete por volume (m³); despesas locais e seguro por valor FOB.
  */
-export const CAIXA_PECAS_PADRAO = { c_mm: 600, l_mm: 400, a_mm: 400 };
+export const CAIXA_PECAS_PADRAO = { c_mm: 600, l_mm: 400, a_mm: 400, qtd: 1 };
 
 /* Peças com embalagem_consolidada viajam TODAS dentro de uma caixa única:
  * o volume individual delas não existe — o que ocupa espaço (e paga frete por m³)
  * é a caixa consolidada. O volume da caixa é repartido entre as peças por valor FOB. */
+/* Volume unitário de um produto (m³): soma TODOS os volumes/caixas dele.
+ * produto.volumes (quando existe) é a lista completa das caixas por unidade. */
+function volumeUnitarioM3(produto) {
+  if (Array.isArray(produto.volumes) && produto.volumes.length) {
+    return produto.volumes.reduce((s, v) => s + ((v.c_mm || 0) * (v.l_mm || 0) * (v.a_mm || 0)) / 1e9, 0);
+  }
+  return (produto.caixa_c_mm * produto.caixa_l_mm * produto.caixa_a_mm) / 1e9;
+}
+
 function volumesEfetivos(itens, operacao) {
   const caixa = operacao?.caixa_pecas || CAIXA_PECAS_PADRAO;
-  const caixaVol = ((caixa.c_mm || 0) * (caixa.l_mm || 0) * (caixa.a_mm || 0)) / 1e9;
+  const qtdCaixas = Math.max(1, parseInt(caixa.qtd, 10) || 1);
+  const caixaVol = qtdCaixas * ((caixa.c_mm || 0) * (caixa.l_mm || 0) * (caixa.a_mm || 0)) / 1e9;
   const consolidados = itens.filter(i => i.produto.embalagem_consolidada);
   const fobConsolidado = consolidados.reduce((s, i) => s + i.produto.fob_unitario_usd * i.quantidade, 0);
   return itens.map(i => {
@@ -163,28 +182,40 @@ function volumesEfetivos(itens, operacao) {
       const fobItem = i.produto.fob_unitario_usd * i.quantidade;
       return fobConsolidado > 0 ? caixaVol * (fobItem / fobConsolidado) : caixaVol / consolidados.length;
     }
-    return (i.produto.caixa_c_mm * i.produto.caixa_l_mm * i.produto.caixa_a_mm) / 1e9 * i.quantidade;
+    return volumeUnitarioM3(i.produto) * i.quantidade;
   });
 }
 
 export function calcularRateios(itens, operacao) {
   const conta = (i) => !i.produto.nao_declarado; // não declarado não participa dos rateios
   const totalFobUsd = itens.reduce((s, i) => s + (conta(i) ? i.produto.fob_unitario_usd * i.quantidade : 0), 0);
+  // Desconto do fornecedor rateia por valor REAL entre TODOS os itens (inclusive
+  // não declarados): é dinheiro que deixou de ser pago, abate custo — nunca imposto.
+  const totalFobRealTodos = itens.reduce((s, i) => s + i.produto.fob_unitario_usd * i.quantidade, 0);
   const vols = volumesEfetivos(itens, operacao);
   const totalVolM3 = vols.reduce((s, v, ix) => s + (conta(itens[ix]) ? v : 0), 0);
 
   return itens.map((item, _idx) => {
+    const fobRealItem = item.produto.fob_unitario_usd * item.quantidade;
+    const desconto_rateado_usd = totalFobRealTodos > 0
+      ? ((operacao.desconto_fornecedor_usd || 0) * fobRealItem / totalFobRealTodos)
+      : 0;
     if (!conta(item)) {
-      return { produto_id: item.produto.id || item.produto.nome, frete_rateado_usd: 0, despesas_rateadas_usd: 0, seguro_rateado_usd: 0 };
+      return { produto_id: item.produto.id || item.produto.nome, frete_rateado_usd: 0, despesas_rateadas_usd: 0, seguro_rateado_usd: 0, desconto_rateado_usd };
     }
-    const fobUsd = item.produto.fob_unitario_usd * item.quantidade;
+    const fobUsd = fobRealItem;
     const volM3 = vols[_idx];
 
     const frete_rateado_usd = totalVolM3 > 0
       ? (operacao.frete_internacional_usd * volM3 / totalVolM3)
       : 0;
+    // Despesas locais são pagas em REAIS (despachante, porto, armazenagem):
+    // despesas_locais_brl tem prioridade; despesas_locais_usd é legado.
+    const despesasTotaisUsd = (operacao.despesas_locais_brl !== undefined && operacao.despesas_locais_brl !== null && operacao.despesas_locais_brl !== "")
+      ? (parseFloat(operacao.despesas_locais_brl) || 0) / (operacao.cambio || 1)
+      : (operacao.despesas_locais_usd || 0);
     const despesas_rateadas_usd = totalFobUsd > 0
-      ? (operacao.despesas_locais_usd * fobUsd / totalFobUsd)
+      ? (despesasTotaisUsd * fobUsd / totalFobUsd)
       : 0;
     const seguro_rateado_usd = totalFobUsd > 0
       ? ((operacao.seguro_usd || 0) * fobUsd / totalFobUsd)
@@ -195,6 +226,7 @@ export function calcularRateios(itens, operacao) {
       frete_rateado_usd,
       despesas_rateadas_usd,
       seguro_rateado_usd,
+      desconto_rateado_usd,
     };
   });
 }
@@ -217,6 +249,7 @@ export function calcularOperacaoImportacao(itens, operacao, config, dataCompeten
     pis_imp: somarCampo(resultados, 'pis_imp'),
     cofins_imp: somarCampo(resultados, 'cofins_imp'),
     despesas_brl: somarCampo(resultados, 'despesas_brl'),
+    desconto_brl: somarCampo(resultados, 'desconto_brl'),
     icms_imp: somarCampo(resultados, 'icms_imp'),
     custo_formacao_preco: somarCampo(resultados, 'custo_formacao_preco'),
     desembolso_caixa: somarCampo(resultados, 'desembolso_caixa'),
@@ -534,8 +567,25 @@ export function calcularCubagem(itens, container, caixaPecas) {
   // Peças consolidadas: saem do laço individual e entram como UMA caixa única
   const consolidados = itens.filter(i => i.produto.embalagem_consolidada);
   let itensCubagem = itens.filter(i => !i.produto.embalagem_consolidada);
+  // Produto que embarca em MAIS DE UMA caixa por unidade: cada volume vira uma
+  // linha própria na cubagem ("Máquina — vol 2/3"), com a quantidade do item.
+  itensCubagem = itensCubagem.flatMap(item => {
+    const vols = item.produto.volumes;
+    if (!Array.isArray(vols) || vols.length < 2) return [item];
+    return vols.map((v, ix) => ({
+      produto: {
+        ...item.produto,
+        nome: `${item.produto.nome} — vol ${ix + 1}/${vols.length}`,
+        caixa_c_mm: v.c_mm, caixa_l_mm: v.l_mm, caixa_a_mm: v.a_mm,
+        volumes: null,
+      },
+      quantidade: item.quantidade,
+    }));
+  });
+
   if (consolidados.length) {
     const cx = caixaPecas || CAIXA_PECAS_PADRAO;
+    const qtdCaixas = Math.max(1, parseInt(cx.qtd, 10) || 1);
     const conteudo = consolidados.map(i => `${i.quantidade}× ${i.produto.nome}`).join(', ');
     itensCubagem = itensCubagem.concat([{
       produto: {
@@ -543,7 +593,7 @@ export function calcularCubagem(itens, container, caixaPecas) {
         caixa_c_mm: cx.c_mm || 600, caixa_l_mm: cx.l_mm || 400, caixa_a_mm: cx.a_mm || 400,
         empilhavel: true, pode_deitar: true,
       },
-      quantidade: 1,
+      quantidade: qtdCaixas,
     }]);
   }
 
@@ -727,6 +777,15 @@ export function produtoFromProduct(p) {
     caixa_c_mm: (p.length_cm || 0) * 10,
     caixa_l_mm: (p.width_cm || 0) * 10,
     caixa_a_mm: (p.height_cm || 0) * 10,
+    // Multi-volume: dimensões principais = volume 1; volumes_extras = caixas 2..N.
+    // Linhas sem as 3 medidas são ignoradas (dimensão 0 quebraria a cubagem).
+    volumes: (() => {
+      const extras = (Array.isArray(p.volumes_extras) ? p.volumes_extras : [])
+        .filter(v => (parseFloat(v.c_cm) || 0) > 0 && (parseFloat(v.l_cm) || 0) > 0 && (parseFloat(v.a_cm) || 0) > 0);
+      if (!extras.length) return null;
+      return [{ c_mm: (p.length_cm || 0) * 10, l_mm: (p.width_cm || 0) * 10, a_mm: (p.height_cm || 0) * 10 }]
+        .concat(extras.map(v => ({ c_mm: parseFloat(v.c_cm) * 10, l_mm: parseFloat(v.l_cm) * 10, a_mm: parseFloat(v.a_cm) * 10 })));
+    })(),
     pode_deitar: !!p.pode_deitar,
     empilhavel: p.empilhavel !== false,
     embalagem_consolidada: !!p.embalagem_consolidada,
@@ -787,4 +846,12 @@ export const CONTAINERS_PADRAO = [
   { nome: "20' Standard", comprimento_mm: 5900, largura_mm: 2350, altura_mm: 2390, frete_usd: 0 },
   { nome: "40' Standard", comprimento_mm: 12030, largura_mm: 2350, altura_mm: 2390, frete_usd: 0 },
   { nome: "40' High Cube", comprimento_mm: 12030, largura_mm: 2350, altura_mm: 2690, frete_usd: 0 },
+  // NOR = reefer 40' HC usado como seco (unidade de frio desligada). Medidas INTERNAS
+  // menores que o 40' HC seco em tudo: a máquina de frio come ~45 cm de comprimento,
+  // as paredes isoladas comem 7 cm de largura e a altura útil é a "load line" do
+  // reefer (2.425 mm — BWS/armadores; o teto físico fica em ~2.500-2.540 mm).
+  // Pedido do despachante em 03/09/2026: "NOR é mais barato". Piso é grade de alumínio
+  // (T-floor): 3.000 kg por metro corrido, máquina só sobre estrado/madeira, aceitação
+  // de maquinário depende do armador (TT Club StopLoss 17).
+  { nome: "40' NOR (reefer HC como seco)", comprimento_mm: 11560, largura_mm: 2280, altura_mm: 2425, frete_usd: 0 },
 ];

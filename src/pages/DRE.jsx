@@ -409,44 +409,45 @@ export default function DRE() {
           </Button>
         </div>
 
-        <div className="bg-card rounded-xl border border-border p-4">
+        <div className="bg-card rounded-xl border border-border p-4 lg:col-span-2">
           <h3 className="font-heading font-semibold text-sm mb-3">Preços de Venda por Produto</h3>
           {form.vendas?.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground">
-                    <th className="text-left py-2">Produto</th>
-                    <th className="text-right py-2">Qtd</th>
-                    <th className="text-right py-2 hidden sm:table-cell">Custo Un.</th>
-                    <th className="text-right py-2">Preço Venda</th>
-                    <th className="text-right py-2 hidden sm:table-cell">Receita</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {form.vendas.map((v, i) => {
-                    const receita = (v.preco_venda || 0) * v.qty;
-                    return (
-                      <tr key={i} className="border-b border-border/50">
-                        <td className="py-2 truncate max-w-[120px]">{v.product_name}</td>
-                        <td className="text-right py-2">{v.qty}</td>
-                        <td className="text-right py-2 hidden sm:table-cell text-muted-foreground">{fmtBRL(v.custo_unitario)}</td>
-                        <td className="text-right py-2">
-                          <Input type="number" step="0.01" value={v.preco_venda || ""} onChange={e => updatePreco(i, parseFloat(e.target.value) || 0)} className="h-7 w-24 text-right text-xs" />
-                        </td>
-                        <td className="text-right py-2 hidden sm:table-cell font-medium">{fmtBRL(receita)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="text-left py-2">Produto</th>
+                  <th className="text-right py-2">Qtd</th>
+                  <th className="text-right py-2">Custo Un.</th>
+                  <th className="text-right py-2">Preço Venda</th>
+                  <th className="text-right py-2">Margem s/ custo</th>
+                  <th className="text-right py-2">Receita</th>
+                </tr>
+              </thead>
+              <tbody>
+                {form.vendas.map((v, i) => {
+                  const receita = (v.preco_venda || 0) * v.qty;
+                  const fator = v.custo_unitario > 0 && v.preco_venda > 0 ? v.preco_venda / v.custo_unitario : null;
+                  return (
+                    <tr key={i} className="border-b border-border/50">
+                      <td className="py-2 pr-2">{v.product_name}</td>
+                      <td className="text-right py-2">{v.qty}</td>
+                      <td className="text-right py-2 text-muted-foreground">{fmtBRL(v.custo_unitario)}</td>
+                      <td className="text-right py-2">
+                        <Input type="number" step="0.01" value={v.preco_venda || ""} onChange={e => updatePreco(i, parseFloat(e.target.value) || 0)} className="h-7 w-28 text-right text-xs inline-block" />
+                      </td>
+                      <td className={`text-right py-2 ${fator != null && fator < 1 ? "text-destructive font-medium" : "text-muted-foreground"}`}>{fator != null ? `${fator.toFixed(2)}×` : "—"}</td>
+                      <td className="text-right py-2 font-medium">{fmtBRL(receita)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-8">Selecione uma operação para carregar os produtos.</p>
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 lg:col-span-3">
           <Button className="w-full" size="lg" onClick={handleMontarDRE} disabled={!form.operacao_id}>
             <Calculator className="w-4 h-4 mr-2" /> Montar DRE
           </Button>
@@ -455,7 +456,7 @@ export default function DRE() {
           )}
           {dreResult ? (
             <>
-              <DREResults dre={dreResult} />
+              <DREResults dre={dreResult} regime={config?.regime || "simples"} />
               <DREDistribution dre={dreResult} />
             </>
           ) : (
@@ -481,6 +482,8 @@ function DRERealizado({ config, onVoltar }) {
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [channels, setChannels] = useState([]);
+  const [entries, setEntries] = useState([]);
+  const [devolucoes, setDevolucoes] = useState([]);
   const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
@@ -488,7 +491,10 @@ function DRERealizado({ config, onVoltar }) {
       base44.entities.SaleOrder.list("-created_date", 2000),
       base44.entities.Product.list("-created_date", 1000),
       base44.entities.SalesChannel.list("-created_date", 50),
-    ]).then(([o, p, ch]) => { setOrders(o || []); setProducts(p || []); setChannels(ch || []); setCarregando(false); });
+      base44.entities.FinancialEntry.list("-created_date", 2000).catch(() => []),
+      // Devoluções (16/09/2026): entram no mês em que acontecem, nunca reabrem o mês da venda
+      base44.entities.SaleReturn.list("-data", 2000).catch(() => []),
+    ]).then(([o, p, ch, fe, dv]) => { setOrders(o || []); setProducts(p || []); setChannels(ch || []); setEntries(fe || []); setDevolucoes(dv || []); setCarregando(false); });
   }, []);
 
   const dre = useMemo(() => {
@@ -496,10 +502,23 @@ function DRERealizado({ config, onVoltar }) {
       ["invoiced", "shipped", "delivered"].includes(o.status) &&
       ((o.order_date || (o.created_date || "").slice(0, 10)) || "").startsWith(mes)
     );
-    let receita = 0, cmv = 0, comissoesCanal = 0, itensSemCusto = 0;
+    let receita = 0, cmv = 0, comissoesCanal = 0, itensSemCusto = 0, comissoesVendedor = 0;
     let impostosCarimbados = 0, receitaSemCarimbo = 0;
+    const motorPre = configParaMotor(config);
+    const pctPadrao = parseFloat(config?.comissao_vendedor_padrao) || 0;
     for (const o of noMes) {
       receita += o.total || 0;
+      // Comissão de QUEM VENDEU (mesma regra do painel de margem do pedido): sobre a receita líquida de imposto
+      const impPctPedido = (o.imposto_aliquota != null && o.imposto_regime) ? (parseFloat(o.imposto_aliquota) || 0)
+        : (motorPre.regime === "simples" ? simplesEfetivaPct(config?.rbt12 || 0) : 0);
+      const rep = o.vendido_por === "representante";
+      for (const i of (o.items || [])) {
+        const rec = (parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0);
+        if (rec <= 0) continue;
+        const pr = products.find(x => x.id === i.product_id);
+        const pct = rep ? (parseFloat(pr?.seller_commission_percent) || 0) : pctPadrao;
+        comissoesVendedor += rec * (1 - impPctPedido / 100) * (pct / 100);
+      }
       // Preferir o CARIMBO fiscal do pedido (regime/alíquota da época); sem carimbo, cai no cálculo pela config atual
       if (o.imposto_valor != null && o.imposto_valor >= 0 && o.imposto_regime) impostosCarimbados += o.imposto_valor;
       else receitaSemCarimbo += o.total || 0;
@@ -523,11 +542,26 @@ function DRERealizado({ config, onVoltar }) {
       valor: impostosCarimbados + fallback,
     };
     const despesasFixas = (config?.despesas_fixas || []).reduce((s, d) => s + (d.valor || 0), 0);
-    const lucroBruto = receita - cmv;
-    const lucroOperacional = lucroBruto - impostos.valor - comissoesCanal;
+    // ORDENS DE SERVIÇO do mês: receita e despesas de viagem vêm do Financeiro,
+    // pelas categorias exclusivas de OS (competência pelo vencimento/pagamento).
+    const noMesFin = (e) => ((e.payment_date || e.due_date || "").startsWith(mes));
+    const receitaServicos = entries.filter(e => e.category === "servicos_os" && e.type === "receivable" && e.status !== "cancelled" && noMesFin(e)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    const despesasViagem = entries.filter(e => e.category === "despesas_viagem_os" && e.type === "payable" && e.status !== "cancelled" && noMesFin(e)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    // Imposto da receita de serviço no Simples: mesma alíquota efetiva
+    const impostoServicos = (motor.regime === "simples" && receitaServicos > 0)
+      ? receitaServicos * (simplesEfetivaPct(config?.rbt12 || 0) / 100) : 0;
+    // DEVOLUÇÕES do mês (pela data da devolução): dedução da receita, custo volta, comissão estornada
+    const devMes = devolucoes.filter(d => (d.data || "").startsWith(mes));
+    const devolucoesRs = devMes.reduce((s, d) => s + (parseFloat(d.valor) || 0), 0);
+    const cmvDevolvido = devMes.reduce((s, d) => s + (parseFloat(d.cmv_devolvido) || 0), 0);
+    const comissaoEstornada = devMes.reduce((s, d) => s + (parseFloat(d.comissao_estornada) || 0), 0);
+    const receitaLiquida = receita - devolucoesRs;
+    const lucroBruto = receitaLiquida - cmv + cmvDevolvido;
+    const lucroOperacional = lucroBruto + receitaServicos - despesasViagem - impostos.valor - impostoServicos - comissoesCanal - comissoesVendedor + comissaoEstornada;
     const resultado = lucroOperacional - despesasFixas;
-    return { noMes: noMes.length, receita, cmv, lucroBruto, impostos, comissoesCanal, despesasFixas, lucroOperacional, resultado, itensSemCusto };
-  }, [orders, products, channels, mes, config]);
+    return { noMes: noMes.length, receita, cmv, lucroBruto, impostos, comissoesCanal, despesasFixas, lucroOperacional, resultado, itensSemCusto, receitaServicos, despesasViagem, impostoServicos,
+      devolucoes: devolucoesRs, nDevolucoes: devMes.length, cmvDevolvido, comissaoEstornada, comissoesVendedor, receitaLiquida };
+  }, [orders, products, channels, entries, devolucoes, mes, config]);
 
   if (carregando) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
@@ -549,10 +583,18 @@ function DRERealizado({ config, onVoltar }) {
       <div className="bg-card rounded-xl border border-border p-5 max-w-xl">
         <p className="text-xs text-muted-foreground mb-3">{dre.noMes} pedido(s) faturado(s) no mês selecionado — números reais, não simulação.</p>
         <Row label="Receita Bruta (pedidos faturados)" value={dre.receita} bold />
+        {dre.devolucoes > 0 && <Row label={`(−) Devoluções de vendas (${dre.nDevolucoes} no mês)`} value={dre.devolucoes} negative />}
+        {dre.devolucoes > 0 && <Row label="(=) Receita Líquida de devoluções" value={dre.receitaLiquida} />}
         <Row label="(−) CMV (custo dos itens vendidos)" value={dre.cmv} negative />
+        {dre.cmvDevolvido > 0 && <Row label="(+) Custo dos itens devolvidos ao estoque" value={dre.cmvDevolvido} positive />}
         <Row label="(=) Lucro Bruto" value={dre.lucroBruto} bold />
+        {dre.receitaServicos > 0 && <Row label="(+) Receita de Serviços (OS)" value={dre.receitaServicos} positive />}
+        {dre.despesasViagem > 0 && <Row label="(−) Despesas de Viagem (OS)" value={dre.despesasViagem} negative />}
+        {dre.impostoServicos > 0 && <Row label="(−) DAS sobre serviços" value={dre.impostoServicos} negative />}
         <Row label={`(−) ${dre.impostos.rotulo}`} value={dre.impostos.valor} negative />
         <Row label="(−) Comissões de canal" value={dre.comissoesCanal} negative />
+        <Row label="(−) Comissões de vendedor / representante" value={dre.comissoesVendedor} negative />
+        {dre.comissaoEstornada > 0 && <Row label="(+) Estorno de comissão (devoluções)" value={dre.comissaoEstornada} positive />}
         <Row label="(=) Lucro Operacional" value={dre.lucroOperacional} bold />
         <Row label="(−) Despesas fixas (config)" value={dre.despesasFixas} negative />
         <Row label="(=) RESULTADO DO MÊS" value={dre.resultado} bold positive={dre.resultado >= 0} negative={dre.resultado < 0} />

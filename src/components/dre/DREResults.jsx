@@ -13,14 +13,16 @@ function Row({ label, value, bold, negative, positive, indent, total }) {
   );
 }
 
-export default function DREResults({ dre }) {
+export default function DREResults({ dre, regime }) {
   if (!dre) return null;
+  // Título segue o regime da Configuração Tributária (Mauricio 03/09: "estando no Simples, mostrava Lucro Presumido")
+  const tituloRegime = (regime || "simples") === "simples" ? "Simples Nacional" : "Lucro Presumido";
   const margemBrutaPct = dre.receita > 0 ? (dre.lucro_bruto / dre.receita) * 100 : 0;
   const margemLiquidaPct = dre.receita > 0 ? (dre.liquido_final / dre.receita) * 100 : 0;
 
   return (
     <div className="bg-card rounded-xl border border-border p-4">
-      <h3 className="font-heading font-semibold text-sm mb-3">DRE — Lucro Presumido</h3>
+      <h3 className="font-heading font-semibold text-sm mb-3">DRE — {tituloRegime}</h3>
 
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div className="bg-muted/30 rounded-lg p-2">

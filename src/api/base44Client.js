@@ -36,13 +36,25 @@ const TABLE = {
   VisitorIdentidade: 'visitor_identidade',
   SiteEvento: 'site_eventos',
   FinancialEntry: 'financial_entries',
+  FinancialCategory: 'financial_categories',
+  CashAccount: 'cash_accounts',
   DRESalvo: 'dre_salvos',
   PurchaseOrder: 'purchase_orders',
+  ServiceOrder: 'service_orders',
+  // 16/09/2026 — devoluções de venda, transportadoras e histórico de custo (pedidos da Larissa)
+  SaleReturn: 'sale_returns',
+  Transportadora: 'transportadoras',
+  ProductCostHistory: 'product_cost_history',
+  NfeAvulsa: 'nfe_avulsas',
+  CompetitorAnalysis: 'competitor_analysis',
+  Patrimonio: 'patrimonio',
+  ValuationConfig: 'valuation_config',
   // Cofre de acessos (migrado do app "Controle de Acessos" do Base44).
   // A visibilidade master/colaborador é garantida por RLS no Postgres — a tela
   // apenas reflete o que o banco devolve.
   Credential: 'credenciais',
   CofreMembro: 'cofre_membros',
+  CofreEmpresa: 'cofre_empresas',
 };
 
 // ---- Utilitários ----------------------------------------------------------

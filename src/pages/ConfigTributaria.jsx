@@ -65,6 +65,10 @@ export default function ConfigTributaria() {
   const addDespesa = () => setConfig(prev => ({ ...prev, despesas_fixas: [...(prev.despesas_fixas || []), { nome: "", valor: 0 }] }));
   const updateDespesa = (i, field, val) => setConfig(prev => ({ ...prev, despesas_fixas: prev.despesas_fixas.map((d, idx) => idx === i ? { ...d, [field]: val } : d) }));
   const removeDespesa = (i) => setConfig(prev => ({ ...prev, despesas_fixas: prev.despesas_fixas.filter((_, idx) => idx !== i) }));
+  // Taxas de recebimento por operadora × parcelas (jsonb `taxas_operadoras`)
+  const addOperadora = () => setConfig(prev => ({ ...prev, taxas_operadoras: [...(prev.taxas_operadoras || []), { nome: "", debito: "", parcelas: {} }] }));
+  const updateOperadora = (i, patch) => setConfig(prev => ({ ...prev, taxas_operadoras: (prev.taxas_operadoras || []).map((o, idx) => idx === i ? { ...o, ...patch } : o) }));
+  const removeOperadora = (i) => setConfig(prev => ({ ...prev, taxas_operadoras: (prev.taxas_operadoras || []).filter((_, idx) => idx !== i) }));
 
   const addSocio = async () => {
     const created = await base44.entities.Socio.create({ nome: "Novo Sócio", percentual_participacao: 0, residente_fiscal_brasil: true });
@@ -165,6 +169,38 @@ export default function ConfigTributaria() {
             <div><Label>Câmbio USD Padrão (R$)</Label><Input type="number" step="0.01" value={config.cambio_usd ?? 5.3} onChange={f("cambio_usd")} /></div>
             <div><Label>Comissão Padrão Vendedor (%)</Label><Input type="number" step="0.1" value={config.comissao_vendedor_padrao ?? 0} onChange={f("comissao_vendedor_padrao")} /></div>
             <div><Label>Índice de Custo Fixo</Label><Input type="number" step="0.01" value={config.indice_custo_fixo ?? 0} onChange={f("indice_custo_fixo")} /></div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <h3 className="font-heading font-semibold text-sm">Taxas de recebimento por operadora e nº de parcelas</h3>
+              <p className="text-[11px] text-muted-foreground mt-1">Uma linha por operadora (PagBank, PayPal, Mercado Pago…). Para cada uma, a taxa de débito e a taxa de crédito de 1× a 18× — a taxa muda com o nº de parcelas, inclusive no 1×. No pedido de venda, a linha de cartão/PayPal escolhe a operadora e o sistema aplica a taxa da tabela; deixe em branco o nº de parcelas que não trabalhamos.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={addOperadora}><Plus className="w-3.5 h-3.5 mr-1" /> Operadora</Button>
+          </div>
+          {(config.taxas_operadoras || []).length === 0 && <p className="text-xs text-muted-foreground">Nenhuma operadora cadastrada — sem isso o pedido não lança a despesa de taxa.</p>}
+          <div className="space-y-3">
+            {(config.taxas_operadoras || []).map((op, i) => (
+              <div key={i} className="rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Input placeholder="Nome da operadora (ex.: PagBank)" value={op.nome || ""} onChange={e => updateOperadora(i, { nome: e.target.value })} className="max-w-xs" />
+                  <Label className="text-xs whitespace-nowrap ml-2">Débito (%)</Label>
+                  <Input type="number" step="0.01" min="0" className="w-24" value={op.debito ?? ""} onChange={e => updateOperadora(i, { debito: e.target.value })} />
+                  <button type="button" className="ml-auto text-destructive hover:bg-destructive/10 rounded px-2 h-9 text-sm" title="Remover operadora" onClick={() => removeOperadora(i)}>✕</button>
+                </div>
+                <Label className="text-xs">Crédito — taxa (%) por nº de parcelas</Label>
+                <div className="grid grid-cols-6 sm:grid-cols-9 gap-1.5 mt-1">
+                  {Array.from({ length: 18 }, (_, k) => k + 1).map(n => (
+                    <div key={n}>
+                      <span className="text-[10px] text-muted-foreground">{n}×</span>
+                      <Input type="number" step="0.01" min="0" className="h-8 text-xs px-1.5" value={(op.parcelas || {})[String(n)] ?? ""} onChange={e => updateOperadora(i, { parcelas: { ...(op.parcelas || {}), [String(n)]: e.target.value } })} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
 

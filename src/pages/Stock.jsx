@@ -45,9 +45,10 @@ export default function Stock() {
       base44.entities.StockMovement.list("-created_date", 1000),
       base44.entities.SaleOrder.list("-created_date", 1000),
     ]);
-    // Reserva = pedidos ainda NÃO faturados (pending/confirmed) — comprometem o estoque sem baixá-lo
+    // Reserva = pedidos ainda NÃO faturados (Pendente/Aprovado) — comprometem o
+    // estoque sem baixá-lo. "Aprovado" é justamente o pedido com sinal recebido.
     const res = {};
-    (orders || []).filter(o => ["pending", "confirmed"].includes(o.status)).forEach(o => {
+    (orders || []).filter(o => ["pending", "approved"].includes(o.status)).forEach(o => {
       (o.items || []).forEach(i => {
         if (i.product_id) res[i.product_id] = (res[i.product_id] || 0) + (i.quantity || 0);
       });

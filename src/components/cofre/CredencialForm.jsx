@@ -29,7 +29,7 @@ const CAMPOS = [
 { key: "expiry_date", label: "Expira/renova em", type: "date" }];
 
 
-export default function CredencialForm({ aberto, credencial, modo, onFechar, onSalvar }) {
+export default function CredencialForm({ aberto, credencial, modo, onFechar, onSalvar, empresas = [], categorias = [] }) {
   const [form, setForm] = useState({});
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
@@ -80,20 +80,56 @@ export default function CredencialForm({ aberto, credencial, modo, onFechar, onS
         </DialogHeader>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
-          {CAMPOS.map((c) =>
-          <div key={c.key} className={c.key === "service_name" ? "sm:col-span-2" : ""}>
-              <Label htmlFor={c.key} className="text-xs text-slate-600">
-                {c.label}{c.req && <span className="text-orange-600"> *</span>}
-              </Label>
-              <Input
-              id={c.key}
-              type={c.type || (c.secreto ? "password" : "text")}
-              autoComplete="off"
-              placeholder={c.placeholder}
-              value={form[c.key] ?? ""}
-              onChange={(e) => set(c.key, e.target.value)} />
-            </div>
-          )}
+          {CAMPOS.map((c) => {
+            // Empresa vem do CADASTRO (chips do topo do cofre), não de texto livre —
+            // é o que mantém os filtros sem duplicata ("MRS" ≠ "MRS CORPORATION").
+            if (c.key === "company") {
+              const opcoes = [...empresas];
+              if (form.company && !opcoes.includes(form.company)) opcoes.push(form.company);
+              return (
+                <div key={c.key}>
+                  <Label htmlFor={c.key} className="text-xs text-slate-600">{c.label}</Label>
+                  <select
+                    id={c.key}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                    value={form.company ?? ""}
+                    onChange={(e) => set("company", e.target.value)}>
+                    <option value="">— sem empresa —</option>
+                    {opcoes.map((emp) => <option key={emp} value={emp}>{emp}</option>)}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Falta uma opção? Cadastre no botão "Empresas" da tela do cofre.</p>
+                </div>
+              );
+            }
+            if (c.key === "category") {
+              return (
+                <div key={c.key}>
+                  <Label htmlFor={c.key} className="text-xs text-slate-600">{c.label}</Label>
+                  <Input
+                    id={c.key} autoComplete="off" list="cofre-categorias"
+                    value={form.category ?? ""}
+                    onChange={(e) => set("category", e.target.value)} />
+                  <datalist id="cofre-categorias">
+                    {categorias.map((cat) => <option key={cat} value={cat} />)}
+                  </datalist>
+                </div>
+              );
+            }
+            return (
+              <div key={c.key} className={c.key === "service_name" ? "sm:col-span-2" : ""}>
+                <Label htmlFor={c.key} className="text-xs text-slate-600">
+                  {c.label}{c.req && <span className="text-orange-600"> *</span>}
+                </Label>
+                <Input
+                id={c.key}
+                type={c.type || (c.secreto ? "password" : "text")}
+                autoComplete="off"
+                placeholder={c.placeholder}
+                value={form[c.key] ?? ""}
+                onChange={(e) => set(c.key, e.target.value)} />
+              </div>
+            );
+          })}
 
           <div className="sm:col-span-2">
             <Label htmlFor="access_info" className="text-xs text-slate-600">Observações</Label>

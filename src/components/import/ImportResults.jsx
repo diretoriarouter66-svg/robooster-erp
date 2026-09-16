@@ -17,6 +17,7 @@ function ProductBreakdown({ r }) {
     { label: "COFINS Importação", brl: r.cofins_imp },
     { label: `ICMS${r.aliq_icms_efetiva < 0.09 ? " (Benefício 5.2.91)" : ""}`, brl: r.icms_imp },
     { label: "Despesas Aduaneiras", brl: r.despesas_brl },
+    ...(r.desconto_brl ? [{ label: "Desconto do Fornecedor", brl: -r.desconto_brl, credit: true }] : []),
     { label: "Custo Formação Preço", brl: r.custo_formacao_preco, bold: true },
     { label: "Desembolso Caixa", brl: r.desembolso_caixa, bold: true },
     { label: "Crédito ICMS", brl: r.credito_icms, credit: true },
@@ -47,9 +48,22 @@ function ProductBreakdown({ r }) {
                 </tr>
               ))}
               <tr className="border-t border-border">
+                <td className="py-1.5 text-muted-foreground">Custo no Fornecedor (un.) — FOB × câmbio</td>
+                <td className="py-1.5 text-right">{fmtBRL(r.quantidade > 0 ? r.fob_total_brl / r.quantidade : 0)}</td>
+              </tr>
+              <tr>
                 <td className="py-1.5 font-bold">Custo Unitário Landed</td>
                 <td className="py-1.5 text-right font-bold text-primary">{fmtBRL(r.custo_unitario_formacao)}</td>
               </tr>
+              {r.fob_total_brl > 0 && (
+                <tr>
+                  <td className="py-1.5 font-bold">Custo ÷ FOB China</td>
+                  <td className="py-1.5 text-right font-bold">
+                    {((r.custo_formacao_preco / r.fob_total_brl) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+                    <span className="text-muted-foreground font-normal ml-1">({(r.custo_formacao_preco / r.fob_total_brl).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}× o preço da China)</span>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
           {r.economia_ex_tarifario && (
@@ -89,6 +103,7 @@ export default function ImportResults({ result }) {
         <div className="text-center"><p className="text-muted-foreground">COFINS Imp</p><p className="font-medium">{fmtBRL(t.cofins_imp)}</p></div>
         <div className="text-center"><p className="text-muted-foreground">ICMS Imp</p><p className="font-medium">{fmtBRL(t.icms_imp)}</p></div>
         <div className="text-center"><p className="text-muted-foreground">Despesas</p><p className="font-medium">{fmtBRL(t.despesas_brl)}</p></div>
+        {t.desconto_brl > 0 && <div className="text-center"><p className="text-muted-foreground">Desconto Fornecedor</p><p className="font-medium text-success">−{fmtBRL(t.desconto_brl)}</p></div>}
       </div>
 
       <div className="flex gap-4 mb-3 text-xs">

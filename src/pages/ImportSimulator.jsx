@@ -14,13 +14,14 @@ import {
   calcularOperacaoImportacao, calcularCubagem, produtoFromProduct,
   configParaMotor, CONTAINERS_PADRAO
 } from "@/lib/simportEngine";
-import { entradaImportacao, operacaoJaDeuEntrada } from "@/lib/stockService";
+import { entradaImportacao, operacaoJaDeuEntrada, atualizarCustoEntradaImportacao } from "@/lib/stockService";
 
 const STATUS_OPTIONS = [
   { value: "simulacao", label: "Simulação" },
   { value: "aprovada", label: "Aprovada" },
   { value: "em_transito", label: "Em Trânsito" },
-  { value: "realizada", label: "Realizada" }
+  { value: "realizada", label: "Realizada (prévia)" },
+  { value: "concluida", label: "Concluída" }
 ];
 
 const fmtBRL = (v) => v != null ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v) : "—";
@@ -107,6 +108,10 @@ export default function ImportSimulator() {
       const produto = produtoFromProduct(product || { id: it.product_id, name: it.product_name });
       // decisão de embarque é POR OPERAÇÃO: o cadastro é só o padrão inicial
       produto.embalagem_consolidada = it.consolidado ?? produto.embalagem_consolidada;
+      // custo REAL por item: o digitado na operação vence o cadastro (nova compra
+      // pode ter preço novo — ao concluir, o cadastro é atualizado com este valor)
+      const custoOp = parseFloat(it.custo_usd);
+      if (!isNaN(custoOp) && custoOp >= 0) produto.fob_unitario_usd = custoOp;
       // valor declarado POR ITEM (padrão = FOB real do cadastro)
       const decl = parseFloat(it.fob_declarado_usd);
       produto.fob_declarado_unitario_usd = isNaN(decl) ? produto.fob_unitario_usd : decl;
@@ -130,10 +135,15 @@ export default function ImportSimulator() {
   // Quitação do fornecedor: as remessas devem cobrir o valor da compra (FOB do mix)
   const fobCompraUsd = (form.itens || []).reduce((t, item) => {
     const prod = products.find(pr => pr.id === item.product_id);
-    return t + (prod?.cost_fob_usd || 0) * (item.qty || item.quantidade || item.quantity || 0);
+    const custoOp = parseFloat(item.custo_usd);
+    const unit = (!isNaN(custoOp) && custoOp >= 0) ? custoOp : (prod?.cost_fob_usd || 0);
+    return t + unit * (item.qty || item.quantidade || item.quantity || 0);
   }, 0);
   const totalEnviadoUsd = (form.remessas || []).reduce((t, r) => t + (parseFloat(r.valor_usd) || 0), 0);
-  const saldoQuitarUsd = Math.round((fobCompraUsd - totalEnviadoUsd) * 100) / 100;
+  // O desconto do fornecedor abate o que há a pagar (fatura líquida)
+  const descontoFornecedorUsd = parseFloat(form.desconto_fornecedor_usd) || 0;
+  const compraLiquidaUsd = Math.round((fobCompraUsd - descontoFornecedorUsd) * 100) / 100;
+  const saldoQuitarUsd = Math.round((compraLiquidaUsd - totalEnviadoUsd) * 100) / 100;
   const fmtUsd = (v) => (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const addRemessa = () => setForm(prev => ({ ...prev, remessas: [...(prev.remessas || []), { data: new Date().toISOString().slice(0, 10), valor_usd: "", cotacao: "", taxas_brl: "" }] }));
@@ -166,6 +176,35 @@ export default function ImportSimulator() {
     }
   };
 
+  // ==== Custos da nacionalização → Financeiro (04/09/2026, auditoria do Container 01) ====
+  // Só as remessas viravam lançamento; numerário ao despachante, frete internacional e a
+  // diferença/ressarcimento da nacionalização ficavam fora do caixa e da DRE realizada.
+  const sincronizarCustosImportacaoFinanceiro = async (opId, opNome, f, totais) => {
+    if (!opId || !totais) return;
+    const antigas = await base44.entities.FinancialEntry.filter({ reference_id: opId, reference_type: "import_custo" }, "-created_date", 100).catch(() => []);
+    for (const e of antigas || []) {
+      if (e.status === "paid" && !(e.description || "").startsWith("Numerário")) continue; // conta já baixada à mão fica
+      await base44.entities.FinancialEntry.delete(e.id).catch(() => {});
+    }
+    const contas = await base44.entities.CashAccount.list("nome", 50).catch(() => []);
+    const contaTransf = (contas || []).find(c => c.ativo !== false && (c.metodos || []).includes("transfer"))?.id || null;
+    const dataOp = f.data || new Date().toISOString().slice(0, 10);
+    const r2 = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
+    const cria = (d) => base44.entities.FinancialEntry.create({ category: "import", reference_id: opId, reference_type: "import_custo", payment_method: "transfer", account_id: contaTransf, due_date: dataOp, ...d });
+    const numerario = r2(f.numerario_enviado_brl);
+    const nacionalizacao = r2((totais.ii || 0) + (totais.ipi || 0) + (totais.pis_imp || 0) + (totais.cofins_imp || 0) + (totais.icms_imp || 0) + (totais.despesas_brl || 0));
+    const cambioFrete = parseFloat(f.cambio_chegada) || parseFloat(f.cambio) || cambioEfetivo || 0;
+    const freteBrl = r2((parseFloat(f.frete_internacional_usd) || 0) * cambioFrete);
+    const seguroBrl = r2((parseFloat(f.seguro_usd) || 0) * cambioFrete);
+    if (numerario > 0) await cria({ type: "payable", status: "paid", payment_date: dataOp, amount: numerario, description: `Numerário ao despachante (nacionalização) — ${opNome}${f.numerario_obs ? ` · ${f.numerario_obs}` : ""}` });
+    if (freteBrl > 0) await cria({ type: "payable", status: "pending", amount: freteBrl, description: `Frete internacional — ${opNome} (US$ ${(parseFloat(f.frete_internacional_usd) || 0).toLocaleString("pt-BR")} @ ${cambioFrete.toFixed(4)})` });
+    if (seguroBrl > 0) await cria({ type: "payable", status: "pending", amount: seguroBrl, description: `Seguro internacional — ${opNome}` });
+    const saldo = r2(numerario - nacionalizacao);
+    if (numerario <= 0 && nacionalizacao > 0) await cria({ type: "payable", status: "pending", amount: nacionalizacao, description: `Impostos e despesas de nacionalização — ${opNome}` });
+    else if (saldo > 0) await cria({ type: "receivable", status: "pending", amount: saldo, description: `Ressarcimento do numerário (sobra) — despachante — ${opNome}` });
+    else if (saldo < 0) await cria({ type: "payable", status: "pending", amount: -saldo, description: `Diferença da nacionalização a pagar — despachante — ${opNome}` });
+  };
+
   // ==== Finalizar Importação: recalcula, mostra conferência e executa tudo ====
   const [finalizarOpen, setFinalizarOpen] = useState(false);
   const [resumoFinal, setResumoFinal] = useState(null);
@@ -175,7 +214,7 @@ export default function ImportSimulator() {
     const engineItems = buildEngineItems();
     if (!engineItems.length) { alert("A operação não tem produtos."); return; }
     const configMotor = configParaMotor(config);
-    const operacaoEngine = { cambio: cambioEfetivo, frete_internacional_usd: form.frete_internacional_usd || 0, despesas_locais_usd: form.despesas_locais_usd || 0, seguro_usd: form.seguro_usd || 0, caixa_pecas: form.caixa_pecas };
+    const operacaoEngine = { cambio: cambioEfetivo, cambio_chegada: form.cambio_chegada, frete_internacional_usd: form.frete_internacional_usd || 0, despesas_locais_brl: form.despesas_locais_brl, despesas_locais_usd: form.despesas_locais_usd || 0, seguro_usd: form.seguro_usd || 0, desconto_fornecedor_usd: form.desconto_fornecedor_usd || 0, caixa_pecas: form.caixa_pecas };
     const result = calcularOperacaoImportacao(engineItems, operacaoEngine, configMotor, form.data || "2026-01-01", 1.0);
     const container = CONTAINERS_PADRAO.find(c => c.nome === form.container_tipo) || CONTAINERS_PADRAO[2];
     const cubage = calcularCubagem(engineItems, container, form.caixa_pecas);
@@ -189,23 +228,63 @@ export default function ImportSimulator() {
     if (!resumoFinal?.resultados || !editing?.id) return;
     setFinalizando(true);
     try {
-      // 1) Custo landed em cada produto
+      // Fluxo em 2 tempos: 1ª finalização = "realizada" (prévia, com o numerário);
+      // 2ª finalização (valores reais ajustados) = "concluida" — recalcula tudo.
+      const statusFinal = ["realizada", "concluida"].includes(editing?.status) ? "concluida" : "realizada";
+      // 1) Custo landed + custo FOB real (o custo digitado na operação atualiza o cadastro)
       await base44.entities.Product.bulkUpdate(
-        resumoFinal.resultados.filter(r => r.produto?.id).map(r => ({ id: r.produto.id, cost_landed_brl: r.custo_unitario_formacao }))
+        resumoFinal.resultados.filter(r => r.produto?.id).map(r => ({
+          id: r.produto.id,
+          cost_landed_brl: r.custo_unitario_formacao,
+          cost_fob_usd: r.produto.fob_unitario_usd,
+        }))
       );
-      // 2) Entrada no estoque via Kardex (guardada pelo próprio Kardex)
+      // 1b) Histórico de custo por produto (pedido da operação: ver a evolução do
+      //     custo a cada importação, como o Tiny fazia). Idempotente por operação:
+      //     mesma referência + mesmo custo = não duplica; custo diferente (2ª
+      //     finalização com valores reais) = registro novo, preservando a prévia.
+      //     Falha aqui NÃO derruba a finalização.
+      try {
+        const hoje = new Date().toISOString().slice(0, 10);
+        for (const r of resumoFinal.resultados.filter(x => x.produto?.id)) {
+          const custo = Math.round((parseFloat(r.custo_unitario_formacao) || 0) * 100) / 100;
+          const anteriores = await base44.entities.ProductCostHistory.filter(
+            { product_id: r.produto.id, referencia: form.nome }, "-data", 100
+          );
+          const ultimo = (anteriores || []).sort((a, b) => String(b.created_date || "").localeCompare(String(a.created_date || "")))[0];
+          if (ultimo && Math.abs((parseFloat(ultimo.custo) || 0) - custo) < 0.01) continue;
+          await base44.entities.ProductCostHistory.create({
+            product_id: r.produto.id,
+            custo,
+            origem: "importacao",
+            referencia: form.nome,
+            data: hoje,
+          });
+        }
+      } catch (err) {
+        console.error("Histórico de custo não gravado (finalização segue normalmente):", err);
+      }
+      // 2) Entrada no estoque via Kardex (uma única vez); no fechamento final,
+      //    a entrada já existe — só o CUSTO dos movimentos é atualizado.
       const jaEntrou = await operacaoJaDeuEntrada(editing.id);
-      if (!jaEntrou) await entradaImportacao(resumoFinal.resultados, editing.id, form.nome);
-      // 3) Grava a operação como Realizada com os resultados finais
+      if (!jaEntrou) {
+        await entradaImportacao(resumoFinal.resultados, editing.id, form.nome);
+      } else {
+        await atualizarCustoEntradaImportacao(editing.id, resumoFinal.resultados, form.nome);
+      }
+      // 3) Grava a operação com os resultados finais
       await base44.entities.ImportOperation.update(editing.id, {
         ...form,
-        status: "realizada",
+        status: statusFinal,
         cambio: cambioEfetivo,
         resultado_importacao: resumoFinal,
         resultado_cubagem: cubageResult,
       });
       await sincronizarRemessasFinanceiro(editing.id, form.nome, form.remessas).catch((err) => {
         alert(`Operação finalizada, mas houve erro ao sincronizar as remessas no Financeiro: ${err.message}`);
+      });
+      await sincronizarCustosImportacaoFinanceiro(editing.id, form.nome, form, resumoFinal.totais).catch((err) => {
+        alert(`Operação finalizada, mas houve erro ao lançar numerário/frete/nacionalização no Financeiro: ${err.message}`);
       });
       setFinalizarOpen(false);
       setView("list");
@@ -223,9 +302,12 @@ export default function ImportSimulator() {
     const configMotor = configParaMotor(config);
     const operacaoEngine = {
       cambio: cambioEfetivo,
+      cambio_chegada: form.cambio_chegada,
       frete_internacional_usd: form.frete_internacional_usd || 0,
+      despesas_locais_brl: form.despesas_locais_brl,
       despesas_locais_usd: form.despesas_locais_usd || 0,
       seguro_usd: form.seguro_usd || 0,
+      desconto_fornecedor_usd: form.desconto_fornecedor_usd || 0,
       caixa_pecas: form.caixa_pecas,
     };
 
@@ -257,25 +339,17 @@ export default function ImportSimulator() {
         cambio: cambioEfetivo
       };
 
-      const wasRealizada = editing?.status === "realizada";
-      const isRealizada = form.status === "realizada";
+      const wasRealizada = ["realizada", "concluida"].includes(editing?.status);
+      const isRealizada = ["realizada", "concluida"].includes(form.status);
 
-      if (isRealizada && !wasRealizada && importResult?.resultados) {
-        // 1) Atualiza o custo landed de cada produto
-        await base44.entities.Product.bulkUpdate(
-          importResult.resultados
-            .filter(r => r.produto?.id)
-            .map(r => ({ id: r.produto.id, cost_landed_brl: r.custo_unitario_formacao }))
-        );
-        // 2) Dá entrada das quantidades no estoque via Kardex (o próprio Kardex garante que é uma única vez)
-        const jaEntrou = await operacaoJaDeuEntrada(editing?.id);
-        if (!jaEntrou) {
-          try {
-            await entradaImportacao(importResult.resultados, editing?.id, form.nome);
-          } catch (err) {
-            alert(`Custo atualizado, mas houve erro na entrada de estoque: ${err.message}`);
-          }
-        }
+      // O caminho CERTO para Realizada/Concluída são os botões "Finalizar
+      // Importação (prévia)" e "Recalcular e Concluir": eles recalculam com os
+      // valores atuais e dão entrada no estoque com rastro correto. Trocar o
+      // status pelo dropdown pulava o recálculo e, em operação nova, gerava
+      // movimentos órfãos (origem_id vazio) que depois entravam em DOBRO.
+      if (isRealizada && !wasRealizada) {
+        alert('Para efetivar a operação use o botão "Finalizar Importação (prévia)" — salvei mantendo o status anterior.');
+        data.status = editing?.status || "simulacao";
       }
 
       let opId = editing?.id;
@@ -424,6 +498,9 @@ export default function ImportSimulator() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{CONTAINERS_PADRAO.map(c => <SelectItem key={c.nome} value={c.nome}>{c.nome}</SelectItem>)}</SelectContent>
                 </Select>
+                {(form.container_tipo || "").startsWith("40' NOR") && (
+                  <p className="text-[10px] text-warning mt-1">NOR = reefer com o frio desligado, mais barato porque o armador precisa reposicionar. Interno útil 11,56 × 2,28 × 2,43 m (o 40' HC seco tem 12,03 × 2,35 × 2,69): caixa acima de 1,21 m não empilha em dupla. Piso de alumínio: máx. 3.000 kg por metro corrido, máquina só sobre estrado de madeira, sem empilhadeira dentro. Maquinário pesado costuma ser recusado — confirmar aceite por escrito com o armador antes de fechar o frete.</p>
+                )}
               </div>
             </div>
           </div>
@@ -433,12 +510,15 @@ export default function ImportSimulator() {
             <div className="space-y-3">
               <div><Label>Frete Internacional (USD)</Label><Input type="number" step="0.01" value={form.frete_internacional_usd ?? ""} onChange={f("frete_internacional_usd")} /></div>
               <div><Label>Seguro (USD)</Label><Input type="number" step="0.01" value={form.seguro_usd ?? ""} onChange={f("seguro_usd")} /></div>
-              <div><Label>Despesas Locais (USD)</Label><Input type="number" step="0.01" value={form.despesas_locais_usd ?? ""} onChange={f("despesas_locais_usd")} /></div>
+              <div><Label>Despesas Locais (R$)</Label><Input type="number" step="0.01" value={form.despesas_locais_brl ?? ""} onChange={f("despesas_locais_brl")} /><p className="text-[10px] text-muted-foreground mt-1">Despachante, porto, armazenagem — pagos no Brasil, em reais.</p></div>
+              <div><Label>Desconto do Fornecedor (USD)</Label><Input type="number" step="0.01" value={form.desconto_fornecedor_usd ?? ""} onChange={f("desconto_fornecedor_usd")} /><p className="text-[10px] text-muted-foreground mt-1">Abatimento na fatura (ex.: desconto de acessórios). Reduz o custo real rateado por item — não altera impostos nem valores declarados.</p></div>
+              <div><Label>Câmbio na chegada / DI (R$)</Label><Input type="number" step="0.0001" value={form.cambio_chegada ?? ""} onChange={f("cambio_chegada")} /><p className="text-[10px] text-muted-foreground mt-1">A carga chega 30-40 dias após o pagamento: IMPOSTOS e FRETE são calculados no dólar da chegada (DI), não no das remessas. Enquanto viaja, use uma projeção; quando a DI sair, coloque a cotação real e use "Recalcular e Concluir". Vazio = usa o câmbio das remessas.</p></div>
               {temConsolidada && (
                 <div className="sm:col-span-2 border border-dashed rounded-lg p-3">
                   <Label className="font-semibold">Caixa de peças consolidada (mm)</Label>
-                  <p className="text-xs text-muted-foreground mb-2">As peças de reposição marcadas como "consolidadas" viajam TODAS dentro desta caixa única — é ela que entra na cubagem do container e no rateio do frete.</p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <p className="text-xs text-muted-foreground mb-2">As peças de reposição marcadas como "consolidadas" viajam dentro destas caixas — são elas que entram na cubagem do container e no rateio do frete. Informe as medidas de UMA caixa e quantas caixas iguais virão.</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    <div><Label className="text-xs">Nº de caixas</Label><Input type="number" min="1" value={form.caixa_pecas?.qtd ?? 1} onChange={e => setForm({ ...form, caixa_pecas: { ...(form.caixa_pecas || {}), qtd: parseInt(e.target.value) || 1, c_mm: form.caixa_pecas?.c_mm ?? 600, l_mm: form.caixa_pecas?.l_mm ?? 400, a_mm: form.caixa_pecas?.a_mm ?? 400 } })} /></div>
                     <div><Label className="text-xs">Comprimento</Label><Input type="number" value={form.caixa_pecas?.c_mm ?? 600} onChange={e => setForm({ ...form, caixa_pecas: { ...(form.caixa_pecas || {}), c_mm: parseFloat(e.target.value) || 0, l_mm: form.caixa_pecas?.l_mm ?? 400, a_mm: form.caixa_pecas?.a_mm ?? 400 } })} /></div>
                     <div><Label className="text-xs">Largura</Label><Input type="number" value={form.caixa_pecas?.l_mm ?? 400} onChange={e => setForm({ ...form, caixa_pecas: { ...(form.caixa_pecas || {}), c_mm: form.caixa_pecas?.c_mm ?? 600, l_mm: parseFloat(e.target.value) || 0, a_mm: form.caixa_pecas?.a_mm ?? 400 } })} /></div>
                     <div><Label className="text-xs">Altura</Label><Input type="number" value={form.caixa_pecas?.a_mm ?? 400} onChange={e => setForm({ ...form, caixa_pecas: { ...(form.caixa_pecas || {}), c_mm: form.caixa_pecas?.c_mm ?? 600, l_mm: form.caixa_pecas?.l_mm ?? 400, a_mm: parseFloat(e.target.value) || 0 } })} /></div>
@@ -485,6 +565,12 @@ export default function ImportSimulator() {
             {fobCompraUsd > 0 && (
               <div className={`mt-3 rounded-lg p-3 border ${saldoQuitarUsd > 0 ? "bg-warning/10 border-warning/30" : "bg-success/10 border-success/30"}`}>
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Valor da compra (FOB do mix)</span><span className="font-semibold">US$ {fmtUsd(fobCompraUsd)}</span></div>
+                {descontoFornecedorUsd > 0 && (
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">− Desconto do fornecedor</span><span className="font-semibold text-success">− US$ {fmtUsd(descontoFornecedorUsd)}</span></div>
+                )}
+                {descontoFornecedorUsd > 0 && (
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Compra líquida a pagar</span><span className="font-semibold">US$ {fmtUsd(compraLiquidaUsd)}</span></div>
+                )}
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Total enviado ao fornecedor</span><span className="font-semibold">US$ {fmtUsd(totalEnviadoUsd)}</span></div>
                 <div className="flex justify-between text-sm border-t border-border mt-1.5 pt-1.5">
                   <span className="font-medium">{saldoQuitarUsd > 0 ? "Falta enviar" : saldoQuitarUsd < 0 ? "Enviado a mais" : "Fornecedor quitado"}</span>
@@ -529,13 +615,21 @@ export default function ImportSimulator() {
               {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />} Salvar
             </Button>
           </div>
-          {editing && form.status !== "realizada" && (
+          {editing && !["realizada", "concluida"].includes(form.status) && (
             <Button className="w-full bg-success hover:bg-success/90 text-white" onClick={abrirFinalizacao} disabled={!importResult?.resultados}>
-              Finalizar Importação
+              Finalizar Importação (prévia)
             </Button>
           )}
           {form.status === "realizada" && (
-            <p className="text-xs text-success text-center font-medium">Importação realizada — custos e estoque já lançados no sistema.</p>
+            <>
+              <Button className="w-full bg-primary hover:bg-primary/90" onClick={abrirFinalizacao} disabled={!importResult?.resultados}>
+                Recalcular e Concluir (fechamento final)
+              </Button>
+              <p className="text-[11px] text-muted-foreground text-center">Prévia realizada: estoque e preços já lançados com os valores do numerário. Quando os valores REAIS chegarem, ajuste aqui, clique Calcular e conclua — custos e Kardex são recalculados sem duplicar estoque.</p>
+            </>
+          )}
+          {form.status === "concluida" && (
+            <p className="text-xs text-success text-center font-medium">✅ Importação concluída — processo 100% fechado (custos finais no estoque e nos produtos).</p>
           )}
         </div>
 
@@ -574,7 +668,14 @@ export default function ImportSimulator() {
                     <button onClick={() => removeItem(i)} className="p-1 hover:bg-destructive/10 rounded"><Trash2 className="w-3 h-3 text-destructive" /></button>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <Input type="number" min="1" value={item.qty || ""} onChange={e => updateItem(i, "qty", parseInt(e.target.value) || 0)} className="h-7 w-16 text-sm" placeholder="Qtd" />
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">Qtd</span>
+                      <Input type="number" min="1" value={item.qty || ""} onChange={e => updateItem(i, "qty", parseInt(e.target.value) || 0)} className="h-7 w-16 text-sm" />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">Custo US$</span>
+                      <Input type="number" step="0.01" value={item.custo_usd ?? products.find(pr => pr.id === item.product_id)?.cost_fob_usd ?? ""} onChange={e => updateItem(i, "custo_usd", e.target.value)} className="h-7 w-24 text-sm" />
+                    </div>
                     {!item.nao_declarado && (
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-muted-foreground whitespace-nowrap">Declarado US$</span>
@@ -592,6 +693,12 @@ export default function ImportSimulator() {
                       {(item.consolidado ?? products.find(pr => pr.id === item.product_id)?.embalagem_consolidada) ? "📦 consolidada" : "caixa própria"}
                     </button>
                   </div>
+                  {(() => {
+                    const cad = products.find(pr => pr.id === item.product_id)?.cost_fob_usd;
+                    const novo = parseFloat(item.custo_usd);
+                    if (item.custo_usd == null || item.custo_usd === "" || isNaN(novo) || cad == null || novo === cad) return null;
+                    return <p className="text-[10px] text-warning mt-1">💾 Custo no cadastro: US$ {cad} → será atualizado para US$ {novo} ao finalizar/concluir</p>;
+                  })()}
                 </div>
               ))}
               {!form.itens?.length && <p className="text-xs text-muted-foreground text-center py-4">Adicione produtos ao mix.</p>}
@@ -619,7 +726,7 @@ export default function ImportSimulator() {
 
             {saldoQuitarUsd > 0 && (
               <div className="px-3 py-2 bg-warning/10 border border-warning/30 rounded-lg text-xs text-warning font-medium mb-3">
-                Atenção: ainda faltam US$ {fmtUsd(saldoQuitarUsd)} de remessas para quitar o fornecedor (compra de US$ {fmtUsd(fobCompraUsd)}, enviado US$ {fmtUsd(totalEnviadoUsd)}). Você pode finalizar mesmo assim, mas o câmbio médio ficará provisório.
+                Atenção: ainda faltam US$ {fmtUsd(saldoQuitarUsd)} de remessas para quitar o fornecedor (compra líquida de US$ {fmtUsd(compraLiquidaUsd)}, enviado US$ {fmtUsd(totalEnviadoUsd)}). Você pode finalizar mesmo assim, mas o câmbio médio ficará provisório.
               </div>
             )}
             <div className="px-3 py-2 bg-primary/5 rounded-lg text-sm flex justify-between mb-3">

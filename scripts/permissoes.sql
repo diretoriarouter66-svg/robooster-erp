@@ -143,3 +143,11 @@ begin
 end $$;
 
 notify pgrst, 'reload schema';
+
+-- 20/08/2026 — módulos novos: OS ("servicos") e visão de custo/lucro ("custos")
+INSERT INTO public.permissoes (tipo, modulo, ver, editar) VALUES
+  ('Diretor','servicos',true,true), ('Colaborador','servicos',true,true),
+  ('Técnico','servicos',true,true), ('Contador','servicos',true,false),
+  ('Diretor','custos',true,true),  ('Contador','custos',true,false),
+  ('Colaborador','custos',false,false), ('Técnico','custos',false,false)
+ON CONFLICT (tipo, modulo) DO UPDATE SET ver=EXCLUDED.ver, editar=EXCLUDED.editar;

@@ -12,6 +12,8 @@ import {
   getSellerCommissionPct, calcSellerCommissionRs, calcMasterPriceFromMarkup,
   calcChannelPrice, calcChannelBreakdown, formatBRL, formatPct
 } from "@/lib/pricingCalc";
+import CompetitorSection from "@/components/pricing/CompetitorSection";
+import MLIntegration from "@/components/pricing/MLIntegration";
 
 export default function Precificacao() {
   const [products, setProducts] = useState([]);
@@ -23,6 +25,8 @@ export default function Precificacao() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [search, setSearch] = useState("");
   const [recalculating, setRecalculating] = useState(false);
+  const [bulkMarkup, setBulkMarkup] = useState(100);
+  const [bulkRunning, setBulkRunning] = useState(false);
   const [searchParams] = useSearchParams();
 
   const [mode, setMode] = useState("preco");
@@ -161,7 +165,9 @@ export default function Precificacao() {
       const updates = [];
       for (const ch of channels) {
         const isMaster = ch.id === masterCh?.id;
-        const price = isMaster ? masterPricing.price : calcChannelPrice(margemBrutaAlvo, ch, custoProd, impProd.total, scRs, freteEff);
+        // Impostos do CANAL destino (ICMS pode diferir por canal) — igual ao cockpit e ao bulk
+        const impCh = calcImpostosPct(config, product, ch);
+        const price = isMaster ? masterPricing.price : calcChannelPrice(margemBrutaAlvo, ch, custoProd, impCh.total, scRs, freteEff);
         const existing = pricings.find(p => p.product_id === product.id && p.channel_id === ch.id);
         if (existing) updates.push({ id: existing.id, price });
       }
@@ -169,6 +175,50 @@ export default function Precificacao() {
     }
     setRecalculating(false);
     loadData();
+  };
+
+  // ==== Precificação em massa: aplica um markup único sobre o custo em TODOS os
+  // produtos com custo vigente, gerando o preço Master e os preços de cada canal ====
+  const handleBulkPrice = async () => {
+    const masterCh = getMasterChannel(channels);
+    if (!masterCh) { alert("Cadastre um canal Master primeiro."); return; }
+    const alvo = parseFloat(bulkMarkup);
+    if (isNaN(alvo) || alvo <= 0) { alert("Informe o markup % (ex.: 100)."); return; }
+    const candidatos = products.filter(p => getCustoVigente(p) > 0);
+    const semCusto = products.length - candidatos.length;
+    if (!candidatos.length) { alert("Nenhum produto com custo definido."); return; }
+    if (!confirm(`Precificar ${candidatos.length} produtos com markup de ${alvo}% sobre o custo, em todos os canais?\n\nPreços existentes serão SOBRESCRITOS.${semCusto > 0 ? `\n(${semCusto} produtos sem custo serão pulados.)` : ""}`)) return;
+    setBulkRunning(true);
+    try {
+      for (const product of candidatos) {
+        const custoProd = getCustoVigente(product);
+        const impProd = calcImpostosPct(config, product, masterCh);
+        const scPct = getSellerCommissionPct(product, config);
+        // preserva frete salvo anteriormente no Master deste produto (se houver)
+        const masterExisting = pricings.find(pr => pr.product_id === product.id && pr.channel_id === masterCh.id);
+        let freteProd = 0, clientePaga = false;
+        try { const n = JSON.parse(masterExisting?.notes || "{}"); freteProd = n.frete || 0; clientePaga = n.cliente_paga_frete || false; } catch {}
+        const freteEff = clientePaga ? 0 : freteProd;
+        const masterPrice = calcMasterPriceFromMarkup(alvo, custoProd, impProd.total, masterCh.commission_percent || 0, masterCh.fixed_fee || 0, scPct, freteEff);
+        if (!masterPrice || masterPrice <= 0) continue;
+        const scRs = calcSellerCommissionRs(masterPrice, impProd.total, scPct);
+        const masterBd = calcChannelBreakdown(masterPrice, masterCh, custoProd, impProd.total, scRs, freteProd, clientePaga, config?.indice_custo_fixo || 0);
+        const notesData = JSON.stringify({ frete: freteProd, cliente_paga_frete: clientePaga });
+        for (const ch of channels) {
+          const isMaster = ch.id === masterCh.id;
+          const impCh = calcImpostosPct(config, product, ch);
+          const price = isMaster ? masterPrice : calcChannelPrice(masterBd.margemBruta, ch, custoProd, impCh.total, scRs, freteEff);
+          if (!price || price <= 0) continue;
+          const data = { product_id: product.id, channel_id: ch.id, price: Math.round(price * 100) / 100, notes: notesData };
+          const existing = pricings.find(pr => pr.product_id === product.id && pr.channel_id === ch.id);
+          if (existing) await base44.entities.ProductPricing.update(existing.id, data);
+          else await base44.entities.ProductPricing.create(data);
+        }
+      }
+    } finally {
+      setBulkRunning(false);
+      loadData();
+    }
   };
 
   const toggleDecouple = (channelId) => {
@@ -204,7 +254,20 @@ export default function Precificacao() {
   if (view === "list") return (
     <div>
       <PageHeader title="Cockpit de Precificação" description={`${products.length} produtos · ${pricings.length} preços cadastrados`}
-        actions={<Button variant="outline" onClick={handleRecalcAll} disabled={recalculating}><RefreshCw className={`w-4 h-4 mr-1 ${recalculating ? "animate-spin" : ""}`} /> Recalcular Todos os Preços</Button>} />
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <MLIntegration />
+            <div className="flex items-center gap-1 border border-border rounded-lg px-2 py-1 bg-card">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Markup s/ custo</span>
+              <Input type="number" step="1" value={bulkMarkup} onChange={e => setBulkMarkup(e.target.value)} className="h-7 w-20 text-sm" />
+              <span className="text-xs text-muted-foreground">%</span>
+            </div>
+            <Button onClick={handleBulkPrice} disabled={bulkRunning || recalculating}>
+              {bulkRunning ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Calculator className="w-4 h-4 mr-1" />} Precificar Tudo
+            </Button>
+            <Button variant="outline" onClick={handleRecalcAll} disabled={recalculating || bulkRunning}><RefreshCw className={`w-4 h-4 mr-1 ${recalculating ? "animate-spin" : ""}`} /> Recalcular Todos os Preços</Button>
+          </div>
+        } />
 
       {products.length === 0 ? (
         <EmptyState icon={Calculator} title="Nenhum produto cadastrado" description="Cadastre produtos para precificá-los." />
@@ -438,6 +501,9 @@ export default function Precificacao() {
               </table>
             </div>
           </div>
+
+          {/* CONCORRÊNCIA — espelho do precificador unificado, por produto */}
+          <CompetitorSection productId={selectedProduct?.id} precoProprio={calculatedMasterPrice} />
         </div>
       </div>
     </div>
