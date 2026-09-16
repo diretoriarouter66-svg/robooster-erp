@@ -298,7 +298,7 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
       const errosEstoque = [];
       for (const i of itens) {
         if (!i.product_id) continue;
-        try { await registrarMovimento({ productId: i.product_id, tipo: "devolucao_venda", quantidade: parseFloat(i.qty_dev) || 0, origemId: ret.id, origemRef: `DEV ${o.order_number}`, unitCost: parseFloat(i.unit_price) || 0 }); }
+        try { await registrarMovimento({ productId: i.product_id, tipo: "devolucao_venda", quantidade: parseFloat(i.qty_dev) || 0, origemId: ret.id, origemRef: `DEV ${o.order_number}` }); }
         catch (e) { errosEstoque.push(`${i.name || i.product_id}: ${e.message}`); }
       }
       if (!errosEstoque.length) await base44.entities.SaleReturn.update(ret.id, { estoque_devolvido: true }).catch(() => {});

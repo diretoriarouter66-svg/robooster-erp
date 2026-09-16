@@ -88,7 +88,7 @@ export async function movimentarPedidoVenda(itens, sinal, orderId, orderNumber) 
       quantidade: item.quantity,
       origemId: orderId || "",
       origemRef: orderNumber || "",
-      unitCost: item.unit_price,
+      // custo = custo do produto (landed/manual), nunca o preço de venda (corrigido 16/09/2026)
     });
   }
 }
@@ -121,8 +121,7 @@ export async function reconciliarPedidoVenda(orderId, orderNumber, itens, deveBa
     }
   }
 
-  const custoPorProduto = {};
-  for (const item of itens || []) { if (item.product_id) custoPorProduto[item.product_id] = item.unit_price; }
+  // custo do movimento = custo vigente do produto (registrarMovimento resolve); o preço de venda não é custo
 
   const produtos = new Set([...Object.keys(atual), ...Object.keys(alvo)]);
   for (const pid of produtos) {
@@ -134,7 +133,6 @@ export async function reconciliarPedidoVenda(orderId, orderNumber, itens, deveBa
       quantidade: Math.abs(delta),
       origemId: orderId,
       origemRef: orderNumber || "",
-      unitCost: custoPorProduto[pid],
     });
   }
 }

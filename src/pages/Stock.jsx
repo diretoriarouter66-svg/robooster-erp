@@ -267,6 +267,7 @@ export default function Stock() {
                 <th className="text-center px-2 py-2 font-medium text-muted-foreground text-xs">Tipo</th>
                 <th className="text-right px-2 py-2 font-medium text-muted-foreground text-xs">Qtd</th>
                 <th className="text-right px-2 py-2 font-medium text-muted-foreground text-xs">Saldo</th>
+                <th className="text-right px-2 py-2 font-medium text-muted-foreground text-xs">Custo unit.</th>
                 <th className="text-left px-2 py-2 font-medium text-muted-foreground text-xs">Origem / Motivo</th>
               </tr></thead>
               <tbody>
@@ -276,6 +277,7 @@ export default function Stock() {
                     <td className="px-2 py-2 text-center"><TipoBadge tipo={m.tipo} /></td>
                     <td className={`px-2 py-2 text-right font-bold ${m.quantidade > 0 ? "text-success" : "text-destructive"}`}>{m.quantidade > 0 ? `+${m.quantidade}` : m.quantidade}</td>
                     <td className="px-2 py-2 text-right">{m.saldo_anterior} → <span className="font-medium">{m.saldo_novo}</span></td>
+                    <td className="px-2 py-2 text-right text-xs whitespace-nowrap">{m.unit_cost > 0 ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(m.unit_cost) : "—"}</td>
                     <td className="px-2 py-2 text-xs text-muted-foreground max-w-[200px] truncate" title={`${m.origem_ref || ""} ${m.motivo || ""}`}>{[m.origem_ref, m.motivo].filter(Boolean).join(" — ") || "—"}</td>
                   </tr>
                 ))}

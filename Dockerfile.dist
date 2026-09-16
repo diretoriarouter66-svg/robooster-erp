@@ -1,0 +1,5 @@
+# Imagem só com o build já pronto (o `npm run build` roda fora do docker, sob o limite de CPU da sessão — regra de 16/09)
+FROM nginx:alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY dist /usr/share/nginx/html
+EXPOSE 80
