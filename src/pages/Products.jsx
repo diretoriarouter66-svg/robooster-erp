@@ -108,9 +108,17 @@ export default function Products() {
     setLoading(false);
   };
 
+  // 16/09/2026 (pergunta da Larissa): o SKU nasce sequencial sozinho — maior RB-NNN
+  // do cadastro + 1. Continua editável, para quem quiser outro código.
+  const proximoSku = () => {
+    let max = 0;
+    for (const p of products) { const m = /^RB-(\d+)$/i.exec((p.sku || "").trim()); if (m) max = Math.max(max, parseInt(m[1], 10)); }
+    return `RB-${String(max + 1).padStart(3, "0")}`;
+  };
+
   const openNew = () => {
     setEditing(null);
-    setForm({ status: "active", unit: "UN", pis_rate: 2.1, cofins_rate: 9.65, origin_country: "China", empilhavel: true, pode_deitar: false, beneficio_5291: false, ex_tarifario: false, ipi_recuperavel: true });
+    setForm({ sku: proximoSku(), status: "active", unit: "UN", pis_rate: 2.1, cofins_rate: 9.65, origin_country: "China", empilhavel: true, pode_deitar: false, beneficio_5291: false, ex_tarifario: false, ipi_recuperavel: true });
     setShowTech(false);
     setDialogOpen(true);
   };
@@ -378,7 +386,8 @@ export default function Products() {
               </div>
               <div>
                 <Label>SKU *</Label>
-                <Input value={form.sku || ""} onChange={f("sku")} placeholder="SKU-001" />
+                <Input value={form.sku || ""} onChange={f("sku")} placeholder="RB-001" />
+                {!editing && <p className="text-[10px] text-muted-foreground mt-0.5">Sugerido em sequência ao último cadastro. Pode trocar.</p>}
               </div>
               <div>
                 <Label>Modelo</Label>

@@ -45,6 +45,21 @@ export default function SaleOrders() {
   // 16/09/2026 (pedidos da Larissa): cadastro de transportadoras para o autocompletar,
   // volumes/peso calculados pelo cadastro do produto, e DEVOLUÇÃO como evento próprio.
   const [transportadoras, setTransportadoras] = useState([]);
+  // 16/09/2026 (Larissa): cadastro de transportadoras com CNPJ/telefone/contato, escolhido
+  // no pedido por lista (não mais campo livre) — os dados vão para o pedido impresso.
+  const TR_VAZIA = { nome: "", cnpj: "", telefone: "", contato: "", observacoes: "", ativo: true };
+  const [trDialog, setTrDialog] = useState(null);
+  const recarregarTransportadoras = async () => { const trs = await base44.entities.Transportadora.list("nome", 300).catch(() => []); setTransportadoras(trs || []); };
+  const salvarTransportadora = async () => {
+    const d = { nome: (trDialog.nome || "").trim(), cnpj: trDialog.cnpj || "", telefone: trDialog.telefone || "", contato: trDialog.contato || "", observacoes: trDialog.observacoes || "", ativo: trDialog.ativo !== false };
+    if (!d.nome) return;
+    if (trDialog.id) await base44.entities.Transportadora.update(trDialog.id, d); else await base44.entities.Transportadora.create(d);
+    await recarregarTransportadoras();
+    setForm(prev => ({ ...prev, transportadora: d.nome }));
+    setTrDialog({ ...TR_VAZIA });
+  };
+  const alternarTransportadora = async (t) => { await base44.entities.Transportadora.update(t.id, { ativo: t.ativo === false }); await recarregarTransportadoras(); };
+  const trDoPedido = (nome) => transportadoras.find(x => (x.nome || "").trim().toLowerCase() === (nome || "").trim().toLowerCase());
   const [logAuto, setLogAuto] = useState(true);
   const [devolucoes, setDevolucoes] = useState([]);
   const [devDialog, setDevDialog] = useState(null);
@@ -199,7 +214,7 @@ export default function SaleOrders() {
   </div>
   <div class="bloco"><h2>Entrega</h2>
     ${o.entrega_diferente && endEntrega ? endEntrega : "No endereço de cobrança"}<br>
-    ${o.transportadora ? `Transportadora: <strong>${o.transportadora}</strong><br>` : ""}
+    ${o.transportadora ? (() => { const t = trDoPedido(o.transportadora); return `Transportadora: <strong>${o.transportadora}</strong>${t ? " — " + [t.cnpj && "CNPJ " + t.cnpj, t.telefone, t.contato].filter(Boolean).join(" · ") : ""}<br>`; })() : ""}
     ${fpc ? `Frete: ${fpc}<br>` : ""}
     ${o.volumes_qtd ? `Volumes: ${o.volumes_qtd} · ` : ""}${o.peso_bruto ? `Peso bruto: ${o.peso_bruto} kg` : ""}
   </div>
@@ -510,6 +525,27 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
     // Só RECEBÍVEIS pagos abatem o restante — a taxa de cartão/antecipação (payable) não é dinheiro que entrou
     const pagas = (entradas || []).filter(e => e.status === "paid" && e.type !== "payable");
     const pendentes = (entradas || []).filter(e => e.status === "pending" || e.status === "overdue");
+
+    // 16/09/2026 (Larissa, pedido do Rodolfo): pedido CANCELADO com sinal já recebido.
+    // O recebimento fica no financeiro (o dinheiro entrou no banco), mas ganha a marca
+    // "PEDIDO CANCELADO" e, se ela confirmar, nasce a conta a pagar da devolução ao cliente.
+    if (form.status === "cancelled" && pagas.length > 0) {
+      const totalRecebido = Math.round(pagas.reduce((t, e) => t + (e.amount || 0), 0) * 100) / 100;
+      for (const e of pagas) {
+        if (!/PEDIDO CANCELADO/.test(e.description || "")) {
+          await base44.entities.FinancialEntry.update(e.id, { description: `${e.description} · PEDIDO CANCELADO`, notes: `${e.notes ? e.notes + " " : ""}Pedido cancelado em ${hojeIso().split("-").reverse().join("/")}.` });
+        }
+      }
+      const jaTemDevolucao = (entradas || []).some(e => e.type === "payable" && /Devolução ao cliente/.test(e.description || ""));
+      if (!jaTemDevolucao && window.confirm(`Este pedido tem ${formatCurrency(totalRecebido)} já recebidos (sinal/parcelas).\n\nRegistrar a devolução ao cliente como conta a pagar de hoje?\n(Cancelar = o valor fica como recebido, sem devolução.)`)) {
+        await base44.entities.FinancialEntry.create({
+          type: "payable", category: "other",
+          description: `Devolução ao cliente — Pedido ${data.order_number} cancelado — ${data.customer_name || "Cliente"}`,
+          reference_id: orderId, reference_type: "sale_order", amount: totalRecebido,
+          due_date: hojeIso(), status: "pending", payment_method: "pix",
+        });
+      }
+    }
 
     // SINAL (reserva de máquina, regra 19/08/2026): lançado como conta RECEBIDA na
     // hora, mesmo com o pedido apenas Aprovado — o caixa reflete o dinheiro que já
@@ -1116,9 +1152,18 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
               <div className="col-span-2">
                 <Label className="text-xs">Transportadora</Label>
-                <Input list="rb-transportadoras" value={form.transportadora || ""} onChange={e => setForm({ ...form, transportadora: e.target.value })} placeholder="Digite para buscar no cadastro" autoComplete="off" />
-                <datalist id="rb-transportadoras">{transportadoras.filter(t => t.ativo !== false).map(t => <option key={t.id} value={t.nome} />)}</datalist>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Nome novo entra no cadastro ao salvar o pedido.</p>
+                <div className="flex gap-1">
+                  <Select value={form.transportadora || "__none"} onValueChange={v => setForm({ ...form, transportadora: v === "__none" ? "" : v })}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Escolha no cadastro" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">— Sem transportadora —</SelectItem>
+                      {transportadoras.filter(t => t.ativo !== false).map(t => <SelectItem key={t.id} value={t.nome}>{t.nome}</SelectItem>)}
+                      {form.transportadora && !transportadoras.some(t => t.nome === form.transportadora) && <SelectItem value={form.transportadora}>{form.transportadora}</SelectItem>}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" className="h-10 px-3" title="Cadastrar ou editar transportadoras" onClick={() => setTrDialog({ ...TR_VAZIA })}>Cadastro</Button>
+                </div>
+                {(() => { const t = trDoPedido(form.transportadora); return form.transportadora ? <p className="text-[10px] text-muted-foreground mt-0.5">{t ? ([t.cnpj && `CNPJ ${t.cnpj}`, t.telefone, t.contato && `contato: ${t.contato}`].filter(Boolean).join(" · ") || "cadastrada sem CNPJ/telefone — complete no Cadastro") : "não está no cadastro — clique em Cadastro para incluir"}</p> : null; })()}
               </div>
               <div className="col-span-2">
                 <Label className="text-xs">Frete por conta</Label>
@@ -1253,6 +1298,36 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
       </Dialog>
 
       {/* DEVOLUÇÃO DE VENDA — evento próprio, com data própria (mês fechado não reabre) */}
+      {/* CADASTRO DE TRANSPORTADORAS (16/09/2026) */}
+      <Dialog open={!!trDialog} onOpenChange={o => { if (!o) setTrDialog(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Cadastro de transportadoras</DialogTitle></DialogHeader>
+          {trDialog && <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-2"><Label className="text-xs">Nome *</Label><Input value={trDialog.nome || ""} onChange={e => setTrDialog({ ...trDialog, nome: e.target.value })} placeholder="Ex.: Braspress" /></div>
+              <div><Label className="text-xs">CNPJ</Label><Input value={trDialog.cnpj || ""} onChange={e => setTrDialog({ ...trDialog, cnpj: e.target.value })} placeholder="00.000.000/0000-00" /></div>
+              <div><Label className="text-xs">Telefone</Label><Input value={trDialog.telefone || ""} onChange={e => setTrDialog({ ...trDialog, telefone: e.target.value })} placeholder="(15) 0000-0000" /></div>
+              <div><Label className="text-xs">Contato</Label><Input value={trDialog.contato || ""} onChange={e => setTrDialog({ ...trDialog, contato: e.target.value })} placeholder="Nome de quem atende" /></div>
+              <div><Label className="text-xs">Observações</Label><Input value={trDialog.observacoes || ""} onChange={e => setTrDialog({ ...trDialog, observacoes: e.target.value })} placeholder="Prazo, coleta, restrições…" /></div>
+            </div>
+            <div className="flex justify-end gap-2">
+              {trDialog.id && <Button type="button" variant="outline" onClick={() => setTrDialog({ ...TR_VAZIA })}>Nova</Button>}
+              <Button type="button" onClick={salvarTransportadora} disabled={!(trDialog.nome || "").trim()}>{trDialog.id ? "Salvar alterações" : "Cadastrar e usar neste pedido"}</Button>
+            </div>
+            <div className="border-t border-border pt-2 max-h-56 overflow-y-auto text-sm">
+              {transportadoras.length === 0 && <p className="text-muted-foreground text-xs">Nenhuma transportadora cadastrada ainda. Cadastre a primeira acima.</p>}
+              {transportadoras.map(t => <div key={t.id} className={`flex items-center justify-between gap-2 py-1 ${t.ativo === false ? "opacity-50" : ""}`}>
+                <div className="min-w-0"><b>{t.nome}</b>{t.ativo === false && " (inativa)"}<div className="text-xs text-muted-foreground truncate">{[t.cnpj, t.telefone, t.contato].filter(Boolean).join(" · ") || "sem dados"}</div></div>
+                <div className="flex gap-1 shrink-0">
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setTrDialog({ ...t })}>Editar</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => alternarTransportadora(t)}>{t.ativo === false ? "Reativar" : "Desativar"}</Button>
+                </div>
+              </div>)}
+            </div>
+          </div>}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!devDialog} onOpenChange={(v) => { if (!v && !devSaving) setDevDialog(null); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {devDialog && (() => {

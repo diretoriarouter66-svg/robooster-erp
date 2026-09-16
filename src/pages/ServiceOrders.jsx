@@ -580,7 +580,7 @@ ${num(o.desconto_brl) > 0 ? `<tr><td>Desconto</td><td class="dir">− ${formatCu
                 return (
                   <div key={ix} className="mb-2">
                     <div className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-12 sm:col-span-4">
+                      <div className="col-span-12 sm:col-span-3">
                         <Label className="text-xs">Produto</Label>
                         <Combobox
                           value={p.product_id || "manual"}
@@ -593,7 +593,7 @@ ${num(o.desconto_brl) > 0 ? `<tr><td>Desconto</td><td class="dir">− ${formatCu
                         />
                       </div>
                       <div className="col-span-4 sm:col-span-2"><Label className="text-xs">Código</Label><Input className="h-9 text-xs" value={p.sku || ""} readOnly={!!p.product_id} onChange={e => setPeca(ix, "sku", e.target.value)} placeholder="SKU" /></div>
-                      <div className="col-span-2 sm:col-span-1"><Label className="text-xs">Qtd</Label><Input type="number" min="0" step="1" className="h-9 text-xs" value={p.quantity ?? ""} onChange={e => setPeca(ix, "quantity", e.target.value)} /></div>
+                      <div className="col-span-3 sm:col-span-2"><Label className="text-xs">Qtd</Label><Input type="number" min="0" step="1" className="h-9 text-xs" value={p.quantity ?? ""} onChange={e => setPeca(ix, "quantity", e.target.value)} /></div>
                       <div className="col-span-3 sm:col-span-2"><Label className="text-xs">Unit. (R$)</Label><Input type="number" step="0.01" min="0" className="h-9 text-xs" value={p.unit_price ?? ""} onChange={e => setPeca(ix, "unit_price", e.target.value)} placeholder="0,00" /></div>
                       <div className="col-span-3 sm:col-span-2"><Label className="text-xs">Subtotal</Label><Input readOnly className="h-9 text-xs bg-muted" value={formatCurrency(num(p.quantity) * num(p.unit_price))} /></div>
                       <button type="button" className="col-span-12 sm:col-span-1 h-9 text-destructive hover:bg-destructive/10 rounded text-sm" title="Excluir esta peça" onClick={() => setForm(prev => ({ ...prev, pecas: prev.pecas.filter((_, i) => i !== ix) }))}>✕</button>
