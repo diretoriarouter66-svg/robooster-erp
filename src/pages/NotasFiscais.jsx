@@ -6,12 +6,26 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PageHeader from "../components/shared/PageHeader";
 import EmptyState from "../components/shared/EmptyState";
 
 // NF-e avulsa: entrada/saída SEM pedido de venda — entrada de importação,
 // devoluções, conserto. O CFOP intra/interestadual é escolhido sozinho pela UF
 // do destinatário; a lógica fiscal pesada mora na edge function emitir-nfe.
+// Texto padrão que sai em "Informações adicionais" da nota, por natureza (Larissa 17/09). {di}, {data_di}, {volumes} são preenchidos na hora.
+const INFO_PADRAO = {
+  importacao: "DI nº {di} · Data de registro da DI: {data_di}\n{volumes}\nDespesas aduaneiras rateadas nos itens.",
+  devolucao_venda: "Devolução de mercadoria referente à NF-e {ref}. Mercadoria retorna ao estoque.",
+  devolucao_compra: "Devolução de compra referente à NF-e {ref}.",
+  entrada_conserto: "Mercadoria recebida para conserto/reparo. Retorno ao remetente após o serviço (CFOP 5916/6916).",
+  retorno_conserto: "Retorno de mercadoria recebida para conserto, referente à NF-e {ref}. Serviço cobrado à parte.",
+  remessa_conserto: "Remessa de mercadoria para conserto/reparo. Retorno previsto após o serviço.",
+  outra: "",
+};
+const VIAS_TRANSPORTE = [[1, "Marítima"], [2, "Fluvial"], [3, "Lacustre"], [4, "Aérea"], [5, "Postal"], [6, "Ferroviária"], [7, "Rodoviária"], [8, "Conduto / rede de transmissão"], [9, "Meios próprios"], [10, "Entrada / saída ficta"], [11, "Courier"], [12, "Em mãos"], [13, "Por reboque"]];
+const FORMAS_IMPORTACAO = [[1, "Por conta própria"], [2, "Por conta e ordem"], [3, "Encomenda"]];
 const PRESETS = [
   { value: "importacao", label: "Entrada de importação (chegada de container)", tipo: "entrada", natureza: "Compra para comercializacao - importacao", cfop: "3102", csosn: "900", finalidade: 1, exterior: true, di: true },
   { value: "devolucao_venda", label: "Devolução de venda (cliente devolvendo)", tipo: "entrada", natureza: "Devolucao de venda", cfopSP: "1202", cfopFora: "2202", csosn: "102", finalidade: 4, ref: true },
@@ -53,6 +67,7 @@ export default function NotasFiscais() {
   const [operacoes, setOperacoes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [aba, setAba] = useState("todas"); const [canal, setCanal] = useState("todos"); const [pedidosNf, setPedidosNf] = useState([]); // lista única (Larissa 17/09)
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
@@ -62,13 +77,15 @@ export default function NotasFiscais() {
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [n, c, p, ops] = await Promise.all([
+    const [n, c, p, ops, pv] = await Promise.all([
       base44.entities.NfeAvulsa.list("-created_date", 300),
       base44.entities.Contato.list("-created_date", 1000),
       base44.entities.Product.list("-created_date", 1000),
       base44.entities.ImportOperation.list("-created_date", 100).catch(() => []),
+      base44.entities.SaleOrder.list("-created_date", 2000).catch(() => []),
     ]);
     setNotas(n || []);
+    setPedidosNf((pv || []).filter(o => o.nfe_numero || o.nfe_chave || o.nfe_status));
     setContatos(c || []);
     setProducts(p || []);
     setOperacoes((ops || []).filter(o => ["realizada", "concluida"].includes(o.status)));
@@ -86,6 +103,28 @@ export default function NotasFiscais() {
       },
       body: JSON.stringify({ acao, nfe_id: nfeId }),
     });
+  };
+
+  const danfePedido = async (o) => {
+    setBusy(o.id);
+    try {
+      const { data: sessao } = await supabase.auth.getSession();
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/emitir-nfe`, { method: "POST", headers: { "Content-Type": "application/json", apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${sessao?.session?.access_token ?? ""}` }, body: JSON.stringify({ acao: "danfe", sale_order_id: o.id }) });
+      if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || "DANFE indisponível."); } else { window.open(URL.createObjectURL(await r.blob()), "_blank"); }
+    } catch (err) { alert(err.message); }
+    setBusy(null);
+  };
+  const canalPedido = (o) => ({ mercado_livre: "Mercado Livre", woocommerce: "Site", direct: "Venda direta" }[o.channel] || o.channel || "Outro");
+  const textoPadrao = () => {
+    const t = INFO_PADRAO[form.preset] || "";
+    const vol = (form.items || []).reduce((sm, it) => sm + (parseFloat(it.quantity) || 0), 0);
+    return t.replace("{di}", form.di?.numero || "____").replace("{data_di}", form.di?.data_registro ? form.di.data_registro.split("-").reverse().join("/") : "__/__/____").replace("{volumes}", vol ? `${vol} volume(s)` : "").replace("{ref}", form.chave_referenciada ? `chave ${form.chave_referenciada}` : "____").replace(/\n{2,}/g, "\n").trim();
+  };
+  const exportarLista = () => {
+    const rows = [["Data", "Tipo", "Origem", "Natureza", "CFOP", "Destinatario", "Total", "NF numero", "Serie", "Chave", "Situacao"]];
+    for (const l of linhasFiltradas) rows.push([l.data.split("-").reverse().join("/"), l.tipo, l.origem, l.natureza, l.cfop, l.dest, l.total.toFixed(2).replace(".", ","), l.nfe_numero || "", l.nfe_serie || "", l.nfe_chave || "", l.nfe_status || "rascunho"]);
+    const csv = "\ufeff" + rows.map(r => r.map(x => String(x ?? "").replace(/;/g, ",")).join(";")).join("\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `notas-fiscais-${aba}-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
   };
 
   const openNew = () => {
@@ -220,11 +259,20 @@ export default function NotasFiscais() {
     loadData();
   };
 
-  const filtered = notas.filter(n => {
+  // LISTA ÚNICA (Larissa 17/09): avulsas + NF-e dos pedidos (site, Mercado Livre, venda direta), com abas Entrada/Saída e filtro por canal
+  const linhasTodas = [
+    ...notas.map(n => ({ kind: "avulsa", id: n.id, n, data: n.data || (n.created_date || "").slice(0, 10), tipo: n.tipo === "entrada" ? "Entrada" : "Saída", origem: "Avulsa", natureza: n.natureza_operacao || "—", cfop: n.cfop || (n.items?.[0]?.cfop ?? ""), dest: n.exterior?.nome || contatos.find(c => c.id === n.contato_id)?.name || "—", total: totalNota(n), nfe_numero: n.nfe_numero, nfe_serie: n.nfe_serie, nfe_chave: n.nfe_chave, nfe_status: n.nfe_status, nfe_mensagem: n.nfe_mensagem })),
+    ...pedidosNf.map(o => ({ kind: "pedido", id: o.id, o, data: o.order_date || (o.created_date || "").slice(0, 10), tipo: "Saída", origem: canalPedido(o), natureza: `Venda · pedido ${o.order_number || ""}`, cfop: "", dest: o.customer_name || "—", total: parseFloat(o.total) || 0, nfe_numero: o.nfe_numero, nfe_serie: "", nfe_chave: o.nfe_chave, nfe_status: o.nfe_status, nfe_mensagem: o.nfe_mensagem })),
+  ].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+  const origens = Array.from(new Set(linhasTodas.map(l => l.origem)));
+  const linhasFiltradas = linhasTodas.filter(l => {
     const q = search.toLowerCase();
-    const dest = n.exterior?.nome || contatos.find(c => c.id === n.contato_id)?.name || "";
-    return !q || dest.toLowerCase().includes(q) || (n.natureza_operacao || "").toLowerCase().includes(q) || String(n.nfe_numero || "").includes(q);
+    const txt = !q || l.dest.toLowerCase().includes(q) || l.natureza.toLowerCase().includes(q) || String(l.nfe_numero || "").includes(q);
+    const ab = aba === "todas" || (aba === "entrada" ? l.tipo === "Entrada" : l.tipo === "Saída");
+    const cn = canal === "todos" || l.origem === canal;
+    return txt && ab && cn;
   });
+  const filtered = linhasFiltradas;
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" /></div>;
@@ -235,12 +283,23 @@ export default function NotasFiscais() {
   return (
     <div>
       <PageHeader
-        title="Notas Fiscais Avulsas"
-        description="Entrada de importação, devoluções e conserto — NF-e sem precisar de pedido de venda"
-        actions={<Button onClick={openNew}><Plus className="w-4 h-4 mr-1" /> Nova NF</Button>}
+        title="Notas Fiscais"
+        description="Todas as NF-e num lugar só: as dos pedidos (site, Mercado Livre, venda direta) e as avulsas (importação, devoluções, conserto)"
+        actions={<div className="flex gap-2"><Button variant="outline" onClick={exportarLista} disabled={!filtered.length}><Download className="w-4 h-4 mr-1" /> Exportar CSV</Button><Button onClick={openNew}><Plus className="w-4 h-4 mr-1" /> Nova NF avulsa</Button></div>}
       />
 
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <Tabs value={aba} onValueChange={setAba}>
+          <TabsList>
+            <TabsTrigger value="todas">Todas ({linhasTodas.length})</TabsTrigger>
+            <TabsTrigger value="entrada">Entrada ({linhasTodas.filter(l => l.tipo === "Entrada").length})</TabsTrigger>
+            <TabsTrigger value="saida">Saída ({linhasTodas.filter(l => l.tipo === "Saída").length})</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <Select value={canal} onValueChange={setCanal}>
+          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="todos">Todos os canais</SelectItem>{origens.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+        </Select>
         <div className="ml-auto max-w-xs relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Buscar destinatário, natureza, nº..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
@@ -248,7 +307,7 @@ export default function NotasFiscais() {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState icon={FileText} title="Nenhuma nota avulsa" description="Emita a primeira: entrada de importação, devolução ou remessa para conserto." actionLabel="Nova NF" onAction={openNew} />
+        <EmptyState icon={FileText} title="Nenhuma nota" description={linhasTodas.length ? "Nada nesse filtro." : "As NF-e dos pedidos aparecem aqui quando emitidas; avulsas você emite pelo botão."} actionLabel="Nova NF avulsa" onAction={openNew} />
       ) : (
         <div className="bg-card rounded-xl border border-border overflow-hidden">
           <div className="overflow-x-auto">
@@ -256,40 +315,44 @@ export default function NotasFiscais() {
               <thead><tr className="border-b border-border bg-muted/30">
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Data</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Tipo</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Natureza</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Origem · natureza</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Destinatário</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Total</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">NF-e</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Ações</th>
               </tr></thead>
               <tbody>
-                {filtered.map(n => {
-                  const dest = n.exterior?.nome || contatos.find(c => c.id === n.contato_id)?.name || "—";
+                {filtered.map(l => {
+                  const n = l.n; const dest = l.dest;
                   return (
-                    <tr key={n.id} className="border-b border-border last:border-0 hover:bg-muted/20">
-                      <td className="px-4 py-3 text-xs">{n.data ? n.data.split("-").reverse().join("/") : "—"}</td>
-                      <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${n.tipo === "entrada" ? "bg-blue-100 text-blue-700" : "bg-primary/10 text-primary"}`}>{n.tipo === "entrada" ? "Entrada" : "Saída"}</span></td>
-                      <td className="px-4 py-3 text-xs">{n.natureza_operacao || "—"}<span className="block text-[10px] text-muted-foreground">CFOP {n.cfop || (n.items?.[0]?.cfop ?? "—")}</span></td>
+                    <tr key={l.kind + l.id} className="border-b border-border last:border-0 hover:bg-muted/20">
+                      <td className="px-4 py-3 text-xs">{l.data ? l.data.split("-").reverse().join("/") : "—"}</td>
+                      <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${l.tipo === "Entrada" ? "bg-blue-100 text-blue-700" : "bg-primary/10 text-primary"}`}>{l.tipo}</span></td>
+                      <td className="px-4 py-3 text-xs"><span className="font-medium">{l.origem}</span> · {l.natureza}{l.cfop && <span className="block text-[10px] text-muted-foreground">CFOP {l.cfop}</span>}</td>
                       <td className="px-4 py-3 hidden md:table-cell text-xs">{dest}</td>
-                      <td className="px-4 py-3 text-right font-medium">{formatCurrency(totalNota(n))}</td>
+                      <td className="px-4 py-3 text-right font-medium">{formatCurrency(l.total)}</td>
                       <td className="px-4 py-3 text-center">
-                        {n.nfe_status === "autorizado" ? (
-                          <button onClick={() => handleDanfe(n)} disabled={busy === n.id} title={`NF ${n.nfe_numero} autorizada — ver DANFE`}
+                        {l.nfe_status === "autorizado" ? (
+                          <button onClick={() => l.kind === "avulsa" ? handleDanfe(n) : danfePedido(l.o)} disabled={busy === l.id} title={`NF ${l.nfe_numero} autorizada — ver DANFE`}
                             className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-success/10 text-success hover:bg-success/20">
-                            {busy === n.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />} NF {n.nfe_numero}
+                            {busy === l.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />} NF {l.nfe_numero}
+                          </button>
+                        ) : l.kind === "avulsa" ? (
+                          <button onClick={() => handleEmitir(n)} disabled={busy === l.id} title={l.nfe_mensagem || "Emitir NF-e"}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium ${l.nfe_status && l.nfe_status !== "autorizado" ? "bg-destructive/10 text-destructive hover:bg-destructive/20" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
+                            {busy === l.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                            {l.nfe_status && l.nfe_status !== "autorizado" ? "Reemitir" : "Emitir"}
                           </button>
                         ) : (
-                          <button onClick={() => handleEmitir(n)} disabled={busy === n.id} title={n.nfe_mensagem || "Emitir NF-e"}
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium ${n.nfe_status && n.nfe_status !== "autorizado" ? "bg-destructive/10 text-destructive hover:bg-destructive/20" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
-                            {busy === n.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-                            {n.nfe_status && n.nfe_status !== "autorizado" ? "Reemitir" : "Emitir"}
-                          </button>
+                          <span className="text-[11px] text-muted-foreground">{l.nfe_status || "sem NF"}</span>
                         )}
-                        {n.nfe_status && n.nfe_status !== "autorizado" && <span className="block text-[9px] text-destructive mt-0.5 max-w-[140px] truncate" title={n.nfe_mensagem}>{n.nfe_mensagem}</span>}
+                        {l.nfe_status && l.nfe_status !== "autorizado" && <span className="block text-[9px] text-destructive mt-0.5 max-w-[140px] truncate" title={l.nfe_mensagem}>{l.nfe_mensagem}</span>}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <button onClick={() => openEdit(n)} className="p-1.5 hover:bg-muted rounded-lg"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
-                        <button onClick={() => handleDelete(n)} className="p-1.5 hover:bg-muted rounded-lg"><Trash2 className="w-4 h-4 text-destructive" /></button>
+                        {l.kind === "avulsa" ? (<>
+                          <button onClick={() => openEdit(n)} className="p-1.5 hover:bg-muted rounded-lg"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
+                          <button onClick={() => handleDelete(n)} className="p-1.5 hover:bg-muted rounded-lg"><Trash2 className="w-4 h-4 text-destructive" /></button>
+                        </>) : <span className="text-[10px] text-muted-foreground">em Pedidos de Venda</span>}
                       </td>
                     </tr>
                   );
@@ -382,6 +445,18 @@ export default function NotasFiscais() {
                   <div className="col-span-2"><Label className="text-xs">Local do desembaraço</Label><Input value={form.di?.local || ""} onChange={e => setForm(prev => ({ ...prev, di: { ...prev.di, local: e.target.value } }))} placeholder="Ex: Porto de Santos" /></div>
                   <div><Label className="text-xs">AFRMM (R$)</Label><Input type="number" step="0.01" value={form.di?.valor_afrmm ?? ""} onChange={e => setForm(prev => ({ ...prev, di: { ...prev.di, valor_afrmm: e.target.value } }))} /></div>
                   <div><Label className="text-xs">Cód. exportador</Label><Input value={form.di?.codigo_exportador || ""} onChange={e => setForm(prev => ({ ...prev, di: { ...prev.di, codigo_exportador: e.target.value } }))} placeholder="Ex: HEZHI" /></div>
+                  <div><Label className="text-xs">Via de transporte</Label>
+                    <Select value={String(form.di?.via_transporte || 1)} onValueChange={v => setForm(prev => ({ ...prev, di: { ...prev.di, via_transporte: parseInt(v) } }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{VIAS_TRANSPORTE.map(([v, l]) => <SelectItem key={v} value={String(v)}>{v} - {l}</SelectItem>)}</SelectContent>
+                    </Select></div>
+                  <div><Label className="text-xs">Forma de importação</Label>
+                    <Select value={String(form.di?.forma_importacao || 1)} onValueChange={v => setForm(prev => ({ ...prev, di: { ...prev.di, forma_importacao: parseInt(v) } }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{FORMAS_IMPORTACAO.map(([v, l]) => <SelectItem key={v} value={String(v)}>{v} - {l}</SelectItem>)}</SelectContent>
+                    </Select></div>
+                  {(form.di?.forma_importacao || 1) !== 1 && <div><Label className="text-xs">CNPJ do adquirente</Label><Input value={form.di?.cnpj_adquirente || ""} onChange={e => setForm(prev => ({ ...prev, di: { ...prev.di, cnpj_adquirente: e.target.value } }))} /></div>}
+                  <div><Label className="text-xs">Despesas aduaneiras (R$)</Label><Input type="number" step="0.01" value={form.di?.despesas_aduaneiras ?? ""} onChange={e => setForm(prev => ({ ...prev, di: { ...prev.di, despesas_aduaneiras: e.target.value } }))} placeholder="Total, rateado nos itens" /></div>
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-2">"Puxar itens da operação" preenche os itens com o mix DECLARADO (valor aduaneiro e II por item, calculados pelo simulador). Confira com a DI real antes de emitir.</p>
               </div>
@@ -413,6 +488,9 @@ export default function NotasFiscais() {
                       <div className="col-span-3"><Label className="text-[10px]">Valor II (R$)</Label><Input type="number" step="0.01" value={it.ii_valor ?? ""} onChange={e => setItem(ix, "ii_valor", e.target.value)} /></div>
                       <div className="col-span-3"><Label className="text-[10px]">Desp. aduaneiras (R$)</Label><Input type="number" step="0.01" value={it.ii_despesas ?? ""} onChange={e => setItem(ix, "ii_despesas", e.target.value)} /></div>
                       <div className="col-span-3"><Label className="text-[10px]">IOF (R$)</Label><Input type="number" step="0.01" value={it.ii_iof ?? ""} onChange={e => setItem(ix, "ii_iof", e.target.value)} /></div>
+                      <div className="col-span-2"><Label className="text-[10px]">Nº adição</Label><Input type="number" min="1" value={it.adicao ?? 1} onChange={e => setItem(ix, "adicao", e.target.value)} /></div>
+                      <div className="col-span-2"><Label className="text-[10px]">Seq. na adição</Label><Input type="number" min="1" value={it.seq_adicao ?? (ix + 1)} onChange={e => setItem(ix, "seq_adicao", e.target.value)} /></div>
+                      <div className="col-span-4"><Label className="text-[10px]">Cód. fabricante (opcional)</Label><Input value={it.cod_fabricante || ""} onChange={e => setItem(ix, "cod_fabricante", e.target.value)} /></div>
                     </div>
                   )}
                 </div>
@@ -422,7 +500,9 @@ export default function NotasFiscais() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div><Label>Frete (R$)</Label><Input type="number" step="0.01" value={form.frete ?? ""} onChange={e => setForm({ ...form, frete: e.target.value })} /></div>
-              <div className="sm:col-span-2"><Label>Informações adicionais</Label><Input value={form.informacoes_adicionais || ""} onChange={e => setForm({ ...form, informacoes_adicionais: e.target.value })} placeholder="Aparece no rodapé da DANFE" /></div>
+              <div className="sm:col-span-2"><Label className="flex items-center justify-between">Informações adicionais / complementares <button type="button" className="text-[10px] text-primary underline font-normal" onClick={() => setForm({ ...form, informacoes_adicionais: [textoPadrao(), form.informacoes_adicionais].filter(Boolean).join("\n") })}>+ texto padrão da natureza</button></Label>
+                <Textarea rows={4} value={form.informacoes_adicionais || ""} onChange={e => setForm({ ...form, informacoes_adicionais: e.target.value })} placeholder="Sai no rodapé da DANFE: volumes, DI, transporte, coleta, referência de NF…" />
+                <p className="text-[10px] text-muted-foreground mt-1">Transporte, coleta, volumes, número da DI: tudo o que a contabilidade e o transportador precisam ler na nota.</p></div>
             </div>
 
             <div className="rounded-lg bg-muted/30 border border-border p-3 flex items-center justify-between text-sm">

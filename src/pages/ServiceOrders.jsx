@@ -188,7 +188,26 @@ export default function ServiceOrders() {
     const t = totaisOS(os);
     const jaRecebido = recebidasPagas.reduce((s, e) => s + num(e.amount), 0);
     const restante = Math.round((t.cobrado - jaRecebido) * 100) / 100;
-    if (restante > 0) {
+    // Pagamento misto (Larissa 17/09): linhas preenchidas MANDAM — cada uma vira conta a receber
+    // com a forma, a data e a conta dela (parte Pix hoje, parte cartão na semana que vem…).
+    const linhas = (os.pagamentos || []).filter(l => num(l.valor) > 0);
+    if (restante > 0 && linhas.length) {
+      const somaLinhas = linhas.reduce((sm, l) => sm + num(l.valor), 0);
+      const fator = somaLinhas > 0 ? restante / somaLinhas : 1; // reescala se a soma não bater com o restante
+      const rot = { pix: "Pix", credit_card: "Cartão de Crédito", debit_card: "Cartão de Débito", boleto: "Boleto", paypal: "PayPal", transfer: "Transferência", cash: "Dinheiro" };
+      for (const l of linhas) {
+        const valor = Math.round(num(l.valor) * fator * 100) / 100;
+        if (valor <= 0) continue;
+        await base44.entities.FinancialEntry.create({
+          type: "receivable", category: "servicos_os",
+          description: `OS #${os.numero} — ${os.cliente_nome || "Cliente"} · ${rot[l.metodo] || l.metodo}${linhas.length > 1 ? ` (${linhas.indexOf(l) + 1}/${linhas.length})` : ""}`,
+          amount: valor, due_date: l.data || os.vencimento || os.data,
+          status: l.pago && l.data ? "paid" : "pending", ...(l.pago && l.data ? { payment_date: l.data } : {}),
+          payment_method: l.metodo || "pix", account_id: l.account_id || contaPara(l.metodo || "pix") || null,
+          reference_id: osId, reference_type: "service_order",
+        });
+      }
+    } else if (restante > 0) {
       await base44.entities.FinancialEntry.create({
         type: "receivable",
         category: "servicos_os",
@@ -653,6 +672,46 @@ ${num(o.desconto_brl) > 0 ? `<tr><td>Desconto</td><td class="dir">− ${formatCu
                 </Select>
                 <p className="text-[10px] text-muted-foreground mt-1">Vem sozinha pela forma de pagamento (conta dona do método no Financeiro); pode trocar.</p>
               </div>
+            </div>
+
+            {/* PAGAMENTO MISTO (Larissa 17/09): igual ao pedido de venda — parte em Pix, parte no cartão, dias diferentes */}
+            {(() => {
+              const linhas = form.pagamentos || [];
+              const soma = linhas.reduce((sm, l) => sm + num(l.valor), 0);
+              const alvo = Math.max(0, Math.round(totaisForm.cobrado * 100) / 100);
+              const add = () => { const resto = Math.max(0, Math.round((alvo - soma) * 100) / 100); setForm(prev => ({ ...prev, pagamentos: [...(prev.pagamentos || []), { metodo: "pix", valor: resto > 0 ? String(resto) : "", data: "", pago: false, account_id: contaPara("pix") }] })); };
+              const setL = (ix, patch) => setForm(prev => ({ ...prev, pagamentos: prev.pagamentos.map((x, i) => i === ix ? { ...x, ...patch } : x) }));
+              return (
+                <div className="mt-3 rounded-lg border border-dashed border-border p-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="font-semibold">Pagamento misto (opcional)</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={add}>+ Forma</Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1 mb-2">Cliente pagando parte em Pix e parte no cartão, ou em dias diferentes? Uma linha por forma. Com linhas aqui, "Forma de pagamento" e "Vencimento" acima são ignorados: cada linha vira uma conta a receber própria ao concluir a OS. Marque <b>Pago</b> quando o dinheiro já entrou.</p>
+                  {linhas.map((l, ix) => (
+                    <div key={ix} className="grid grid-cols-12 gap-2 items-end mb-2">
+                      <div className="col-span-3"><Label className="text-xs">Forma</Label>
+                        <Select value={l.metodo || "pix"} onValueChange={v => setL(ix, { metodo: v, account_id: contaPara(v) })}>
+                          <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>{FORMAS_PAGAMENTO.map(fp => <SelectItem key={fp.value} value={fp.value}>{fp.label}</SelectItem>)}</SelectContent>
+                        </Select></div>
+                      <div className="col-span-3"><Label className="text-xs flex justify-between">Valor (R$){(() => { const outras = linhas.reduce((sm, x, i) => sm + (i === ix ? 0 : num(x.valor)), 0); const resto = Math.max(0, Math.round((alvo - outras) * 100) / 100); return Math.abs(num(l.valor) - resto) >= 0.01 ? <button type="button" className="text-[10px] text-primary underline font-normal" onClick={() => setL(ix, { valor: String(resto) })}>= restante</button> : null; })()}</Label>
+                        <Input type="number" step="0.01" min="0" className="h-9 text-xs" value={l.valor ?? ""} onChange={e => setL(ix, { valor: e.target.value })} /></div>
+                      <div className="col-span-2"><Label className="text-xs">Data</Label><Input type="date" className="h-9 text-xs" value={l.data || ""} onChange={e => setL(ix, { data: e.target.value })} /></div>
+                      <div className="col-span-2"><Label className="text-xs">Conta</Label>
+                        <Select value={l.account_id || "nenhuma"} onValueChange={v => setL(ix, { account_id: v === "nenhuma" ? "" : v })}>
+                          <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectItem value="nenhuma">—</SelectItem>{contasAtivas.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent>
+                        </Select></div>
+                      <div className="col-span-1 flex flex-col items-center"><Label className="text-xs">Pago</Label><input type="checkbox" className="h-5 w-5 mt-2 accent-primary" checked={!!l.pago} disabled={!l.data} title={l.data ? "Já recebido nesta data" : "Preencha a data para marcar como pago"} onChange={e => setL(ix, { pago: e.target.checked })} /></div>
+                      <button type="button" className="col-span-1 h-9 text-destructive hover:bg-destructive/10 rounded text-sm" onClick={() => setForm(prev => ({ ...prev, pagamentos: prev.pagamentos.filter((_, i) => i !== ix) }))}>✕</button>
+                    </div>
+                  ))}
+                  {linhas.length > 0 && <p className={`text-[11px] ${Math.abs(soma - alvo) < 0.01 ? "text-success" : "text-warning"}`}>Soma das linhas: {formatCurrency(soma)} · a cobrar: {formatCurrency(alvo)}{Math.abs(soma - alvo) >= 0.01 ? " — ao salvar, as linhas são ajustadas na proporção para fechar o valor a cobrar" : " ✓"}</p>}
+                </div>
+              );
+            })()}
+            <div className="hidden">
             </div>
 
             {/* RESUMO */}

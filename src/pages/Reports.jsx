@@ -31,7 +31,7 @@ export default function Reports() {
       const totalSales = vendas.reduce((s, o) => s + (o.total || 0), 0);
       const totalInventoryValue = products.reduce((s, p) => s + ((p.stock_quantity || 0) * (p.cost_landed_brl || 0)), 0);
       const totalPaid = financial.filter(f => f.status === "paid" && f.type === "payable").reduce((s, f) => s + (f.amount || 0), 0);
-      const totalReceived = financial.filter(f => f.status === "paid" && f.type === "receivable").reduce((s, f) => s + (f.amount || 0), 0);
+      const totalReceived = financial.filter(f => f.status === "paid" && f.type === "receivable" && f.category !== "transferencia").reduce((s, f) => s + (f.amount || 0), 0);
 
       const channels = {};
       vendas.forEach(o => {

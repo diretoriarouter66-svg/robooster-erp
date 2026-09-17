@@ -28,6 +28,7 @@ export default function SaleOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [fStatus, setFStatus] = useState("todos"); const [fDe, setFDe] = useState(""); const [fAte, setFAte] = useState(""); // filtros (Larissa 17/09)
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
@@ -49,16 +50,17 @@ export default function SaleOrders() {
   // no pedido por lista (não mais campo livre) — os dados vão para o pedido impresso.
   const TR_VAZIA = { nome: "", cnpj: "", telefone: "", contato: "", observacoes: "", ativo: true };
   const [trDialog, setTrDialog] = useState(null);
-  const recarregarTransportadoras = async () => { const trs = await base44.entities.Transportadora.list("nome", 300).catch(() => []); setTransportadoras(trs || []); };
+  // 17/09: transportadora É um contato do tipo "Transportador" (cadastro único em Contatos; a Rodonaves já estava lá)
+  const recarregarTransportadoras = async () => { const cs = await base44.entities.Contato.list("-created_date", 1000).catch(() => []); setTransportadoras((cs || []).filter(c => (c.tipos || []).includes("Transportador") && c.status !== "inactive").map(c => ({ id: c.id, nome: c.name, cnpj: c.document, telefone: c.phone || c.whatsapp, contato: c.contact_name || "", cidade: c.city, ativo: true }))); };
   const salvarTransportadora = async () => {
-    const d = { nome: (trDialog.nome || "").trim(), cnpj: trDialog.cnpj || "", telefone: trDialog.telefone || "", contato: trDialog.contato || "", observacoes: trDialog.observacoes || "", ativo: trDialog.ativo !== false };
-    if (!d.nome) return;
-    if (trDialog.id) await base44.entities.Transportadora.update(trDialog.id, d); else await base44.entities.Transportadora.create(d);
+    const nome = (trDialog.nome || "").trim(); if (!nome) return;
+    const d = { name: nome, document: trDialog.cnpj || "", phone: trDialog.telefone || "", contact_name: trDialog.contato || "", city: trDialog.cidade || "", notes: trDialog.observacoes || "", tipos: ["Transportador"], person_type: "PJ", status: "active", country: "Brasil", currency: "BRL" };
+    if (trDialog.id) await base44.entities.Contato.update(trDialog.id, { name: d.name, document: d.document, phone: d.phone, contact_name: d.contact_name, city: d.city }); else await base44.entities.Contato.create(d);
     await recarregarTransportadoras();
-    setForm(prev => ({ ...prev, transportadora: d.nome }));
+    setForm(prev => ({ ...prev, transportadora: nome }));
     setTrDialog({ ...TR_VAZIA });
   };
-  const alternarTransportadora = async (t) => { await base44.entities.Transportadora.update(t.id, { ativo: t.ativo === false }); await recarregarTransportadoras(); };
+  const alternarTransportadora = async (t) => { await base44.entities.Contato.update(t.id, { status: "inactive" }); await recarregarTransportadoras(); };
   const trDoPedido = (nome) => transportadoras.find(x => (x.nome || "").trim().toLowerCase() === (nome || "").trim().toLowerCase());
   const [logAuto, setLogAuto] = useState(true);
   const [devolucoes, setDevolucoes] = useState([]);
@@ -122,7 +124,7 @@ export default function SaleOrders() {
       base44.entities.SalesChannel.list("-created_date", 50),
       base44.entities.ProductPricing.list("-created_date", 1000),
       base44.entities.ConfigTributaria.list("-created_date", 5),
-      base44.entities.Transportadora.list("nome", 300).catch(() => []),
+      base44.entities.Contato.list("-created_date", 1000).then(cs => (cs || []).filter(c => (c.tipos || []).includes("Transportador") && c.status !== "inactive").map(c => ({ id: c.id, nome: c.name, cnpj: c.document, telefone: c.phone || c.whatsapp, contato: c.contact_name || "", cidade: c.city, ativo: true }))).catch(() => []),
     ]);
     setOrders(o);
     setTransportadoras(trs || []);
@@ -476,10 +478,10 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
       orderId = created.id;
     }
 
-    // 1b) Transportadora nova entra no cadastro (autocompletar do próximo pedido)
+    // 1b) Transportadora digitada que não existe em Contatos entra lá como tipo "Transportador" (17/09)
     const nomeTr = (form.transportadora || "").trim();
     if (nomeTr && !transportadoras.some(t => (t.nome || "").trim().toLowerCase() === nomeTr.toLowerCase())) {
-      try { await base44.entities.Transportadora.create({ nome: nomeTr }); } catch (e) { console.error("Transportadora não cadastrada:", e); }
+      try { await base44.entities.Contato.create({ name: nomeTr, tipos: ["Transportador"], person_type: "PJ", status: "active", country: "Brasil", currency: "BRL" }); } catch (e) { console.error("Transportadora não cadastrada em Contatos:", e); }
     }
 
     // 2) Estoque: reconcilia com o Kardex como fonte da verdade
@@ -829,10 +831,13 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
   };
 
-  const filtered = orders.filter(o =>
-    !search || o.order_number?.toLowerCase().includes(search.toLowerCase()) ||
-    o.customer_name?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = orders.filter(o => {
+    const txt = !search || o.order_number?.toLowerCase().includes(search.toLowerCase()) || o.customer_name?.toLowerCase().includes(search.toLowerCase());
+    const st = fStatus === "todos" || (fStatus === "abertos" ? !["cancelled", "returned", "delivered"].includes(o.status) : o.status === fStatus);
+    const d = o.order_date || (o.created_date || "").slice(0, 10);
+    const dt = (!fDe || d >= fDe) && (!fAte || d <= fAte);
+    return txt && st && dt;
+  });
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" /></div>;
@@ -846,9 +851,22 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
         <EmptyState icon={ShoppingCart} title="Nenhum pedido" description="Crie pedidos de venda para seus clientes." actionLabel="Novo Pedido" onAction={openNew} />
       ) : (
         <>
-          <div className="mb-4 max-w-sm relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Buscar pedido..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <div className="mb-4 flex flex-wrap items-end gap-2">
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Buscar pedido..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+            </div>
+            <div><Label className="text-[10px] text-muted-foreground">Situação</Label>
+              <Select value={fStatus} onValueChange={setFStatus}>
+                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[["todos","Todos"],["abertos","Em aberto"],["pending","Pendente"],["approved","Aprovado"],["invoiced","Faturado"],["shipped","Enviado"],["delivered","Entregue"],["cancelled","Cancelado"],["returned","Devolvido"]].map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                </SelectContent>
+              </Select></div>
+            <div><Label className="text-[10px] text-muted-foreground">Data do pedido: de</Label><Input type="date" value={fDe} onChange={e => setFDe(e.target.value)} className="w-40" /></div>
+            <div><Label className="text-[10px] text-muted-foreground">até</Label><Input type="date" value={fAte} onChange={e => setFAte(e.target.value)} className="w-40" /></div>
+            {(fStatus !== "todos" || fDe || fAte || search) && <Button type="button" variant="ghost" size="sm" onClick={() => { setFStatus("todos"); setFDe(""); setFAte(""); setSearch(""); }}>Limpar</Button>}
+            <span className="text-xs text-muted-foreground self-center">{filtered.length} de {orders.length}</span>
           </div>
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
@@ -1301,26 +1319,27 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
       {/* CADASTRO DE TRANSPORTADORAS (16/09/2026) */}
       <Dialog open={!!trDialog} onOpenChange={o => { if (!o) setTrDialog(null); }}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Cadastro de transportadoras</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Transportadoras (contatos do tipo Transportador)</DialogTitle></DialogHeader>
           {trDialog && <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div className="col-span-2"><Label className="text-xs">Nome *</Label><Input value={trDialog.nome || ""} onChange={e => setTrDialog({ ...trDialog, nome: e.target.value })} placeholder="Ex.: Braspress" /></div>
               <div><Label className="text-xs">CNPJ</Label><Input value={trDialog.cnpj || ""} onChange={e => setTrDialog({ ...trDialog, cnpj: e.target.value })} placeholder="00.000.000/0000-00" /></div>
               <div><Label className="text-xs">Telefone</Label><Input value={trDialog.telefone || ""} onChange={e => setTrDialog({ ...trDialog, telefone: e.target.value })} placeholder="(15) 0000-0000" /></div>
               <div><Label className="text-xs">Contato</Label><Input value={trDialog.contato || ""} onChange={e => setTrDialog({ ...trDialog, contato: e.target.value })} placeholder="Nome de quem atende" /></div>
-              <div><Label className="text-xs">Observações</Label><Input value={trDialog.observacoes || ""} onChange={e => setTrDialog({ ...trDialog, observacoes: e.target.value })} placeholder="Prazo, coleta, restrições…" /></div>
+              <div><Label className="text-xs">Cidade</Label><Input value={trDialog.cidade || ""} onChange={e => setTrDialog({ ...trDialog, cidade: e.target.value })} placeholder="Ribeirão Preto" /></div>
             </div>
             <div className="flex justify-end gap-2">
               {trDialog.id && <Button type="button" variant="outline" onClick={() => setTrDialog({ ...TR_VAZIA })}>Nova</Button>}
               <Button type="button" onClick={salvarTransportadora} disabled={!(trDialog.nome || "").trim()}>{trDialog.id ? "Salvar alterações" : "Cadastrar e usar neste pedido"}</Button>
             </div>
             <div className="border-t border-border pt-2 max-h-56 overflow-y-auto text-sm">
-              {transportadoras.length === 0 && <p className="text-muted-foreground text-xs">Nenhuma transportadora cadastrada ainda. Cadastre a primeira acima.</p>}
+              <p className="text-[10px] text-muted-foreground">É o mesmo cadastro de Contatos: tudo que estiver com o tipo "Transportador" aparece aqui e no pedido.</p>
+              {transportadoras.length === 0 && <p className="text-muted-foreground text-xs">Nenhum contato do tipo Transportador ainda.</p>}
               {transportadoras.map(t => <div key={t.id} className={`flex items-center justify-between gap-2 py-1 ${t.ativo === false ? "opacity-50" : ""}`}>
                 <div className="min-w-0"><b>{t.nome}</b>{t.ativo === false && " (inativa)"}<div className="text-xs text-muted-foreground truncate">{[t.cnpj, t.telefone, t.contato].filter(Boolean).join(" · ") || "sem dados"}</div></div>
                 <div className="flex gap-1 shrink-0">
                   <Button type="button" size="sm" variant="ghost" onClick={() => setTrDialog({ ...t })}>Editar</Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => alternarTransportadora(t)}>{t.ativo === false ? "Reativar" : "Desativar"}</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => { if (confirm(`Inativar o contato ${t.nome}?`)) alternarTransportadora(t); }}>Inativar</Button>
                 </div>
               </div>)}
             </div>

@@ -26,6 +26,36 @@ export default function Financial() {
   const [newCatName, setNewCatName] = useState("");
   const [contas, setContas] = useState([]);
   const [contasOpen, setContasOpen] = useState(false);
+  // Caixas e Bancos (Larissa 17/09): extrato por conta com saldo corrido + transferência entre contas
+  const [extratoConta, setExtratoConta] = useState(null);
+  const [extMes, setExtMes] = useState(new Date().toISOString().slice(0, 7));
+  const [transfOpen, setTransfOpen] = useState(false);
+  const [transf, setTransf] = useState({ de: "", para: "", valor: "", data: new Date().toISOString().slice(0, 10), descricao: "" });
+  const dataMov = (e) => (e.payment_date || e.due_date || (e.created_date || "").slice(0, 10) || "");
+  const extratoLinhas = (c, mes) => {
+    const movs = entries.filter(e => e.account_id === c.id && e.status === "paid").map(e => ({ ...e, _d: dataMov(e), _v: (e.type === "receivable" ? 1 : -1) * (parseFloat(e.amount) || 0) })).sort((a, b) => a._d.localeCompare(b._d) || String(a.id).localeCompare(String(b.id)));
+    const ini = mes === "todos" ? "" : mes + "-01";
+    let saldo = (parseFloat(c.saldo_inicial) || 0) + movs.filter(m => ini && m._d < ini).reduce((t, m) => t + m._v, 0);
+    const saldoAbertura = saldo;
+    const doMes = movs.filter(m => !ini || m._d.slice(0, 7) === mes).map(m => { saldo = Math.round((saldo + m._v) * 100) / 100; return { ...m, _saldo: saldo }; });
+    return { saldoAbertura, linhas: doMes, saldoFinal: saldo, entradas: doMes.filter(m => m._v > 0).reduce((t, m) => t + m._v, 0), saidas: doMes.filter(m => m._v < 0).reduce((t, m) => t - m._v, 0) };
+  };
+  const exportarExtrato = (c, mes) => {
+    const { saldoAbertura, linhas } = extratoLinhas(c, mes);
+    const rows = [["Data", "Categoria", "Historico", "Entrada", "Saida", "Saldo"], ["", "", `Saldo anterior`, "", "", saldoAbertura.toFixed(2).replace(".", ",")]];
+    for (const m of linhas) rows.push([m._d.split("-").reverse().join("/"), m.category || "", (m.description || "").replace(/;/g, ","), m._v > 0 ? m._v.toFixed(2).replace(".", ",") : "", m._v < 0 ? (-m._v).toFixed(2).replace(".", ",") : "", m._saldo.toFixed(2).replace(".", ",")]);
+    const csv = "\ufeff" + rows.map(r => r.join(";")).join("\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `extrato-${c.nome.replace(/\s+/g, "-")}-${mes}.csv`; a.click();
+  };
+  const salvarTransferencia = async () => {
+    const v = Math.round((parseFloat(transf.valor) || 0) * 100) / 100;
+    const de = contas.find(c => c.id === transf.de), para = contas.find(c => c.id === transf.para);
+    if (!de || !para || de.id === para.id || v <= 0) { alert("Escolha a conta de origem, a de destino (diferentes) e um valor maior que zero."); return; }
+    const ref = `transf-${Date.now()}`; const desc = transf.descricao || `Transferência ${de.nome} → ${para.nome}`;
+    await base44.entities.FinancialEntry.create({ type: "payable", category: "transferencia", description: desc, amount: v, due_date: transf.data, payment_date: transf.data, status: "paid", payment_method: "transfer", account_id: de.id, reference_type: "transferencia", reference_id: ref });
+    await base44.entities.FinancialEntry.create({ type: "receivable", category: "transferencia", description: desc, amount: v, due_date: transf.data, payment_date: transf.data, status: "paid", payment_method: "transfer", account_id: para.id, reference_type: "transferencia", reference_id: ref });
+    setTransfOpen(false); setTransf({ de: "", para: "", valor: "", data: new Date().toISOString().slice(0, 10), descricao: "" }); loadData();
+  };
   const [novaConta, setNovaConta] = useState({ nome: "", saldo_inicial: "" });
 
   useEffect(() => { loadData(); }, []);
@@ -294,12 +324,13 @@ export default function Financial() {
 
       {contas.filter(c => c.ativo !== false).length > 0 && (
         <div className="bg-card rounded-xl border border-border p-4 mb-6">
-          <h3 className="font-heading font-semibold text-sm mb-3">Saldos por conta</h3>
+          <div className="flex items-center justify-between mb-3"><h3 className="font-heading font-semibold text-sm">Caixas e bancos</h3><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => setTransfOpen(true)}>Transferir entre contas</Button></div></div>
+          <p className="text-[10px] text-muted-foreground mb-2">Clique numa conta para ver o extrato com saldo corrido, lançar manualmente ou exportar para a contabilidade.</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {contas.filter(c => c.ativo !== false).map(c => {
               const s = saldoConta(c);
               return (
-                <div key={c.id} className="rounded-lg border border-border p-3">
+                <div key={c.id} className="rounded-lg border border-border p-3 cursor-pointer hover:border-primary hover:bg-muted/20 transition-colors" onClick={() => { setExtMes(new Date().toISOString().slice(0, 7)); setExtratoConta(c); }} title="Ver extrato">
                   <p className="text-xs text-muted-foreground">{c.nome}</p>
                   <p className={`font-semibold ${s < 0 ? "text-destructive" : ""}`}>{formatCurrency(s)}</p>
                 </div>
@@ -486,6 +517,73 @@ export default function Financial() {
             ))}
           </div>
           <p className="text-[10px] text-muted-foreground mt-2">Renomear: clique no nome, edite e saia do campo. Desativar tira do seletor de novos lançamentos sem mexer no histórico. Categorias de sistema (Venda, Importação, Outro) são geradas automaticamente por pedidos e importações.</p>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==== EXTRATO por conta (Larissa 17/09: "Caixas e Bancos" do Bling) ==== */}
+      <Dialog open={!!extratoConta} onOpenChange={o => { if (!o) setExtratoConta(null); }}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          {extratoConta && (() => {
+            const c = contas.find(x => x.id === extratoConta.id) || extratoConta;
+            const ex = extratoLinhas(c, extMes);
+            const meses = Array.from(new Set(entries.filter(e => e.account_id === c.id && e.status === "paid").map(e => dataMov(e).slice(0, 7)).filter(Boolean))).sort().reverse();
+            if (!meses.includes(extMes) && extMes !== "todos") meses.unshift(extMes);
+            return (<>
+              <DialogHeader><DialogTitle>Extrato · {c.nome}</DialogTitle></DialogHeader>
+              <div className="flex flex-wrap items-end gap-2">
+                <div><Label className="text-xs">Período</Label>
+                  <Select value={extMes} onValueChange={setExtMes}>
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="todos">Tudo</SelectItem>{meses.map(m => <SelectItem key={m} value={m}>{m.split("-").reverse().join("/")}</SelectItem>)}</SelectContent>
+                  </Select></div>
+                <Button size="sm" onClick={() => { const conta = c; setExtratoConta(null); openNew("receivable"); setForm(f => ({ ...f, account_id: conta.id, status: "paid", payment_date: new Date().toISOString().slice(0, 10) })); }}>+ Incluir lançamento</Button>
+                <Button size="sm" variant="outline" onClick={() => { setTransf(t => ({ ...t, de: c.id })); setTransfOpen(true); }}>Transferir</Button>
+                <Button size="sm" variant="outline" onClick={() => exportarExtrato(c, extMes)}>Exportar extrato (CSV)</Button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
+                <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saldo anterior</p><p className="font-semibold">{formatCurrency(ex.saldoAbertura)}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Entradas</p><p className="font-semibold text-success">{formatCurrency(ex.entradas)}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saídas</p><p className="font-semibold text-destructive">{formatCurrency(ex.saidas)}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saldo final</p><p className={`font-semibold ${ex.saldoFinal < 0 ? "text-destructive" : ""}`}>{formatCurrency(ex.saldoFinal)}</p></div>
+              </div>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead><tr className="border-b border-border text-muted-foreground"><th className="text-left py-2 pr-2">Data</th><th className="text-left py-2 pr-2">Categoria</th><th className="text-left py-2 pr-2">Histórico</th><th className="text-right py-2 pr-2">Valor</th><th className="text-right py-2">Saldo</th></tr></thead>
+                  <tbody>
+                    {ex.linhas.length === 0 && <tr><td colSpan="5" className="py-4 text-center text-muted-foreground">Nenhuma movimentação paga nesta conta no período.</td></tr>}
+                    {ex.linhas.map(m => (
+                      <tr key={m.id} className="border-b border-border/50 hover:bg-muted/20 cursor-pointer" onClick={() => { setExtratoConta(null); openEdit(m); }} title="Abrir lançamento">
+                        <td className="py-1.5 pr-2 whitespace-nowrap">{m._d.split("-").reverse().join("/")}</td>
+                        <td className="py-1.5 pr-2">{m.category || "—"}</td>
+                        <td className="py-1.5 pr-2">{m.description}</td>
+                        <td className={`py-1.5 pr-2 text-right font-medium whitespace-nowrap ${m._v < 0 ? "text-destructive" : "text-success"}`}>{m._v < 0 ? "− " : ""}{formatCurrency(Math.abs(m._v))}</td>
+                        <td className={`py-1.5 text-right whitespace-nowrap ${m._saldo < 0 ? "text-destructive" : ""}`}>{formatCurrency(m._saldo)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Só entra no extrato o que está marcado como pago nesta conta (data do pagamento). Pendentes ficam em Contas a receber / a pagar.</p>
+            </>);
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ==== TRANSFERÊNCIA entre contas: sai de uma (paga) e entra na outra (recebida), sem passar pelo DRE ==== */}
+      <Dialog open={transfOpen} onOpenChange={setTransfOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Transferência entre contas</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>De</Label><Select value={transf.de || "x"} onValueChange={v => setTransf(t => ({ ...t, de: v === "x" ? "" : v }))}><SelectTrigger><SelectValue placeholder="Origem" /></SelectTrigger><SelectContent><SelectItem value="x">—</SelectItem>{contas.filter(c => c.ativo !== false).map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Para</Label><Select value={transf.para || "x"} onValueChange={v => setTransf(t => ({ ...t, para: v === "x" ? "" : v }))}><SelectTrigger><SelectValue placeholder="Destino" /></SelectTrigger><SelectContent><SelectItem value="x">—</SelectItem>{contas.filter(c => c.ativo !== false).map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Valor (R$)</Label><Input type="number" step="0.01" min="0" value={transf.valor} onChange={e => setTransf(t => ({ ...t, valor: e.target.value }))} /></div>
+              <div><Label>Data</Label><Input type="date" value={transf.data} onChange={e => setTransf(t => ({ ...t, data: e.target.value }))} /></div>
+              <div className="col-span-2"><Label>Histórico</Label><Input value={transf.descricao} onChange={e => setTransf(t => ({ ...t, descricao: e.target.value }))} placeholder="Ex.: Resgate PayPal para Itaú" /></div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Gera uma saída paga na origem e uma entrada paga no destino, categoria "transferencia": muda o saldo das contas, não entra como receita nem despesa no DRE.</p>
+            <div className="flex justify-end"><Button onClick={salvarTransferencia}>Transferir</Button></div>
+          </div>
         </DialogContent>
       </Dialog>
 
