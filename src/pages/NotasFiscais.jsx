@@ -35,6 +35,13 @@ const PRESETS = [
   { value: "remessa_conserto", label: "Remessa para conserto (enviar a terceiro)", tipo: "saida", natureza: "Remessa de mercadoria para conserto ou reparo", cfopSP: "5915", cfopFora: "6915", csosn: "900", finalidade: 1 },
   { value: "outra", label: "Outra operação (CFOP manual)", tipo: "saida", natureza: "", cfop: "", csosn: "900", finalidade: 1 },
 ];
+// Fase B (17/09): tabelas de CST/CSOSN usadas nas abas de imposto do item
+const CSOSN = [["101","101 - Com permissão de crédito"],["102","102 - Sem permissão de crédito"],["103","103 - Isenção por faixa"],["300","300 - Imune"],["400","400 - Não tributada"],["500","500 - ICMS cobrado por ST"],["900","900 - Outros"]];
+const CST_IPI = [["00","00 - Entrada com recuperação de crédito"],["01","01 - Entrada tributada alíquota zero"],["02","02 - Entrada isenta"],["03","03 - Entrada não tributada"],["04","04 - Entrada imune"],["05","05 - Entrada com suspensão"],["49","49 - Outras entradas"],["50","50 - Saída tributada"],["51","51 - Saída alíquota zero"],["52","52 - Saída isenta"],["53","53 - Saída não tributada"],["54","54 - Saída imune"],["55","55 - Saída com suspensão"],["99","99 - Outras saídas"]];
+const CST_PIS = [["01","01 - Alíquota básica"],["02","02 - Alíquota diferenciada"],["04","04 - Monofásico alíquota zero"],["06","06 - Alíquota zero"],["07","07 - Isenta"],["08","08 - Sem incidência"],["09","09 - Suspensão"],["49","49 - Outras saídas"],["70","70 - Aquisição sem direito a crédito"],["73","73 - Aquisição p/ revenda (isenta)"],["98","98 - Outras entradas"],["99","99 - Outras operações"]];
+const ORIGENS = [["0","0 - Nacional"],["1","1 - Estrangeira (importação direta)"],["2","2 - Estrangeira (mercado interno)"],["3","3 - Nacional >40% importado"],["5","5 - Nacional ≤40% importado"],["6","6 - Estrangeira sem similar"],["7","7 - Estrangeira sem similar (mercado interno)"],["8","8 - Nacional >70% importado"]];
+const MOD_BC = [["0","0 - Margem de valor agregado"],["1","1 - Pauta"],["2","2 - Preço tabelado"],["3","3 - Valor da operação"]];
+const ABAS_ITEM = [["dados","Dados"],["icms","ICMS"],["ipi","IPI"],["pis","PIS/COFINS"],["imp","Importação"],["outros","Outros"]];
 const presetInfo = (v) => PRESETS.find(p => p.value === v) || PRESETS[PRESETS.length - 1];
 
 const PAISES = [
@@ -51,7 +58,19 @@ const PAISES = [
 
 const formatCurrency = (val) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val || 0);
 const num = (v) => parseFloat(v) || 0;
-const totalNota = (n) => (n.items || []).reduce((s, i) => s + num(i.quantity) * num(i.unit_price), 0) + num(n.frete);
+const totaisNota = (n) => {
+  const its = n.items || [];
+  const t = { produtos: 0, frete: num(n.frete), seguro: num(n.seguro), outras: num(n.outras_despesas), desconto: num(n.desconto), ii: 0, ipi: 0, pis: 0, cofins: 0, icms_base: 0, icms: 0 };
+  for (const i of its) {
+    t.produtos += num(i.quantity) * num(i.unit_price);
+    t.frete += num(i.frete_item); t.seguro += num(i.seguro_item); t.outras += num(i.outras_item); t.desconto += num(i.desconto_item);
+    t.ii += num(i.ii_valor); t.ipi += num(i.ipi_valor); t.pis += num(i.pis_valor); t.cofins += num(i.cofins_valor); t.icms_base += num(i.icms_base); t.icms += num(i.icms_valor);
+  }
+  for (const k of Object.keys(t)) t[k] = Math.round(t[k] * 100) / 100;
+  t.total = Math.round((t.produtos - t.desconto + t.frete + t.seguro + t.outras + t.ii + t.ipi) * 100) / 100;
+  return t;
+};
+const totalNota = (n) => totaisNota(n).total;
 
 const STATUS_COR = {
   autorizado: "bg-success/10 text-success",
@@ -77,13 +96,15 @@ export default function NotasFiscais() {
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [n, c, p, ops, pv] = await Promise.all([
+    const [n, c, p, ops, pv, cf] = await Promise.all([
       base44.entities.NfeAvulsa.list("-created_date", 300),
       base44.entities.Contato.list("-created_date", 1000),
       base44.entities.Product.list("-created_date", 1000),
       base44.entities.ImportOperation.list("-created_date", 100).catch(() => []),
       base44.entities.SaleOrder.list("-created_date", 2000).catch(() => []),
+      base44.entities.Cfop.list("codigo", 300).catch(() => []),
     ]);
+    setCfops(cf || []);
     setNotas(n || []);
     setPedidosNf((pv || []).filter(o => o.nfe_numero || o.nfe_chave || o.nfe_status));
     setContatos(c || []);
@@ -116,10 +137,49 @@ export default function NotasFiscais() {
   };
   const canalPedido = (o) => ({ mercado_livre: "Mercado Livre", woocommerce: "Site", direct: "Venda direta" }[o.channel] || o.channel || "Outro");
   const textoPadrao = () => {
-    const t = INFO_PADRAO[form.preset] || "";
+    const doCfop = cfops.find(c => c.codigo === String(form.cfop || "") && c.ativo !== false)?.info_padrao;
+    const t = doCfop || INFO_PADRAO[form.preset] || "";
+    const tt = totaisNota(form); const trib = tt.ii + tt.ipi + tt.pis + tt.cofins + tt.icms;
+    const base = t.replace("{tributos}", formatCurrency(trib));
+    return baseTexto(base);
+  };
+  const baseTexto = (t) => {
     const vol = (form.items || []).reduce((sm, it) => sm + (parseFloat(it.quantity) || 0), 0);
     return t.replace("{di}", form.di?.numero || "____").replace("{data_di}", form.di?.data_registro ? form.di.data_registro.split("-").reverse().join("/") : "__/__/____").replace("{volumes}", vol ? `${vol} volume(s)` : "").replace("{ref}", form.chave_referenciada ? `chave ${form.chave_referenciada}` : "____").replace(/\n{2,}/g, "\n").trim();
   };
+  // Fase B: preenche os impostos de cada item da importação (II, IPI, PIS 2,1%, COFINS 9,65%, ICMS por dentro).
+  // Frete/seguro/outras despesas da nota são rateados por valor. A Larissa confere contra a DI e ajusta o que precisar.
+  const calcularImportacao = () => {
+    const its = form.items || []; if (!its.length) return;
+    const somaProd = its.reduce((sm, i) => sm + num(i.quantity) * num(i.unit_price), 0) || 1;
+    const aliqIcms = num(form.icms_aliq_padrao) || 18, aliqPis = num(form.pis_aliq_padrao) || 2.1, aliqCofins = num(form.cofins_aliq_padrao) || 9.65;
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const novos = its.map((i, ix) => {
+      const prod = num(i.quantity) * num(i.unit_price), fr = prod / somaProd;
+      const frete = r2(num(form.frete) * fr), seguro = r2(num(form.seguro) * fr), outras = r2(num(form.outras_despesas) * fr), despAdu = r2(num(form.di?.despesas_aduaneiras) * fr);
+      const va = r2(num(i.ii_base) > 0 ? num(i.ii_base) : prod + frete + seguro);      // valor aduaneiro
+      const aliqII = num(i.ii_aliq), ii = r2(num(i.ii_valor) > 0 && !aliqII ? num(i.ii_valor) : va * aliqII / 100);
+      const aliqIpi = num(i.ipi_aliq), ipiBase = r2(va + ii), ipi = r2(ipiBase * aliqIpi / 100);
+      const pis = r2(va * aliqPis / 100), cofins = r2(va * aliqCofins / 100);
+      const icmsBase = r2((va + ii + ipi + pis + cofins + outras + despAdu + num(i.ii_iof)) / (1 - aliqIcms / 100)), icms = r2(icmsBase * aliqIcms / 100);
+      return { ...i, frete_item: frete, seguro_item: seguro, outras_item: outras, ii_base: va, ii_aliq: aliqII, ii_valor: ii, ii_despesas: despAdu, adicao: i.adicao ?? 1, seq_adicao: i.seq_adicao ?? (ix + 1),
+        icms_csosn: i.icms_csosn || "900", icms_origem: i.icms_origem ?? "1", icms_mod_bc: i.icms_mod_bc || "3", icms_base: icmsBase, icms_aliq: aliqIcms, icms_valor: icms,
+        ipi_cst: aliqIpi > 0 ? (i.ipi_cst && i.ipi_cst !== "49" ? i.ipi_cst : "00") : (i.ipi_cst || "49"), ipi_base: ipiBase, ipi_aliq: aliqIpi, ipi_valor: ipi,
+        pis_cst: "01", pis_base: va, pis_aliq: aliqPis, pis_valor: pis, cofins_cst: "01", cofins_base: va, cofins_aliq: aliqCofins, cofins_valor: cofins };
+    });
+    setForm(prev => ({ ...prev, items: novos, frete: 0, seguro: 0, outras_despesas: 0 })); // rateado nos itens: a nota não repete
+  };
+  const salvarCfop = async () => {
+    const d = { codigo: String(cfopDialog.codigo || "").replace(/\D/g, ""), descricao: cfopDialog.descricao || "", natureza: cfopDialog.natureza || "", tipo: cfopDialog.tipo || (String(cfopDialog.codigo || "").match(/^[123]/) ? "entrada" : "saida"), csosn: cfopDialog.csosn || "900", finalidade: parseInt(cfopDialog.finalidade) || 1, info_padrao: cfopDialog.info_padrao || "", ativo: cfopDialog.ativo !== false };
+    if (d.codigo.length !== 4) { alert("CFOP tem 4 dígitos."); return; }
+    if (cfopDialog.id) await base44.entities.Cfop.update(cfopDialog.id, d); else await base44.entities.Cfop.create(d);
+    const cf = await base44.entities.Cfop.list("codigo", 300).catch(() => []); setCfops(cf || []); setCfopDialog({ lista: true });
+  };
+  const aplicarCfop = (codigo) => {
+    const c = cfops.find(x => x.codigo === codigo); if (!c) return;
+    setForm(prev => ({ ...prev, cfop: c.codigo, cfop_id: c.id, natureza_operacao: c.natureza || prev.natureza_operacao, tipo: c.tipo || prev.tipo, csosn: c.csosn || prev.csosn, finalidade: c.finalidade || prev.finalidade }));
+  };
+
   const exportarLista = () => {
     const rows = [["Data", "Tipo", "Origem", "Natureza", "CFOP", "Destinatario", "Total", "NF numero", "Serie", "Chave", "Situacao"]];
     for (const l of linhasFiltradas) rows.push([l.data.split("-").reverse().join("/"), l.tipo, l.origem, l.natureza, l.cfop, l.dest, l.total.toFixed(2).replace(".", ","), l.nfe_numero || "", l.nfe_serie || "", l.nfe_chave || "", l.nfe_status || "rascunho"]);
@@ -387,7 +447,12 @@ export default function NotasFiscais() {
                     <SelectContent><SelectItem value="saida">Saída</SelectItem><SelectItem value="entrada">Entrada</SelectItem></SelectContent>
                   </Select>
                 </div>
-                <div><Label>CFOP</Label><Input value={form.cfop || ""} onChange={e => setForm({ ...form, cfop: e.target.value })} placeholder="Ex: 5949" /></div>
+                <div><Label className="flex items-center justify-between">CFOP <button type="button" className="text-[10px] text-primary underline font-normal" onClick={() => setCfopDialog({ lista: true })}>gerenciar CFOPs</button></Label>
+                  <Select value={cfops.some(c => c.codigo === form.cfop) ? form.cfop : "manual"} onValueChange={v => v === "manual" ? null : aplicarCfop(v)}>
+                    <SelectTrigger><SelectValue placeholder="Escolha no cadastro" /></SelectTrigger>
+                    <SelectContent><SelectItem value="manual">— digitar —</SelectItem>{cfops.filter(c => c.ativo !== false).map(c => <SelectItem key={c.id} value={c.codigo}>{c.codigo} · {c.descricao}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Input className="mt-1" value={form.cfop || ""} onChange={e => setForm({ ...form, cfop: e.target.value })} placeholder="Ex: 5949" /></div>
               </>}
             </div>
 
@@ -482,39 +547,125 @@ export default function NotasFiscais() {
                     <div className="col-span-3"><Label className="text-xs">Valor unit. (R$)</Label><Input type="number" step="0.01" value={it.unit_price ?? ""} onChange={e => setItem(ix, "unit_price", e.target.value)} /></div>
                     <button type="button" className="col-span-1 h-9 text-destructive hover:bg-destructive/10 rounded text-sm" onClick={() => setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== ix) }))}>✕</button>
                   </div>
-                  {p.di && (
-                    <div className="grid grid-cols-12 gap-2 items-end mt-1">
-                      <div className="col-span-3"><Label className="text-[10px]">Base II (R$)</Label><Input type="number" step="0.01" value={it.ii_base ?? ""} onChange={e => setItem(ix, "ii_base", e.target.value)} /></div>
-                      <div className="col-span-3"><Label className="text-[10px]">Valor II (R$)</Label><Input type="number" step="0.01" value={it.ii_valor ?? ""} onChange={e => setItem(ix, "ii_valor", e.target.value)} /></div>
-                      <div className="col-span-3"><Label className="text-[10px]">Desp. aduaneiras (R$)</Label><Input type="number" step="0.01" value={it.ii_despesas ?? ""} onChange={e => setItem(ix, "ii_despesas", e.target.value)} /></div>
-                      <div className="col-span-3"><Label className="text-[10px]">IOF (R$)</Label><Input type="number" step="0.01" value={it.ii_iof ?? ""} onChange={e => setItem(ix, "ii_iof", e.target.value)} /></div>
-                      <div className="col-span-2"><Label className="text-[10px]">Nº adição</Label><Input type="number" min="1" value={it.adicao ?? 1} onChange={e => setItem(ix, "adicao", e.target.value)} /></div>
-                      <div className="col-span-2"><Label className="text-[10px]">Seq. na adição</Label><Input type="number" min="1" value={it.seq_adicao ?? (ix + 1)} onChange={e => setItem(ix, "seq_adicao", e.target.value)} /></div>
-                      <div className="col-span-4"><Label className="text-[10px]">Cód. fabricante (opcional)</Label><Input value={it.cod_fabricante || ""} onChange={e => setItem(ix, "cod_fabricante", e.target.value)} /></div>
-                    </div>
-                  )}
+                  {(() => {
+                    const ab = abaItem[ix] || "";
+                    const set = (campo) => (e) => setItem(ix, campo, e.target.value);
+                    const numIn = (campo, label, cols = "col-span-3") => <div className={cols}><Label className="text-[10px]">{label}</Label><Input type="number" step="0.01" className="h-8 text-xs" value={it[campo] ?? ""} onChange={set(campo)} /></div>;
+                    const sel = (campo, label, opts, def, cols = "col-span-4") => <div className={cols}><Label className="text-[10px]">{label}</Label><Select value={String(it[campo] ?? def)} onValueChange={v => setItem(ix, campo, v)}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent>{opts.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>;
+                    return (<>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {ABAS_ITEM.filter(([k]) => k !== "imp" || p.di || String(form.cfop || "").startsWith("3")).map(([k, l]) => <button key={k} type="button" className={`px-2 py-0.5 rounded text-[10px] border ${ab === k ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`} onClick={() => setAbaItem(prev => ({ ...prev, [ix]: prev[ix] === k ? "" : k }))}>{l}</button>)}
+                        {(num(it.icms_valor) || num(it.ii_valor) || num(it.pis_valor)) ? <span className="text-[10px] text-muted-foreground self-center ml-1">II {formatCurrency(num(it.ii_valor))} · IPI {formatCurrency(num(it.ipi_valor))} · PIS {formatCurrency(num(it.pis_valor))} · COFINS {formatCurrency(num(it.cofins_valor))} · ICMS {formatCurrency(num(it.icms_valor))}</span> : null}
+                      </div>
+                      {ab === "dados" && <div className="grid grid-cols-12 gap-2 items-end mt-1">
+                        <div className="col-span-2"><Label className="text-[10px]">Código</Label><Input className="h-8 text-xs" value={it.sku || ""} onChange={set("sku")} /></div>
+                        <div className="col-span-2"><Label className="text-[10px]">Unidade</Label><Input className="h-8 text-xs" value={it.unit || "UN"} onChange={set("unit")} /></div>
+                        <div className="col-span-2"><Label className="text-[10px]">CFOP do item</Label><Input className="h-8 text-xs" value={it.cfop || ""} onChange={set("cfop")} placeholder={form.cfop || ""} /></div>
+                        <div className="col-span-2"><Label className="text-[10px]">CEST</Label><Input className="h-8 text-xs" value={it.cest || ""} onChange={set("cest")} /></div>
+                        <div className="col-span-2"><Label className="text-[10px]">GTIN/EAN</Label><Input className="h-8 text-xs" value={it.gtin || ""} onChange={set("gtin")} placeholder="SEM GTIN" /></div>
+                        <div className="col-span-2"><Label className="text-[10px]">Total</Label><Input readOnly className="h-8 text-xs bg-muted" value={formatCurrency(num(it.quantity) * num(it.unit_price))} /></div>
+                        {numIn("frete_item", "Frete (R$)")}{numIn("seguro_item", "Seguro (R$)")}{numIn("outras_item", "Outras desp. (R$)")}{numIn("desconto_item", "Desconto (R$)")}
+                        <div className="col-span-12"><Label className="text-[10px]">Informações adicionais do item</Label><Input className="h-8 text-xs" value={it.info_adicional || ""} onChange={set("info_adicional")} /></div>
+                      </div>}
+                      {ab === "icms" && <div className="grid grid-cols-12 gap-2 items-end mt-1">
+                        {sel("icms_csosn", "CSOSN", CSOSN, form.csosn || "900")}{sel("icms_origem", "Origem", ORIGENS, p.exterior ? "1" : "0")}{sel("icms_mod_bc", "Modalidade BC", MOD_BC, "3")}
+                        {numIn("icms_base", "Base ICMS (R$)")}{numIn("icms_aliq", "% ICMS")}{numIn("icms_valor", "Valor ICMS (R$)")}{numIn("icms_red_bc", "% redução BC")}
+                        <div className="col-span-12 text-[10px] text-muted-foreground">Simples Nacional: na importação a base é "por dentro" (valor aduaneiro + II + IPI + PIS + COFINS + despesas) ÷ (1 − alíquota). O botão "Calcular importação" faz essa conta.</div>
+                      </div>}
+                      {ab === "ipi" && <div className="grid grid-cols-12 gap-2 items-end mt-1">
+                        {sel("ipi_cst", "CST IPI", CST_IPI, "49")}{numIn("ipi_base", "Base IPI (R$)")}{numIn("ipi_aliq", "% IPI")}{numIn("ipi_valor", "Valor IPI (R$)")}
+                        <div className="col-span-3"><Label className="text-[10px]">Enquadramento</Label><Input className="h-8 text-xs" value={it.ipi_enq || "999"} onChange={set("ipi_enq")} /></div>
+                      </div>}
+                      {ab === "pis" && <div className="grid grid-cols-12 gap-2 items-end mt-1">
+                        {sel("pis_cst", "CST PIS", CST_PIS, p.exterior ? "01" : "07")}{numIn("pis_base", "Base PIS (R$)")}{numIn("pis_aliq", "% PIS")}{numIn("pis_valor", "Valor PIS (R$)")}
+                        {sel("cofins_cst", "CST COFINS", CST_PIS, p.exterior ? "01" : "07")}{numIn("cofins_base", "Base COFINS (R$)")}{numIn("cofins_aliq", "% COFINS")}{numIn("cofins_valor", "Valor COFINS (R$)")}
+                      </div>}
+                      {ab === "imp" && <div className="grid grid-cols-12 gap-2 items-end mt-1">
+                        {numIn("ii_base", "Valor aduaneiro / base II (R$)", "col-span-4")}{numIn("ii_aliq", "% II", "col-span-2")}{numIn("ii_valor", "Valor II (R$)")}{numIn("ii_despesas", "Desp. aduaneiras (R$)")}
+                        {numIn("ii_iof", "IOF (R$)")}
+                        <div className="col-span-2"><Label className="text-[10px]">Nº adição</Label><Input type="number" min="1" className="h-8 text-xs" value={it.adicao ?? 1} onChange={set("adicao")} /></div>
+                        <div className="col-span-2"><Label className="text-[10px]">Seq. na adição</Label><Input type="number" min="1" className="h-8 text-xs" value={it.seq_adicao ?? (ix + 1)} onChange={set("seq_adicao")} /></div>
+                        <div className="col-span-5"><Label className="text-[10px]">Cód. fabricante (opcional)</Label><Input className="h-8 text-xs" value={it.cod_fabricante || ""} onChange={set("cod_fabricante")} /></div>
+                        <div className="col-span-12 text-[10px] text-muted-foreground">Valor aduaneiro = produtos + frete + seguro. IPI incide sobre aduaneiro + II. PIS/COFINS sobre o aduaneiro.</div>
+                      </div>}
+                      {ab === "outros" && <div className="grid grid-cols-12 gap-2 items-end mt-1">
+                        <div className="col-span-3"><Label className="text-[10px]">Unidade tributável</Label><Input className="h-8 text-xs" value={it.unit_trib || ""} onChange={set("unit_trib")} placeholder={it.unit || "UN"} /></div>
+                        {numIn("qtd_trib", "Qtd tributável")}{numIn("vunit_trib", "Valor unit. tributável")}
+                        {numIn("aprox_trib_pct", "% aprox. tributos (IBPT)")}{numIn("aprox_trib_valor", "Valor aprox. tributos (R$)")}
+                        <div className="col-span-3"><Label className="text-[10px]">Nº pedido de compra</Label><Input className="h-8 text-xs" value={it.pedido_compra || ""} onChange={set("pedido_compra")} /></div>
+                        <div className="col-span-3"><Label className="text-[10px]">Item do pedido</Label><Input className="h-8 text-xs" value={it.item_pedido_compra || ""} onChange={set("item_pedido_compra")} /></div>
+                      </div>}
+                    </>);
+                  })()}
                 </div>
               ))}
               {!(form.items || []).length && <p className="text-[10px] text-muted-foreground">Nenhum item — escolha um produto acima ou "item manual".</p>}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div><Label>Frete (R$)</Label><Input type="number" step="0.01" value={form.frete ?? ""} onChange={e => setForm({ ...form, frete: e.target.value })} /></div>
+              <div><Label>Seguro (R$)</Label><Input type="number" step="0.01" value={form.seguro ?? ""} onChange={e => setForm({ ...form, seguro: e.target.value })} /></div>
+              <div><Label>Outras despesas (R$)</Label><Input type="number" step="0.01" value={form.outras_despesas ?? ""} onChange={e => setForm({ ...form, outras_despesas: e.target.value })} /></div>
+              <div><Label>Desconto (R$)</Label><Input type="number" step="0.01" value={form.desconto ?? ""} onChange={e => setForm({ ...form, desconto: e.target.value })} /></div>
+              {(p.di || String(form.cfop || "").startsWith("3")) && <div className="col-span-2 sm:col-span-4 rounded-lg border border-dashed border-border p-2 flex flex-wrap items-end gap-2">
+                <div><Label className="text-[10px]">% ICMS</Label><Input type="number" step="0.01" className="h-8 w-20 text-xs" value={form.icms_aliq_padrao ?? 18} onChange={e => setForm({ ...form, icms_aliq_padrao: e.target.value })} /></div>
+                <div><Label className="text-[10px]">% PIS</Label><Input type="number" step="0.01" className="h-8 w-20 text-xs" value={form.pis_aliq_padrao ?? 2.1} onChange={e => setForm({ ...form, pis_aliq_padrao: e.target.value })} /></div>
+                <div><Label className="text-[10px]">% COFINS</Label><Input type="number" step="0.01" className="h-8 w-20 text-xs" value={form.cofins_aliq_padrao ?? 9.65} onChange={e => setForm({ ...form, cofins_aliq_padrao: e.target.value })} /></div>
+                <Button type="button" size="sm" variant="outline" onClick={calcularImportacao}>Calcular impostos da importação</Button>
+                <span className="text-[10px] text-muted-foreground">Preenche II, IPI, PIS, COFINS e ICMS de cada item (% II e % IPI vêm da aba Importação/IPI de cada item). Confira contra a DI.</span>
+              </div>}
               <div className="sm:col-span-2"><Label className="flex items-center justify-between">Informações adicionais / complementares <button type="button" className="text-[10px] text-primary underline font-normal" onClick={() => setForm({ ...form, informacoes_adicionais: [textoPadrao(), form.informacoes_adicionais].filter(Boolean).join("\n") })}>+ texto padrão da natureza</button></Label>
                 <Textarea rows={4} value={form.informacoes_adicionais || ""} onChange={e => setForm({ ...form, informacoes_adicionais: e.target.value })} placeholder="Sai no rodapé da DANFE: volumes, DI, transporte, coleta, referência de NF…" />
                 <p className="text-[10px] text-muted-foreground mt-1">Transporte, coleta, volumes, número da DI: tudo o que a contabilidade e o transportador precisam ler na nota.</p></div>
             </div>
 
-            <div className="rounded-lg bg-muted/30 border border-border p-3 flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Total da nota</span>
-              <span className="font-bold">{formatCurrency(totalNota(form))}</span>
-            </div>
+            {(() => { const t = totaisNota(form); return (
+            <div className="rounded-lg bg-muted/30 border border-border p-3 text-sm">
+              <p className="font-semibold text-xs mb-2">Cálculo de imposto (somatório dos itens, como a SEFAZ confere)</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Total dos produtos</span><span className="text-right">{formatCurrency(t.produtos)}</span>
+                <span className="text-muted-foreground">Frete</span><span className="text-right">{formatCurrency(t.frete)}</span>
+                <span className="text-muted-foreground">Seguro</span><span className="text-right">{formatCurrency(t.seguro)}</span>
+                <span className="text-muted-foreground">Outras despesas</span><span className="text-right">{formatCurrency(t.outras)}</span>
+                <span className="text-muted-foreground">Desconto</span><span className="text-right">− {formatCurrency(t.desconto)}</span>
+                <span className="text-muted-foreground">II</span><span className="text-right">{formatCurrency(t.ii)}</span>
+                <span className="text-muted-foreground">IPI</span><span className="text-right">{formatCurrency(t.ipi)}</span>
+                <span className="text-muted-foreground">PIS · COFINS</span><span className="text-right">{formatCurrency(t.pis)} · {formatCurrency(t.cofins)}</span>
+                <span className="text-muted-foreground">Base ICMS · ICMS</span><span className="text-right">{formatCurrency(t.icms_base)} · {formatCurrency(t.icms)}</span>
+              </div>
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-border"><span className="text-muted-foreground">Total da nota</span><span className="font-bold">{formatCurrency(t.total)}</span></div>
+              <p className="text-[10px] text-muted-foreground mt-1">Total = produtos − desconto + frete + seguro + outras + II + IPI. PIS, COFINS e ICMS são destacados, não somam. Para mudar um total, mude o item: a SEFAZ rejeita nota cujo total não bate com os itens.</p>
+            </div>); })()}
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancelar</Button>
             <Button variant="outline" onClick={() => handleSave(false)} disabled={saving}>Salvar rascunho</Button>
             <Button onClick={() => handleSave(true)} disabled={saving}>{saving ? "Processando..." : "Salvar e Emitir"}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==== CADASTRO DE CFOP / NATUREZA (Fase B, 17/09) ==== */}
+      <Dialog open={!!cfopDialog} onOpenChange={o => { if (!o) setCfopDialog(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>CFOPs e naturezas de operação</DialogTitle></DialogHeader>
+          {cfopDialog && (cfopDialog.lista ? (<div className="space-y-2">
+            <div className="flex justify-between items-center"><p className="text-xs text-muted-foreground">Cada CFOP carrega a natureza, o CSOSN, a finalidade e o texto padrão que sai em "Informações adicionais". {"{di}"}, {"{data_di}"}, {"{volumes}"}, {"{ref}"} e {"{tributos}"} são preenchidos na hora.</p><Button size="sm" onClick={() => setCfopDialog({ codigo: "", tipo: "saida", csosn: "900", finalidade: 1, ativo: true })}>+ Novo CFOP</Button></div>
+            <table className="w-full text-xs"><thead><tr className="text-muted-foreground border-b border-border"><th className="text-left py-1">CFOP</th><th className="text-left py-1">Descrição</th><th className="text-left py-1">Natureza</th><th className="text-left py-1">Tipo</th><th className="text-left py-1">CSOSN</th><th></th></tr></thead>
+              <tbody>{cfops.map(c => <tr key={c.id} className={`border-b border-border/50 ${c.ativo === false ? "opacity-50" : ""}`}><td className="py-1 font-mono">{c.codigo}</td><td className="py-1">{c.descricao}</td><td className="py-1">{c.natureza}</td><td className="py-1">{c.tipo}</td><td className="py-1">{c.csosn}</td><td className="py-1 text-right"><button className="text-primary underline" onClick={() => setCfopDialog({ ...c })}>editar</button></td></tr>)}</tbody></table>
+          </div>) : (<div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div><Label className="text-xs">CFOP</Label><Input value={cfopDialog.codigo || ""} onChange={e => setCfopDialog({ ...cfopDialog, codigo: e.target.value })} maxLength={4} /></div>
+              <div className="col-span-3"><Label className="text-xs">Descrição</Label><Input value={cfopDialog.descricao || ""} onChange={e => setCfopDialog({ ...cfopDialog, descricao: e.target.value })} /></div>
+              <div className="col-span-2"><Label className="text-xs">Natureza da operação (sai na NF)</Label><Input value={cfopDialog.natureza || ""} onChange={e => setCfopDialog({ ...cfopDialog, natureza: e.target.value })} /></div>
+              <div><Label className="text-xs">Tipo</Label><Select value={cfopDialog.tipo || "saida"} onValueChange={v => setCfopDialog({ ...cfopDialog, tipo: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="entrada">Entrada</SelectItem><SelectItem value="saida">Saída</SelectItem></SelectContent></Select></div>
+              <div><Label className="text-xs">CSOSN</Label><Select value={cfopDialog.csosn || "900"} onValueChange={v => setCfopDialog({ ...cfopDialog, csosn: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{CSOSN.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label className="text-xs">Finalidade</Label><Select value={String(cfopDialog.finalidade || 1)} onValueChange={v => setCfopDialog({ ...cfopDialog, finalidade: parseInt(v) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[["1","1 - Normal"],["2","2 - Complementar"],["3","3 - Ajuste"],["4","4 - Devolução"]].map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>
+              <div className="col-span-2 sm:col-span-3 flex items-end gap-2"><label className="text-xs flex items-center gap-2"><input type="checkbox" checked={cfopDialog.ativo !== false} onChange={e => setCfopDialog({ ...cfopDialog, ativo: e.target.checked })} /> Ativo</label></div>
+              <div className="col-span-2 sm:col-span-4"><Label className="text-xs">Texto padrão das informações adicionais</Label><Textarea rows={3} value={cfopDialog.info_padrao || ""} onChange={e => setCfopDialog({ ...cfopDialog, info_padrao: e.target.value })} placeholder="Ex.: Valor aproximado dos tributos: {tributos}. Documento emitido por ME/EPP optante pelo Simples Nacional." /></div>
+            </div>
+            <div className="flex justify-between"><Button variant="ghost" onClick={() => setCfopDialog({ lista: true })}>← Lista</Button><Button onClick={salvarCfop}>Salvar CFOP</Button></div>
+          </div>))}
         </DialogContent>
       </Dialog>
     </div>

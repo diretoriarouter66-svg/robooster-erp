@@ -46,6 +46,7 @@ const TABLE = {
   Transportadora: 'transportadoras',
   ProductCostHistory: 'product_cost_history',
   NfeAvulsa: 'nfe_avulsas',
+  Cfop: 'cfops', // 17/09 Fase B: cadastro de CFOP/natureza com texto padrão
   CompetitorAnalysis: 'competitor_analysis',
   Patrimonio: 'patrimonio',
   ValuationConfig: 'valuation_config',
