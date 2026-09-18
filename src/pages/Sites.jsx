@@ -41,11 +41,13 @@ function Delta({ atual, anterior }) {
   if (p == null) return null;
   return <span className={`text-xs font-medium ${p >= 0 ? "text-emerald-600" : "text-red-600"}`}>{p >= 0 ? "+" : ""}{p.toFixed(0)}%</span>;
 }
-function Num({ label, valor, anterior, icon: Icon, sufixo = "" }) {
+// Custo do Google Ads lido via GA4: a propriedade está em DÓLAR, então formata com US$ e 2 casas
+const usd = (n) => (n == null || Number.isNaN(n) ? "—" : "US$ " + new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n));
+function Num({ label, valor, anterior, icon: Icon, sufixo = "", formato }) {
   return (
     <div className="rounded-lg border bg-card p-3">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">{Icon && <Icon className="w-3.5 h-3.5" />}{label}</div>
-      <div className="flex items-baseline gap-2 mt-1"><span className="text-xl font-semibold tabular-nums">{fmt(valor)}{sufixo}</span><Delta atual={valor} anterior={anterior} /></div>
+      <div className="flex items-baseline gap-2 mt-1"><span className="text-xl font-semibold tabular-nums">{formato ? formato(valor) : fmt(valor)}{sufixo}</span><Delta atual={valor} anterior={anterior} /></div>
     </div>
   );
 }
@@ -368,25 +370,26 @@ export default function Sites() {
           )}
 
           {ads.lista.length > 0 && (
-            <Card className="mb-4"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Megaphone className="w-4 h-4" /> Campanhas do Google Ads · {periodo} dias contra os {periodo} anteriores</CardTitle></CardHeader>
+            <Card className="mb-4"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Megaphone className="w-4 h-4" /> Campanhas do Google Ads (custo em US$, via GA4) · {periodo} dias contra os {periodo} anteriores</CardTitle></CardHeader>
               <CardContent className="text-sm">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-3">
+                  <Num label="Custo (US$, via GA4)" valor={ads.a.custo} anterior={ads.b.custo} formato={usd} />
                   <Num label="Cliques" valor={ads.a.cliques} anterior={ads.b.cliques} />
                   <Num label="Impressões" valor={ads.a.imp} anterior={ads.b.imp} />
                   <Num label="Taxa de clique" valor={ads.a.imp ? (ads.a.cliques / ads.a.imp) * 100 : null} anterior={ads.b.imp ? (ads.b.cliques / ads.b.imp) * 100 : null} sufixo="%" />
                   <Num label="Sessões trazidas" valor={ads.lista.reduce((s, c) => s + c.a.sessoes, 0)} anterior={ads.lista.reduce((s, c) => s + c.b.sessoes, 0)} />
-                  <Num label="Conversões (eventos-chave)" valor={ads.a.conv} anterior={ads.b.conv} />
+                  <Num label="Visitas (page_view)" valor={ads.a.conv} anterior={ads.b.conv} />
                 </div>
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="overflow-x-auto"><table className="w-full"><thead><tr className="text-xs text-muted-foreground"><th className="text-left font-normal">Campanha</th><th className="text-right font-normal">Impressões</th><th className="text-right font-normal">Cliques</th><th className="text-right font-normal">Sessões</th><th className="text-right font-normal">Conv.</th></tr></thead><tbody>
-                    {ads.lista.map((c) => (<tr key={c.nome} className="border-b last:border-0"><td className="py-1 pr-2 max-w-[260px] truncate" title={c.nome}>{c.nome}</td><td className="py-1 text-right tabular-nums">{fmt(c.a.imp)} <Delta atual={c.a.imp} anterior={c.b.imp} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.cliques)} <Delta atual={c.a.cliques} anterior={c.b.cliques} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.sessoes)}</td><td className="py-1 text-right tabular-nums">{fmt(c.a.conv)} <Delta atual={c.a.conv} anterior={c.b.conv} /></td></tr>))}
+                  <div className="overflow-x-auto"><table className="w-full"><thead><tr className="text-xs text-muted-foreground"><th className="text-left font-normal">Campanha</th><th className="text-right font-normal">Custo (US$)</th><th className="text-right font-normal">Impressões</th><th className="text-right font-normal">Cliques</th><th className="text-right font-normal">Sessões</th><th className="text-right font-normal">Visitas (page_view)</th></tr></thead><tbody>
+                    {ads.lista.map((c) => (<tr key={c.nome} className="border-b last:border-0"><td className="py-1 pr-2 max-w-[260px] truncate" title={c.nome}>{c.nome}</td><td className="py-1 text-right tabular-nums">{usd(c.a.custo)} <Delta atual={c.a.custo} anterior={c.b.custo} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.imp)} <Delta atual={c.a.imp} anterior={c.b.imp} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.cliques)} <Delta atual={c.a.cliques} anterior={c.b.cliques} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.sessoes)}</td><td className="py-1 text-right tabular-nums">{fmt(c.a.conv)} <Delta atual={c.a.conv} anterior={c.b.conv} /></td></tr>))}
                   </tbody></table></div>
                   <div className="h-44"><ResponsiveContainer width="100%" height="100%"><BarChart data={adsSerie} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <XAxis dataKey="dia" tick={{ fontSize: 10 }} interval="preserveStartEnd" /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend />
-                    <Bar dataKey="cliques" name="Cliques por dia" fill="#f59e0b" radius={[3, 3, 0, 0]} /><Bar dataKey="conversoes" name="Conversões" fill="#6b7280" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="cliques" name="Cliques por dia" fill="#f59e0b" radius={[3, 3, 0, 0]} /><Bar dataKey="conversoes" name="Visitas (page_view)" fill="#6b7280" radius={[3, 3, 0, 0]} />
                   </BarChart></ResponsiveContainer></div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">Fonte: conta do Google Ads vinculada ao GA4. Cliques e impressões batem com a tela do Ads; o custo NÃO chega inteiro por essa via (10/09: R$ 155 aqui contra R$ 767 no Ads em 14 dias) e por isso fica de fora até termos o relatório do próprio Ads. "Conversões" são os eventos-chave do GA4 atribuídos à campanha, não pedidos.</p>
+                <p className="text-xs text-muted-foreground mt-2">Fonte: conta do Google Ads vinculada ao GA4. O custo vem do Analytics, cuja propriedade está em dólar; o valor em reais é ~5,1× maior. Para o gasto real, use a tela do Google Ads (Faturamento). As "conversões" aqui são visualizações de página, não leads.</p>
               </CardContent></Card>
           )}
 
