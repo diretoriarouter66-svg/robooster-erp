@@ -399,7 +399,7 @@ export default function Sites() {
                     <Bar dataKey="cliques" name="Cliques por dia" fill="#f59e0b" radius={[3, 3, 0, 0]} /><Bar dataKey="conversoes" name="Visitas (page_view)" fill="#6b7280" radius={[3, 3, 0, 0]} />
                   </BarChart></ResponsiveContainer></div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">Custo importado do Analytics. Até 16/09/2026 a propriedade estava em dólar; a partir de 17/09 está em real. Para o gasto oficial, use Faturamento no Google Ads. 'Visitas' aqui são visualizações de página, não leads.</p>
+                <p className="text-xs text-muted-foreground mt-2">Custo importado do Analytics, em reais. Confere com o Google Ads com diferença de centavos (19/08 a 17/09: R$ 1.645 aqui, R$ 1.647 na tela do Ads). 'Visitas' aqui são visualizações de página, não leads; os leads reais são a conversão 'WhatsApp Empilhadeira' no Google Ads.</p>
               </CardContent></Card>
           )}
 
