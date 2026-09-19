@@ -41,8 +41,18 @@ function Delta({ atual, anterior }) {
   if (p == null) return null;
   return <span className={`text-xs font-medium ${p >= 0 ? "text-emerald-600" : "text-red-600"}`}>{p >= 0 ? "+" : ""}{p.toFixed(0)}%</span>;
 }
-// Custo do Google Ads lido via GA4: a propriedade está em DÓLAR, então formata com US$ e 2 casas
-const usd = (n) => (n == null || Number.isNaN(n) ? "—" : "US$ " + new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n));
+// Custo do Google Ads lido via GA4: a moeda vem por linha no extra ("moeda": "BRL"; ausente ou "USD" = dólar, até 16/09/2026).
+// Nunca soma moedas diferentes: se o intervalo mistura, mostra os dois subtotais ("R$ 122,28 + US$ 45,10").
+const dinheiro = (n, simbolo) => simbolo + " " + new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+const custoMoeda = (o) => {
+  if (!o) return "—";
+  const partes = [];
+  if (o.brl) partes.push(dinheiro(o.brl, "R$"));
+  if (o.usd) partes.push(dinheiro(o.usd, "US$"));
+  return partes.length ? partes.join(" + ") : dinheiro(0, "R$");
+};
+// A variação % do custo só faz sentido quando os dois períodos estão inteiros na mesma moeda
+const custoComparavel = (a, b) => (!a.usd && !b.usd) || (!a.brl && !b.brl);
 function Num({ label, valor, anterior, icon: Icon, sufixo = "", formato }) {
   return (
     <div className="rounded-lg border bg-card p-3">
@@ -190,10 +200,10 @@ export default function Sites() {
   // Google Ads (via conta vinculada ao GA4): por campanha no período × anterior
   const ads = useMemo(() => {
     const agg = {};
-    const acc = (r, chave) => (r.extra || []).forEach((c) => { const k = c.c; const o = (agg[k] ||= { nome: k, a: { custo: 0, cliques: 0, imp: 0, conv: 0, sessoes: 0 }, b: { custo: 0, cliques: 0, imp: 0, conv: 0, sessoes: 0 } }); ["custo", "cliques", "imp", "conv", "sessoes"].forEach((m) => { o[chave][m] += Number(c[m] || 0); }); });
+    const acc = (r, chave) => (r.extra || []).forEach((c) => { const k = c.c; const o = (agg[k] ||= { nome: k, a: { custo: 0, brl: 0, usd: 0, cliques: 0, imp: 0, conv: 0, sessoes: 0 }, b: { custo: 0, brl: 0, usd: 0, cliques: 0, imp: 0, conv: 0, sessoes: 0 } }); ["custo", "cliques", "imp", "conv", "sessoes"].forEach((m) => { o[chave][m] += Number(c[m] || 0); }); o[chave][c.moeda === "BRL" ? "brl" : "usd"] += Number(c.custo || 0); });
     rows.filter((r) => r.site === siteSel && r.fonte === "ads" && r.metrica === "custo").forEach((r) => { if (r.dia >= ini) acc(r, "a"); else if (r.dia >= iniAnt && r.dia <= fimAnt) acc(r, "b"); });
     const lista = Object.values(agg).sort((x, y) => y.a.custo - x.a.custo);
-    const tot = (k) => lista.reduce((s, c) => ({ custo: s.custo + c[k].custo, cliques: s.cliques + c[k].cliques, imp: s.imp + c[k].imp, conv: s.conv + c[k].conv }), { custo: 0, cliques: 0, imp: 0, conv: 0 });
+    const tot = (k) => lista.reduce((s, c) => ({ custo: s.custo + c[k].custo, brl: s.brl + c[k].brl, usd: s.usd + c[k].usd, cliques: s.cliques + c[k].cliques, imp: s.imp + c[k].imp, conv: s.conv + c[k].conv }), { custo: 0, brl: 0, usd: 0, cliques: 0, imp: 0, conv: 0 });
     return { lista, a: tot("a"), b: tot("b") };
   }, [rows, siteSel, periodo]);
   const adsSerie = useMemo(() => {
@@ -370,10 +380,10 @@ export default function Sites() {
           )}
 
           {ads.lista.length > 0 && (
-            <Card className="mb-4"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Megaphone className="w-4 h-4" /> Campanhas do Google Ads (custo em US$, via GA4) · {periodo} dias contra os {periodo} anteriores</CardTitle></CardHeader>
+            <Card className="mb-4"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Megaphone className="w-4 h-4" /> Campanhas do Google Ads (custo via Analytics) · {periodo} dias contra os {periodo} anteriores</CardTitle></CardHeader>
               <CardContent className="text-sm">
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-3">
-                  <Num label="Custo (US$, via GA4)" valor={ads.a.custo} anterior={ads.b.custo} formato={usd} />
+                  <Num label="Custo (via Analytics)" valor={ads.a.custo} anterior={custoComparavel(ads.a, ads.b) ? ads.b.custo : null} formato={() => custoMoeda(ads.a)} />
                   <Num label="Cliques" valor={ads.a.cliques} anterior={ads.b.cliques} />
                   <Num label="Impressões" valor={ads.a.imp} anterior={ads.b.imp} />
                   <Num label="Taxa de clique" valor={ads.a.imp ? (ads.a.cliques / ads.a.imp) * 100 : null} anterior={ads.b.imp ? (ads.b.cliques / ads.b.imp) * 100 : null} sufixo="%" />
@@ -381,15 +391,15 @@ export default function Sites() {
                   <Num label="Visitas (page_view)" valor={ads.a.conv} anterior={ads.b.conv} />
                 </div>
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="overflow-x-auto"><table className="w-full"><thead><tr className="text-xs text-muted-foreground"><th className="text-left font-normal">Campanha</th><th className="text-right font-normal">Custo (US$)</th><th className="text-right font-normal">Impressões</th><th className="text-right font-normal">Cliques</th><th className="text-right font-normal">Sessões</th><th className="text-right font-normal">Visitas (page_view)</th></tr></thead><tbody>
-                    {ads.lista.map((c) => (<tr key={c.nome} className="border-b last:border-0"><td className="py-1 pr-2 max-w-[260px] truncate" title={c.nome}>{c.nome}</td><td className="py-1 text-right tabular-nums">{usd(c.a.custo)} <Delta atual={c.a.custo} anterior={c.b.custo} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.imp)} <Delta atual={c.a.imp} anterior={c.b.imp} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.cliques)} <Delta atual={c.a.cliques} anterior={c.b.cliques} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.sessoes)}</td><td className="py-1 text-right tabular-nums">{fmt(c.a.conv)} <Delta atual={c.a.conv} anterior={c.b.conv} /></td></tr>))}
+                  <div className="overflow-x-auto"><table className="w-full"><thead><tr className="text-xs text-muted-foreground"><th className="text-left font-normal">Campanha</th><th className="text-right font-normal">Custo</th><th className="text-right font-normal">Impressões</th><th className="text-right font-normal">Cliques</th><th className="text-right font-normal">Sessões</th><th className="text-right font-normal">Visitas (page_view)</th></tr></thead><tbody>
+                    {ads.lista.map((c) => (<tr key={c.nome} className="border-b last:border-0"><td className="py-1 pr-2 max-w-[260px] truncate" title={c.nome}>{c.nome}</td><td className="py-1 text-right tabular-nums">{custoMoeda(c.a)} {custoComparavel(c.a, c.b) && <Delta atual={c.a.custo} anterior={c.b.custo} />}</td><td className="py-1 text-right tabular-nums">{fmt(c.a.imp)} <Delta atual={c.a.imp} anterior={c.b.imp} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.cliques)} <Delta atual={c.a.cliques} anterior={c.b.cliques} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.sessoes)}</td><td className="py-1 text-right tabular-nums">{fmt(c.a.conv)} <Delta atual={c.a.conv} anterior={c.b.conv} /></td></tr>))}
                   </tbody></table></div>
                   <div className="h-44"><ResponsiveContainer width="100%" height="100%"><BarChart data={adsSerie} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <XAxis dataKey="dia" tick={{ fontSize: 10 }} interval="preserveStartEnd" /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend />
                     <Bar dataKey="cliques" name="Cliques por dia" fill="#f59e0b" radius={[3, 3, 0, 0]} /><Bar dataKey="conversoes" name="Visitas (page_view)" fill="#6b7280" radius={[3, 3, 0, 0]} />
                   </BarChart></ResponsiveContainer></div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">Fonte: conta do Google Ads vinculada ao GA4. O custo vem do Analytics, cuja propriedade está em dólar; o valor em reais é ~5,1× maior. Para o gasto real, use a tela do Google Ads (Faturamento). As "conversões" aqui são visualizações de página, não leads.</p>
+                <p className="text-xs text-muted-foreground mt-2">Custo importado do Analytics. Até 16/09/2026 a propriedade estava em dólar; a partir de 17/09 está em real. Para o gasto oficial, use Faturamento no Google Ads. 'Visitas' aqui são visualizações de página, não leads.</p>
               </CardContent></Card>
           )}
 
