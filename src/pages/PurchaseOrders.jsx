@@ -116,21 +116,21 @@ export default function PurchaseOrders() {
 
   return (
     <div>
-      <PageHeader title="Pedidos de Compra" description={`${orders.length} pedidos`} actions={<Button onClick={openNew}><Plus className="w-4 h-4 mr-1" /> Nova PO</Button>} />
+      <PageHeader title="Pedidos de Compra" description={`${orders.length} pedidos`} actions={<Button onClick={openNew}><Plus className="w-4 h-4 mr-1" /> Novo pedido</Button>} />
 
       {orders.length === 0 ? (
-        <EmptyState icon={FileText} title="Nenhum pedido de compra" description="Crie pedidos de compra para seus fornecedores." actionLabel="Nova PO" onAction={openNew} />
+        <EmptyState icon={FileText} title="Nenhum pedido de compra" description="Crie pedidos de compra para seus fornecedores." actionLabel="Novo pedido" onAction={openNew} />
       ) : (
         <>
           <div className="mb-4 max-w-sm relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Buscar PO..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+            <Input placeholder="Buscar pedido..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-border bg-muted/30">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">PO</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Pedido</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Fornecedor</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Moeda</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Subtotal</th>
@@ -164,7 +164,7 @@ export default function PurchaseOrders() {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? "Editar PO" : "Novo Pedido de Compra"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? "Editar pedido de compra" : "Novo pedido de compra"}</DialogTitle></DialogHeader>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
             <div>
               <Label>Fornecedor</Label>
@@ -178,20 +178,21 @@ export default function PurchaseOrders() {
             </div>
             <div>
               <Label>Moeda</Label>
-              <Select value={form.currency || "USD"} onValueChange={v => setForm({...form, currency: v})}>
+              <Select value={form.currency || "USD"} onValueChange={v => setForm({...form, currency: v, exchange_rate: v === "BRL" ? 1 : (form.currency === "BRL" ? 5.0 : form.exchange_rate)})}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {["USD","EUR","CNY","BRL"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Cotação Câmbio</Label><Input type="number" step="0.01" value={form.exchange_rate || ""} onChange={e => setForm({...form, exchange_rate: parseFloat(e.target.value) || 0})} /></div>
+            {/* Em reais não há câmbio: campo travado em 1 (pedido do Mauricio, 23/09/2026). */}
+            <div><Label>Cotação Câmbio</Label><Input type="number" step="0.01" value={form.currency === "BRL" ? 1 : (form.exchange_rate || "")} disabled={form.currency === "BRL"} onChange={e => setForm({...form, exchange_rate: parseFloat(e.target.value) || 0})} /></div>
             <div>
               <Label>Status</Label>
               <Select value={form.status || "draft"} onValueChange={v => setForm({...form, status: v})}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["draft","sent","confirmed","partial","received","cancelled"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {[["draft","Rascunho"],["sent","Enviado"],["confirmed","Confirmado"],["partial","Recebido parcial"],["received","Recebido"],["cancelled","Cancelado"]].map(([s, l]) => <SelectItem key={s} value={s}>{l}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
