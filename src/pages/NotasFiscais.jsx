@@ -92,6 +92,11 @@ export default function NotasFiscais() {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(null);
+  // 30/09: estados do cadastro de CFOP (Fase B, 17/09) nunca foram declarados — a página quebrava com
+  // "setCfops is not defined" antes de sair do "carregando"; ninguém abriu a tela desde então.
+  const [cfops, setCfops] = useState([]);
+  const [cfopDialog, setCfopDialog] = useState(null);
+  const [abaItem, setAbaItem] = useState({}); // aba de impostos aberta por item (índice → chave)
 
   useEffect(() => { loadData(); }, []);
 
