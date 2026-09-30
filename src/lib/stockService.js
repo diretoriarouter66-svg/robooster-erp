@@ -13,6 +13,8 @@ export const TIPOS_MOVIMENTO = {
   ajuste_inventario: { label: "Ajuste de Inventário", direcao: 0, origem: "manual", manual: true },
   avaria: { label: "Avaria / Perda", direcao: -1, origem: "manual", manual: true },
   uso_interno: { label: "Uso Interno / Demonstração", direcao: -1, origem: "manual", manual: true },
+  entrada_compra: { label: "Entrada por Compra", direcao: +1, origem: "pedido_compra", manual: false },
+  estorno_compra: { label: "Estorno de Entrada por Compra", direcao: -1, origem: "pedido_compra", manual: false },
 };
 
 /**
@@ -133,6 +135,51 @@ export async function reconciliarPedidoVenda(orderId, orderNumber, itens, deveBa
       quantidade: Math.abs(delta),
       origemId: orderId,
       origemRef: orderNumber || "",
+    });
+  }
+}
+
+/**
+ * Reconcilia o estoque de um pedido de compra usando o Kardex como fonte da verdade,
+ * no mesmo padrão de reconciliarPedidoVenda: consulta os movimentos já registrados
+ * para o pedido e gera apenas a diferença entre o estado atual e o alvo. Idempotente
+ * (salvar duas vezes com o mesmo status não dobra a entrada) e à prova de edição de
+ * itens/quantidades e de reabertura do pedido.
+ * Só itens com product_id entram no alvo — item manual nunca movimenta estoque.
+ * Recebimento parcial (status "partial") não movimenta estoque nesta versão: deveReceber
+ * só deve ser true para status "received".
+ */
+export async function reconciliarPedidoCompra(orderId, orderNumber, itens, exchangeRate, deveReceber) {
+  if (!orderId) throw new Error("Pedido de compra sem ID para reconciliar estoque.");
+  const movs = await base44.entities.StockMovement.filter({ origem_id: orderId }, "-created_date", 500);
+
+  const atual = {};
+  for (const m of movs) {
+    if (m.tipo !== "entrada_compra" && m.tipo !== "estorno_compra") continue;
+    atual[m.product_id] = (atual[m.product_id] || 0) + (m.quantidade || 0);
+  }
+
+  const alvo = {};
+  const custoPorProduto = {};
+  if (deveReceber) {
+    for (const item of itens || []) {
+      if (!item.product_id || !item.quantity) continue;
+      alvo[item.product_id] = (alvo[item.product_id] || 0) + item.quantity;
+      custoPorProduto[item.product_id] = (item.unit_price || 0) * (exchangeRate || 1);
+    }
+  }
+
+  const produtos = new Set([...Object.keys(atual), ...Object.keys(alvo)]);
+  for (const pid of produtos) {
+    const delta = (alvo[pid] || 0) - (atual[pid] || 0);
+    if (delta === 0) continue;
+    await registrarMovimento({
+      productId: pid,
+      tipo: delta > 0 ? "entrada_compra" : "estorno_compra",
+      quantidade: Math.abs(delta),
+      origemId: orderId,
+      origemRef: orderNumber || "",
+      unitCost: delta > 0 ? custoPorProduto[pid] : undefined,
     });
   }
 }

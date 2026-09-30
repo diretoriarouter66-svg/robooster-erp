@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import EmptyState from "../components/shared/EmptyState";
+import { reconciliarPedidoCompra } from "@/lib/stockService";
 
 export default function PurchaseOrders() {
   const [orders, setOrders] = useState([]);
@@ -66,6 +67,12 @@ export default function PurchaseOrders() {
   const calcSubtotal = () => poItems.reduce((s, i) => s + ((i.quantity || 0) * (i.unit_price || 0)), 0);
 
   const handleSave = async () => {
+    for (const item of poItems) {
+      if (!item.product_id && !(item.name || "").trim()) {
+        alert("Cada item precisa de um produto vinculado ou de um nome (item manual).");
+        return;
+      }
+    }
     const sub = calcSubtotal();
     const supplier = suppliers.find(s => s.id === form.supplier_id);
     const data = {
@@ -76,15 +83,24 @@ export default function PurchaseOrders() {
       total_brl: sub * (form.exchange_rate || 1),
       po_number: form.po_number || `PO-${Date.now().toString(36).toUpperCase()}`,
     };
+    let orderId;
     try {
       if (editing) {
         await base44.entities.PurchaseOrder.update(editing.id, data);
+        orderId = editing.id;
       } else {
-        await base44.entities.PurchaseOrder.create(data);
+        const criado = await base44.entities.PurchaseOrder.create(data);
+        orderId = criado.id;
       }
     } catch (err) {
       alert(`Não foi possível salvar o pedido de compra: ${err.message}`);
       return;
+    }
+    try {
+      const cambio = data.currency === "BRL" ? 1 : (data.exchange_rate || 1);
+      await reconciliarPedidoCompra(orderId, data.po_number, poItems, cambio, data.status === "received");
+    } catch (err) {
+      alert(`O pedido foi salvo, mas não foi possível atualizar o estoque: ${err.message}`);
     }
     setDialogOpen(false);
     loadData();
@@ -92,7 +108,9 @@ export default function PurchaseOrders() {
 
   const handleDelete = async (id) => {
     if (!confirm("Excluir este pedido de compra?")) return;
+    const order = orders.find(o => o.id === id);
     try {
+      await reconciliarPedidoCompra(id, order?.po_number, order?.items || [], 1, false);
       await base44.entities.PurchaseOrder.delete(id);
     } catch (err) {
       alert(`Não foi possível excluir o pedido de compra: ${err.message}`);
@@ -195,6 +213,9 @@ export default function PurchaseOrders() {
                   {[["draft","Rascunho"],["sent","Enviado"],["confirmed","Confirmado"],["partial","Recebido parcial"],["received","Recebido"],["cancelled","Cancelado"]].map(([s, l]) => <SelectItem key={s} value={s}>{l}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {form.status === "partial" && (
+                <span className="block text-[10px] text-muted-foreground mt-1">recebido parcial não dá entrada no estoque nesta versão — só "Recebido" movimenta.</span>
+              )}
             </div>
             <div><Label>Cond. Pagamento</Label><Input value={form.payment_terms || ""} onChange={e => setForm({...form, payment_terms: e.target.value})} /></div>
             <div><Label>Previsão Entrega</Label><Input type="date" value={form.expected_delivery || ""} onChange={e => setForm({...form, expected_delivery: e.target.value})} /></div>
@@ -206,18 +227,26 @@ export default function PurchaseOrders() {
               <Button size="sm" variant="ghost" onClick={() => setPoItems([...poItems, { product_id: "", name: "", quantity: 1, unit_price: 0 }])}><Plus className="w-3 h-3 mr-1" /> Item</Button>
             </div>
             {poItems.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-4 gap-2 mb-2 items-end">
-                <div className="col-span-2">
-                  <Select value={item.product_id || "manual"} onValueChange={v => updatePoItem(idx, "product_id", v === "manual" ? "" : v)}>
-                    <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Produto" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="manual">Manual</SelectItem>
-                      {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+              <div key={idx} className="mb-2">
+                <div className="grid grid-cols-4 gap-2 items-end">
+                  <div className="col-span-2">
+                    <Select value={item.product_id || "manual"} onValueChange={v => updatePoItem(idx, "product_id", v === "manual" ? "" : v)}>
+                      <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Produto" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">Manual</SelectItem>
+                        {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Input type="number" className="h-9 text-xs" placeholder="Qtd" value={item.quantity || ""} onChange={e => updatePoItem(idx, "quantity", parseFloat(e.target.value) || 0)} />
+                  <Input type="number" step="0.01" className="h-9 text-xs" placeholder="Preço" value={item.unit_price || ""} onChange={e => updatePoItem(idx, "unit_price", parseFloat(e.target.value) || 0)} />
                 </div>
-                <Input type="number" className="h-9 text-xs" placeholder="Qtd" value={item.quantity || ""} onChange={e => updatePoItem(idx, "quantity", parseFloat(e.target.value) || 0)} />
-                <Input type="number" step="0.01" className="h-9 text-xs" placeholder="Preço" value={item.unit_price || ""} onChange={e => updatePoItem(idx, "unit_price", parseFloat(e.target.value) || 0)} />
+                {!item.product_id && (
+                  <div className="mt-1">
+                    <Input className="h-9 text-xs" placeholder="Nome do item manual" value={item.name || ""} onChange={e => updatePoItem(idx, "name", e.target.value)} />
+                    <span className="block text-[10px] text-muted-foreground mt-0.5">item manual — não entra no estoque</span>
+                  </div>
+                )}
               </div>
             ))}
             <div className="text-right mt-2">
