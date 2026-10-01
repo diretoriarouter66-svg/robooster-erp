@@ -20,6 +20,8 @@ const TipoBadge = ({ tipo }) => {
     ajuste_inventario: { label: "Ajuste Inventário", cls: "bg-muted text-muted-foreground" },
     avaria: { label: "Avaria / Perda", cls: "bg-destructive/10 text-destructive" },
     uso_interno: { label: "Uso Interno", cls: "bg-warning/10 text-warning" },
+    entrada_compra: { label: "Entrada Compra", cls: "bg-success/10 text-success" },
+    estorno_compra: { label: "Estorno Compra", cls: "bg-destructive/10 text-destructive" },
   }[tipo] || { label: tipo, cls: "bg-muted text-muted-foreground" };
   return <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${cfg.cls}`}>{cfg.label}</span>;
 };

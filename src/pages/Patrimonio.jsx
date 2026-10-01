@@ -85,7 +85,7 @@ export default function Patrimonio() {
     const estoque = products.reduce((s, p) => s + (p.stock_quantity || 0) * getCustoVigente(p), 0);
     // Dinheiro na China: remessas PAGAS de operações que ainda não viraram
     // estoque (status simulação) — pagou o fornecedor, a mercadoria ainda não entrou.
-    const opsSimulacao = operacoes.filter(o => !["realizada", "concluida"].includes(o.status));
+    const opsSimulacao = operacoes.filter(o => !["realizada", "concluida", "fechada"].includes(o.status)); // 01/10: fechada já virou estoque
     const naChina = opsSimulacao.reduce((s, o) =>
       s + (o.remessas || []).reduce((t, r) => t + (num(r.valor_usd) * num(r.cotacao) + num(r.taxas_brl)), 0), 0);
     const patrimonioFisico = itens.filter(i => i.ativo !== false).reduce((s, i) => s + valorAtual(i), 0);

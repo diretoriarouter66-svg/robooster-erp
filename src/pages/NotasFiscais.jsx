@@ -114,7 +114,7 @@ export default function NotasFiscais() {
     setPedidosNf((pv || []).filter(o => o.nfe_numero || o.nfe_chave || o.nfe_status));
     setContatos(c || []);
     setProducts(p || []);
-    setOperacoes((ops || []).filter(o => ["realizada", "concluida"].includes(o.status)));
+    setOperacoes((ops || []).filter(o => ["realizada", "concluida", "fechada"].includes(o.status)));
     setLoading(false);
   };
 

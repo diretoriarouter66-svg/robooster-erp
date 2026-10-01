@@ -22,7 +22,8 @@ const STATUS_OPTIONS = [
   { value: "aprovada", label: "Aprovada" },
   { value: "em_transito", label: "Em Trânsito" },
   { value: "realizada", label: "Realizada (prévia)" },
-  { value: "concluida", label: "Concluída" }
+  { value: "concluida", label: "Concluída" },
+  { value: "fechada", label: "Fechada (valores reais)" }, // 01/10: definido pelo Fechamento, não pelo dropdown
 ];
 
 const fmtBRL = (v) => v != null ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v) : "—";
@@ -232,6 +233,8 @@ export default function ImportSimulator() {
     try {
       // Fluxo em 2 tempos: 1ª finalização = "realizada" (prévia, com o numerário);
       // 2ª finalização (valores reais ajustados) = "concluida" — recalcula tudo.
+      // 01/10: operação FECHADA (valores reais) não regride — refinalizar aqui só refaz a prévia e manteria "fechada" inconsistente
+      if (editing?.status === "fechada") { alert("Esta operação já foi fechada com valores reais. Para mexer no custo, use \"Ver fechamento\" na lista."); setFinalizando(false); return; }
       const statusFinal = ["realizada", "concluida"].includes(editing?.status) ? "concluida" : "realizada";
       // 1) Custo landed + custo FOB real (o custo digitado na operação atualiza o cadastro)
       await base44.entities.Product.bulkUpdate(
@@ -341,8 +344,8 @@ export default function ImportSimulator() {
         cambio: cambioEfetivo
       };
 
-      const wasRealizada = ["realizada", "concluida"].includes(editing?.status);
-      const isRealizada = ["realizada", "concluida"].includes(form.status);
+      const wasRealizada = ["realizada", "concluida", "fechada"].includes(editing?.status);
+      const isRealizada = ["realizada", "concluida", "fechada"].includes(form.status);
 
       // O caminho CERTO para Realizada/Concluída são os botões "Finalizar
       // Importação (prévia)" e "Recalcular e Concluir": eles recalculam com os
@@ -626,7 +629,7 @@ export default function ImportSimulator() {
               {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />} Salvar
             </Button>
           </div>
-          {editing && !["realizada", "concluida"].includes(form.status) && (
+          {editing && !["realizada", "concluida", "fechada"].includes(form.status) && (
             <Button className="w-full bg-success hover:bg-success/90 text-white" onClick={abrirFinalizacao} disabled={!importResult?.resultados}>
               Finalizar Importação (prévia)
             </Button>

@@ -371,8 +371,8 @@ export default function Contatos() {
                   </div>
                 </div>
                 <p className="text-[11px] text-warning">
-                  Atenção: hoje quem entra no ERP enxerga todos os módulos (financeiro, DRE, importação).
-                  O cofre de senhas é a única área com acesso restrito.
+                  O que a pessoa enxerga depende do TIPO: Diretor = tudo da empresa; Colaborador e Técnico = operação do dia a dia,
+                  sem custo, margem, importação ou financeiro (ver Manual, cap. Níveis de acesso). O Cofre é por convite.
                 </p>
               </div>
             )}
