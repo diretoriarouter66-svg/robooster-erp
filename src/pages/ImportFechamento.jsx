@@ -270,7 +270,9 @@ export default function ImportFechamento() {
                 <Info k="PIS / COFINS" v={`${fmtBRL(di.totais.pis)} / ${fmtBRL(di.totais.cofins)}`} />
                 <Info k="Siscomex / AFRMM / ICMS" v={`${fmtBRL(di.totais.siscomex)} / ${fmtBRL(di.totais.afrmm)} / ${di.totais.icms ? fmtBRL(di.totais.icms) : "—"}`} />
               </div>
-              <div className="flex items-end gap-3">
+              <div className="flex flex-wrap items-end gap-3">
+                <div><Label className="text-xs">Nº da DI</Label><Input value={di.numero_di || ""} disabled={fechada} onChange={e => setDi(d => ({ ...d, numero_di: e.target.value }))} className="w-40" placeholder="26/0573830-1" /><p className="text-[10px] text-muted-foreground mt-1">O XML de transmissão (PESTI) não traz o número: copie do extrato.</p></div>
+                <div><Label className="text-xs">Registro</Label><Input type="date" value={di.data_registro || ""} disabled={fechada} onChange={e => setDi(d => ({ ...d, data_registro: e.target.value }))} className="w-40" /></div>
                 <div><Label className="text-xs">Câmbio da DI (R$/US$)</Label><Input type="number" step="0.0001" value={cambioDi} onChange={e => setCambioDi(e.target.value)} className="w-40" /></div>
                 <p className="text-xs text-muted-foreground pb-2">Informativo: os impostos já vêm em R$ da DI. O custo da mercadoria usa o câmbio médio das remessas ({cambioMedio ? cambioMedio.toFixed(4) : "—"}).</p>
               </div>
