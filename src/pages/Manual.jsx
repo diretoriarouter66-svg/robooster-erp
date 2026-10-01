@@ -185,12 +185,13 @@ const GRUPOS = [
           <>
             <p><strong>Para que serve:</strong> compra de fornecedor nacional (ou avulsa) sem passar pelo Simulador. Itens podem ser produto do cadastro ou item manual (só nome).</p>
             <ul className="list-disc pl-5 mt-2 space-y-1.5">
-              <li><strong>Status Recebido</strong> → dá <strong>entrada no estoque</strong> dos itens que são produto (movimento "Entrada Compra" no Kardex, custo unitário = preço × câmbio). Voltar o status estorna (movimento "Estorno Compra"). Sempre só a diferença — pode editar quantas vezes quiser;</li>
-              <li><strong>Recebido parcial</strong> não dá entrada (avisa na tela);</li>
-              <li><strong>Moeda e cotação:</strong> BRL trava a cotação em 1; USD/EUR/CNY pede a cotação — o total em R$ é informativo;</li>
-              <li><strong>Excluir</strong> estorna a entrada e apaga.</li>
+              <li><strong>Confirmado / Recebido parcial / Recebido</strong> → gera a <strong>conta a pagar</strong> no Financeiro (categoria Fornecedor), valor = total em R$ + frete/outras despesas. A <em>Cond. Pagamento</em> define as parcelas: "30/60/90" = 3 contas contadas da data do pedido; "à vista" = na data do pedido; sem número = 1 conta na previsão de entrega (ou 30 dias). Reeditar recria o que está pendente e nunca mexe no que já foi pago; Rascunho/Enviado/Cancelado removem o pendente;</li>
+              <li><strong>Recebido</strong> → <strong>entrada no estoque</strong> dos itens que são produto (movimento "Entrada Compra" no Kardex) e <strong>custo do produto</strong>: o custo manual passa a ser preço × câmbio + frete rateado por valor, com registro no histórico de custo (origem "compra nacional") — <em>só para produto que não tem custo de importação</em> (quem tem custo landed continua mandado pela importação). Voltar o status estorna o estoque (movimento "Estorno Compra");</li>
+              <li><strong>Recebido parcial</strong> gera a conta a pagar mas não dá entrada no estoque (avisa na tela);</li>
+              <li><strong>Moeda e cotação:</strong> BRL trava a cotação em 1; USD/EUR/CNY pede a cotação;</li>
+              <li><strong>Excluir</strong> estorna a entrada, apaga as contas pendentes (pagas ficam) e apaga o pedido.</li>
             </ul>
-            <NaoFaz itens={["Não cria conta a pagar no Financeiro — lance a fatura do fornecedor à mão (Financeiro → A Pagar).", "Não altera o custo do produto nem o histórico de custo (o custo da compra fica só no movimento do Kardex). Para o custo valer no cadastro, ajuste o Custo do Produto.", "Item manual nunca movimenta estoque."]} />
+            <NaoFaz itens={["Item manual (sem produto) não movimenta estoque nem custo — só entra no valor da conta a pagar.", "Não emite NF nem lê XML de NF-e de compra."]} />
           </>
         ),
       },

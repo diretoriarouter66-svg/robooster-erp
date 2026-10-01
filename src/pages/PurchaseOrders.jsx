@@ -65,6 +65,72 @@ export default function PurchaseOrders() {
   };
 
   const calcSubtotal = () => poItems.reduce((s, i) => s + ((i.quantity || 0) * (i.unit_price || 0)), 0);
+  const r2 = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
+  const hoje = () => new Date().toISOString().slice(0, 10);
+  const somaDias = (iso, dias) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + dias); return d.toISOString().slice(0, 10); };
+
+  /** "30/60/90", "30 60 90", "à vista", "28 dias" → lista de prazos em dias (01/10/2026). Sem número = 1 conta na previsão de entrega. */
+  const prazosDaCondicao = (txt) => {
+    if (/vista/i.test(String(txt || ""))) return [0]; // "à vista" = vence na data do pedido
+    const nums = String(txt || "").match(/\d+/g);
+    if (!nums) return null;
+    const dias = nums.map(n => parseInt(n, 10)).filter(n => n >= 0 && n <= 720);
+    return dias.length ? dias : null;
+  };
+
+  /** Conta(s) a pagar do pedido de compra (01/10/2026, contradição nº 2 do Manual): Confirmado/Recebido parcial/Recebido
+   *  geram pendente(s) na categoria Fornecedor; reeditar recria o pendente e NUNCA mexe no pago; rascunho/enviado/cancelado
+   *  removem o pendente. Valor = total em R$ + frete/outras despesas. */
+  const sincronizarFinanceiroCompra = async (orderId, data) => {
+    const antigas = await base44.entities.FinancialEntry.filter({ reference_id: orderId, reference_type: "purchase_order" }, "-created_date", 100);
+    const pagas = (antigas || []).filter(e => e.status === "paid");
+    for (const e of (antigas || []).filter(e => e.status !== "paid")) await base44.entities.FinancialEntry.delete(e.id);
+    if (!["confirmed", "partial", "received"].includes(data.status)) return;
+    const total = r2((data.total_brl || 0) + (parseFloat(data.frete_outras_brl) || 0));
+    const jaPago = r2(pagas.reduce((s, e) => s + (e.amount || 0), 0));
+    const restante = r2(total - jaPago);
+    if (restante <= 0) return;
+    const base = data.order_date || hoje();
+    const prazos = prazosDaCondicao(data.payment_terms);
+    const vencimentos = prazos ? prazos.map(d => somaDias(base, d)) : [data.expected_delivery || somaDias(base, 30)];
+    const n = vencimentos.length;
+    const parcela = Math.floor((restante / n) * 100) / 100;
+    for (let i = 0; i < n; i++) {
+      const valor = i === n - 1 ? r2(restante - parcela * (n - 1)) : parcela;
+      await base44.entities.FinancialEntry.create({
+        type: "payable", category: "supplier", status: "pending", payment_method: "transfer",
+        reference_id: orderId, reference_type: "purchase_order",
+        amount: valor, due_date: vencimentos[i],
+        description: `Compra ${data.po_number} — ${data.supplier_name || "fornecedor"}${n > 1 ? ` (${i + 1}/${n})` : ""}`,
+      });
+    }
+  };
+
+  /** Recebido → custo manual do produto = (preço × câmbio) + frete rateado por valor, só para produto SEM custo de importação;
+   *  grava no histórico de custo (origem compra_nacional). Idempotente por pedido. */
+  const atualizarCustoProdutos = async (data, cambio) => {
+    if (data.status !== "received") return 0;
+    const itensProd = (data.items || []).filter(i => i.product_id && (i.quantity || 0) > 0);
+    const baseValor = itensProd.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0) * cambio, 0) || 1;
+    const frete = parseFloat(data.frete_outras_brl) || 0;
+    let n = 0;
+    for (const it of itensProd) {
+      const prod = products.find(p => p.id === it.product_id);
+      if (!prod || parseFloat(prod.cost_landed_brl) > 0) continue; // custo de importação manda
+      const valorItem = (it.quantity || 0) * (it.unit_price || 0) * cambio;
+      const custo = r2((valorItem + frete * (valorItem / baseValor)) / (it.quantity || 1));
+      if (!(custo > 0) || Math.abs((parseFloat(prod.custo_manual_brl) || 0) - custo) < 0.01) continue;
+      await base44.entities.Product.update(prod.id, { custo_manual_brl: custo });
+      try {
+        const ant = await base44.entities.ProductCostHistory.filter({ product_id: prod.id, referencia: data.po_number }, "-data", 20);
+        if (!(ant || []).some(h => Math.abs((parseFloat(h.custo) || 0) - custo) < 0.01)) {
+          await base44.entities.ProductCostHistory.create({ product_id: prod.id, custo, origem: "compra_nacional", referencia: data.po_number, data: hoje() });
+        }
+      } catch (err) { console.error("histórico de custo (compra):", err); }
+      n++;
+    }
+    return n;
+  };
 
   const handleSave = async () => {
     for (const item of poItems) {
@@ -96,11 +162,22 @@ export default function PurchaseOrders() {
       alert(`Não foi possível salvar o pedido de compra: ${err.message}`);
       return;
     }
+    const cambio = data.currency === "BRL" ? 1 : (data.exchange_rate || 1);
     try {
-      const cambio = data.currency === "BRL" ? 1 : (data.exchange_rate || 1);
       await reconciliarPedidoCompra(orderId, data.po_number, poItems, cambio, data.status === "received");
     } catch (err) {
       alert(`O pedido foi salvo, mas não foi possível atualizar o estoque: ${err.message}`);
+    }
+    try {
+      await sincronizarFinanceiroCompra(orderId, data);
+    } catch (err) {
+      alert(`O pedido foi salvo, mas houve erro ao lançar a conta a pagar no Financeiro: ${err.message}`);
+    }
+    try {
+      const n = await atualizarCustoProdutos(data, cambio);
+      if (n > 0) alert(`${n} produto(s) com custo atualizado pela compra (só os que não têm custo de importação).`);
+    } catch (err) {
+      alert(`O pedido foi salvo, mas houve erro ao atualizar o custo dos produtos: ${err.message}`);
     }
     setDialogOpen(false);
     loadData();
@@ -111,6 +188,8 @@ export default function PurchaseOrders() {
     const order = orders.find(o => o.id === id);
     try {
       await reconciliarPedidoCompra(id, order?.po_number, order?.items || [], 1, false);
+      const pend = await base44.entities.FinancialEntry.filter({ reference_id: id, reference_type: "purchase_order" }, "-created_date", 100);
+      for (const e of (pend || []).filter(e => e.status !== "paid")) await base44.entities.FinancialEntry.delete(e.id);
       await base44.entities.PurchaseOrder.delete(id);
     } catch (err) {
       alert(`Não foi possível excluir o pedido de compra: ${err.message}`);
@@ -217,9 +296,20 @@ export default function PurchaseOrders() {
                 <span className="block text-[10px] text-muted-foreground mt-1">recebido parcial não dá entrada no estoque nesta versão — só "Recebido" movimenta.</span>
               )}
             </div>
-            <div><Label>Cond. Pagamento</Label><Input value={form.payment_terms || ""} onChange={e => setForm({...form, payment_terms: e.target.value})} /></div>
+            <div>
+              <Label>Cond. Pagamento</Label>
+              <Input value={form.payment_terms || ""} onChange={e => setForm({...form, payment_terms: e.target.value})} placeholder="ex.: 30/60/90" />
+              <span className="block text-[10px] text-muted-foreground mt-1">{prazosDaCondicao(form.payment_terms) ? `${prazosDaCondicao(form.payment_terms).length} conta(s) a pagar: ${prazosDaCondicao(form.payment_terms).join(" / ")} dias da data do pedido` : "sem número = 1 conta a pagar na previsão de entrega (ou 30 dias)"}</span>
+            </div>
             <div><Label>Previsão Entrega</Label><Input type="date" value={form.expected_delivery || ""} onChange={e => setForm({...form, expected_delivery: e.target.value})} /></div>
+            <div><Label>Data do pedido</Label><Input type="date" value={form.order_date || ""} onChange={e => setForm({...form, order_date: e.target.value})} /></div>
+            <div>
+              <Label>Frete / outras despesas (R$)</Label>
+              <Input type="number" step="0.01" value={form.frete_outras_brl ?? ""} onChange={e => setForm({...form, frete_outras_brl: parseFloat(e.target.value) || 0})} placeholder="0,00" />
+              <span className="block text-[10px] text-muted-foreground mt-1">entra na conta a pagar e é rateado no custo dos produtos (por valor)</span>
+            </div>
           </div>
+          <p className="text-[11px] text-muted-foreground mt-2">Confirmado / Recebido parcial / Recebido geram a conta a pagar (categoria Fornecedor); <strong>Recebido</strong> dá entrada no estoque e atualiza o custo manual dos produtos que não têm custo de importação.</p>
 
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
