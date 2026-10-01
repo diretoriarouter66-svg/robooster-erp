@@ -10,6 +10,7 @@ import { Combobox } from "@/components/ui/combobox";
 import PageHeader from "../components/shared/PageHeader";
 import EmptyState from "../components/shared/EmptyState";
 import StatCard from "../components/shared/StatCard";
+import { getMasterChannel } from "@/lib/pricingCalc";
 import { usePermissoes } from "@/hooks/usePermissoes";
 import { reconciliarPedidoVenda } from "@/lib/stockService";
 
@@ -70,6 +71,7 @@ export default function ServiceOrders() {
   const [contatos, setContatos] = useState([]);
   const [produtos, setProdutos] = useState([]);
   const [contasCaixa, setContasCaixa] = useState([]);
+  const [precoMaster, setPrecoMaster] = useState({}); // product_id → preço do canal Master (01/10)
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todas");
@@ -82,16 +84,23 @@ export default function ServiceOrders() {
 
   const loadData = async () => {
     try {
-      const [os, cts, prods, contas] = await Promise.all([
+      const [os, cts, prods, contas, canais, precos] = await Promise.all([
         base44.entities.ServiceOrder.list("-created_date", 500),
         base44.entities.Contato.list("-created_date", 1000),
         base44.entities.Product.filter({ status: "active" }, "name", 1000),
         base44.entities.CashAccount.list("nome", 50),
+        base44.entities.SalesChannel.list("-created_date", 50),
+        base44.entities.ProductPricing.list("-created_date", 5000),
       ]);
       setOrdens(os || []);
       setContatos(cts || []);
       setProdutos(prods || []);
       setContasCaixa(contas || []);
+      // 01/10: preço sugerido da peça vem da Precificação (canal Master) — o campo sale_price do produto não tem mais tela
+      const master = getMasterChannel((canais || []).filter(c => c.status !== "inactive"));
+      const mapa = {};
+      for (const pr of precos || []) if (master && pr.channel_id === master.id && parseFloat(pr.price) > 0) mapa[pr.product_id] = parseFloat(pr.price);
+      setPrecoMaster(mapa);
     } catch (err) {
       alert(`Não foi possível carregar as Ordens de Serviço: ${err.message}`);
     }
@@ -155,7 +164,7 @@ export default function ServiceOrders() {
     setForm(prev => ({
       ...prev,
       pecas: prev.pecas.map((peca, i) => i !== ix ? peca : (p
-        ? { ...peca, product_id: p.id, name: p.name, sku: p.sku || "", unit_price: num(p.sale_price) || peca.unit_price || "" }
+        ? { ...peca, product_id: p.id, name: p.name, sku: p.sku || "", unit_price: precoMaster[p.id] || num(p.sale_price) || peca.unit_price || "" }
         : { ...peca, product_id: "", sku: "" })),
     }));
   };

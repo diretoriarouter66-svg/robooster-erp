@@ -693,7 +693,7 @@ export default function Products() {
                 <div className="mt-3">
                   <Label>Comissão do Representante (%)</Label>
                   <Input type="number" step="0.1" value={form.seller_commission_percent || ""} onChange={f("seller_commission_percent")} placeholder="0" />
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Só para produtos com representante comercial. Quando preenchida (&gt; 0), SUBSTITUI a comissão padrão do vendedor (Config. Tributária) — o vendedor fica sem comissão neste produto. Vazio/zero = vale a comissão padrão do vendedor.</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Regra única (01/10/2026): a comissão é de QUEM VENDEU. No pedido, "Vendido por: Representante" usa esta %; "Vendedor" usa a % padrão da Config. Tributária. Vazio/zero = representante não paga comissão neste produto. Na Precificação o cockpit já sugere a maior das duas, para o preço cobrir os dois casos.</p>
                 </div>
 
                 {/* DIMENSÕES E PESO */}

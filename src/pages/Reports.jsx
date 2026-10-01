@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { BarChart3, TrendingUp, Package, DollarSign } from "lucide-react";
+import { TrendingUp, Package, DollarSign } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import PageHeader from "../components/shared/PageHeader";
 import StatCard from "../components/shared/StatCard";
@@ -29,8 +29,10 @@ export default function Reports() {
       const vendas = orders.filter(o => STATUS_VENDA.includes(o.status));
 
       const totalSales = vendas.reduce((s, o) => s + (o.total || 0), 0);
-      const totalInventoryValue = products.reduce((s, p) => s + ((p.stock_quantity || 0) * (p.cost_landed_brl || 0)), 0);
-      const totalPaid = financial.filter(f => f.status === "paid" && f.type === "payable").reduce((s, f) => s + (f.amount || 0), 0);
+      // 01/10: custo VIGENTE (landed da importação, senão o manual) — antes só o landed, e produto comprado no Brasil ficava fora
+      const totalInventoryValue = products.reduce((s, p) => s + ((p.stock_quantity || 0) * (parseFloat(p.cost_landed_brl) > 0 ? parseFloat(p.cost_landed_brl) : (parseFloat(p.custo_manual_brl) || 0))), 0);
+      // 01/10: transferência entre contas não é despesa (já era excluída do recebido; faltava no pago)
+      const totalPaid = financial.filter(f => f.status === "paid" && f.type === "payable" && f.category !== "transferencia").reduce((s, f) => s + (f.amount || 0), 0);
       const totalReceived = financial.filter(f => f.status === "paid" && f.type === "receivable" && f.category !== "transferencia").reduce((s, f) => s + (f.amount || 0), 0);
 
       const channels = {};

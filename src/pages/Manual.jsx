@@ -116,8 +116,8 @@ const GRUPOS = [
               <li><strong>Preços por canal</strong> (editando, só quem vê custos): preço e promocional por canal, salvam ao sair do campo. A margem mostrada aqui é simplificada (custo landed + comissão do canal, sem impostos) — a conta completa é no cockpit de Precificação;</li>
               <li><strong>Excluir:</strong> produto com saldo em estoque não exclui (movimente antes); produto com histórico no Kardex vira <em>inativo</em> em vez de sumir.</li>
             </ul>
-            <Aviso><strong>Comissão do representante — três lugares, três regras:</strong> na Precificação o cockpit usa o <em>maior</em> entre a % do produto e a % padrão (pior caso); no Pedido de Venda vale <em>quem vendeu</em> (Vendedor = % padrão; Representante = % do produto, item sem % não paga); o texto do cadastro fala em "substitui". Decida pela regra do pedido, que é a que vira dinheiro.</Aviso>
-            <NaoFaz itens={["Não tem campo de preço de venda no cadastro — preço é na Precificação (por canal). A OS lê um campo antigo de preço que não existe mais na tela; por isso a peça na OS quase sempre vem sem preço: digite.", "Renomear as 4 categorias quebra compatibilidade e Base Instalada (os nomes estão fixos no código)."]} />
+            <Aviso><strong>Comissão do representante — regra única (01/10):</strong> a comissão é de <em>quem vendeu</em>. No pedido e na DRE, "Vendido por: Representante" usa a % do produto (vazio = não paga) e "Vendedor" usa a % padrão da Config. A Precificação sugere a <em>maior</em> das duas para o preço cobrir quem vender — e diz isso na tela; você pode sobrescrever.</Aviso>
+            <NaoFaz itens={["Não tem campo de preço de venda no cadastro — preço é na Precificação (por canal); a OS sugere o preço do canal Master.", "Renomear as 4 categorias quebra compatibilidade e Base Instalada (os nomes estão fixos no código)."]} />
           </>
         ),
       },
@@ -237,7 +237,7 @@ const GRUPOS = [
             <p><strong>Para que serve:</strong> toda visita técnica tem dois lados — o que o cliente paga e o que sai do bolso no caminho. A OS registra os dois e lança tudo sozinha ao <strong>Concluir</strong>.</p>
             <ol className="list-decimal pl-5 mt-2 space-y-1.5">
               <li><strong>Nova OS:</strong> cliente (da lista ou digitado), técnico, datas (entrada, serviço, conclusão), equipamento, problema relatado, serviço feito;</li>
-              <li><strong>Hora técnica:</strong> horas × valor/hora (o último valor fica guardado). <strong>Peças:</strong> do cadastro ou manual — digite o preço (o cadastro de produto não guarda preço de venda; ver cap. 4);</li>
+              <li><strong>Hora técnica:</strong> horas × valor/hora (o último valor fica guardado). <strong>Peças:</strong> do cadastro (vem com o preço do canal Master da Precificação; sem preço cadastrado, digite) ou manual;</li>
               <li><strong>Despesas de viagem:</strong> uma linha por gasto, com o tique <em>"cobrar"</em>: marcado entra na conta do cliente; desmarcado continua custo seu;</li>
               <li><strong>Status Concluída → Salvar:</strong> baixa as peças do estoque (aparecem no Kardex como "Saída Venda", origem "OS #n"), cria a conta A RECEBER na categoria <em>Receita de Serviços (OS)</em> (ou uma por linha do pagamento misto) e a conta PAGA das despesas em <em>Despesas de Viagem (OS)</em>. Sem estoque da peça, a OS volta ao status anterior e nada é lançado.</li>
             </ol>
@@ -482,7 +482,7 @@ const GRUPOS = [
         corpo: (
           <>
             <p>Painel simples de todo o histórico: total vendido (pedidos faturados+), total recebido (sem transferências), total pago, valor em estoque, vendas por canal e top 10 produtos.</p>
-            <NaoFaz itens={["Sem filtro de período.", "\"Valor em estoque\" usa só o custo landed (produtos com custo manual ficam de fora — a conta completa é em Estoque & Caixa).", "\"Total pago\" inclui transferências entre contas."]} />
+            <NaoFaz itens={["Sem filtro de período (todo o histórico).", "Valor em estoque usa o custo vigente (landed ou manual); recebido e pago excluem transferências entre contas."]} />
           </>
         ),
       },

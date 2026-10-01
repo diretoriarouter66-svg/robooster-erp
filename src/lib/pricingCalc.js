@@ -36,7 +36,7 @@ export function getMasterChannel(channels) {
     || channels[0];
 }
 
-/** Comissão para FORMAÇÃO DE PREÇO (regra 18/08/2026): na venda real a comissão
+/** Comissão para FORMAÇÃO DE PREÇO (regra 18/08/2026, confirmada 01/10/2026 como regra única): na venda real a comissão
  * segue QUEM VENDEU (campo "Vendido por" do pedido — vendedor usa a % padrão da
  * Config. Tributária; representante usa a % do produto). Aqui, na precificação,
  * assumimos o cenário de MAIOR comissão aplicável ao produto (representante se

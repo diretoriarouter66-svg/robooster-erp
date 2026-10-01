@@ -411,9 +411,11 @@ export default function Precificacao() {
                 <Label className="cursor-pointer" onClick={() => setClientePagaFrete(!clientePagaFrete)}>Cliente paga o frete</Label>
               </div>
               <div>
-                <Label>Comissão do Vendedor (%)</Label>
+                <Label>Comissão de quem vende (%)</Label>
                 <Input type="number" step="0.1" value={sellerCommPct || ""} onChange={e => setSellerCommPct(parseFloat(e.target.value) || 0)} />
-                <p className="text-[10px] text-muted-foreground mt-0.5">Calculada sobre o preço à vista líquido de impostos</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Sobre o preço à vista líquido de impostos. Sugerido = a MAIOR entre a padrão do vendedor ({(parseFloat(config?.comissao_vendedor_padrao) || 0)}%) e a do representante deste produto ({(parseFloat(selectedProduct?.seller_commission_percent) || 0)}%), para o preço cobrir quem vender. No pedido vale quem vendeu de fato.
+                </p>
               </div>
               {sellerCommRs > 0 && (
                 <div className="text-xs flex justify-between border-t border-border pt-2"><span className="text-muted-foreground">Comissão Vendedor (R$)</span><span>{formatBRL(sellerCommRs)}</span></div>
