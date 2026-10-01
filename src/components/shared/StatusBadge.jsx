@@ -27,6 +27,8 @@ const statusConfig = {
   aprovada: { label: "Aprovada", className: "bg-primary/10 text-primary" },
   em_transito: { label: "Em Trânsito", className: "bg-warning/10 text-warning" },
   realizada: { label: "Realizada", className: "bg-success/10 text-success" },
+  concluida: { label: "Concluída", className: "bg-success/10 text-success" },
+  fechada: { label: "Fechada (real)", className: "bg-primary/10 text-primary" },
   international: { label: "Internacional", className: "bg-primary/10 text-primary" },
   national: { label: "Nacional", className: "bg-success/10 text-success" },
   PF: { label: "Pessoa Física", className: "bg-primary/10 text-primary" },

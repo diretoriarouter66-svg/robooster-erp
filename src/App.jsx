@@ -28,6 +28,7 @@ import Financial from './pages/Financial';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import ImportSimulator from './pages/ImportSimulator';
+import ImportFechamento from './pages/ImportFechamento'; // 01/10: fechamento com valores reais (DI + despesas)
 import DRE from './pages/DRE';
 import Breakeven from './pages/Breakeven';
 import ContainerPage from './pages/Container';
@@ -93,6 +94,7 @@ const AuthenticatedApp = () => {
           <Route path="/financial" element={<RequireModulo modulo="financeiro"><Financial /></RequireModulo>} />
           <Route path="/reports" element={<RequireModulo modulo="financeiro"><Reports /></RequireModulo>} />
           <Route path="/import-simulator" element={<RequireModulo modulo="importacao"><ImportSimulator /></RequireModulo>} />
+          <Route path="/import-fechamento/:opId" element={<RequireModulo modulo="importacao"><ImportFechamento /></RequireModulo>} />
           <Route path="/dre" element={<RequireModulo modulo="financeiro"><DRE /></RequireModulo>} />
           <Route path="/sites" element={<RequireModulo modulo="comercial"><Sites /></RequireModulo>} />
           <Route path="/breakeven" element={<RequireModulo modulo="financeiro"><Breakeven /></RequireModulo>} />

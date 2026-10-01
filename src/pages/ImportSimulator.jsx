@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ export default function ImportSimulator() {
   const [products, setProducts] = useState([]);
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate(); // 01/10: abre o fechamento com valores reais
   const [view, setView] = useState("list");
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
@@ -441,10 +443,19 @@ export default function ImportSimulator() {
                       <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">{op.data ? new Date(op.data).toLocaleDateString("pt-BR") : "—"}</td>
                       <td className="px-4 py-3 hidden sm:table-cell">{op.container_tipo || "—"}</td>
                       <td className="px-4 py-3 text-right hidden sm:table-cell">{op.itens?.length || 0}</td>
-                      <td className="px-4 py-3 text-right hidden lg:table-cell font-medium">{op.resultado_importacao?.totais?.custo_formacao_preco ? fmtBRL(op.resultado_importacao.totais.custo_formacao_preco) : "—"}</td>
+                      <td className="px-4 py-3 text-right hidden lg:table-cell font-medium">
+                        {op.status === "fechada" && op.fechamento?.resultado?.totais?.custo_total
+                          ? <span title={`estimado ${fmtBRL(op.resultado_importacao?.totais?.custo_formacao_preco || 0)}`}>{fmtBRL(op.fechamento.resultado.totais.custo_total)} <span className="text-[10px] text-primary">real</span></span>
+                          : (op.resultado_importacao?.totais?.custo_formacao_preco ? fmtBRL(op.resultado_importacao.totais.custo_formacao_preco) : "—")}
+                      </td>
                       <td className="px-4 py-3 text-center"><StatusBadge status={op.status} /></td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {["realizada", "concluida", "fechada"].includes(op.status) && (
+                            <Button variant={op.status === "fechada" ? "ghost" : "outline"} size="sm" onClick={e => { e.stopPropagation(); navigate(`/import-fechamento/${op.id}`); }} title="Fechamento com os valores reais da DI, do despachante e do forwarder">
+                              {op.status === "fechada" ? "Ver fechamento" : "Fechar (real)"}
+                            </Button>
+                          )}
                           <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); openEdit(op); }}>Abrir</Button>
                           <button onClick={e => { e.stopPropagation(); handleDeleteOp(op); }} className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors" title="Excluir operação">
                             <Trash2 className="w-3.5 h-3.5 text-destructive" />
