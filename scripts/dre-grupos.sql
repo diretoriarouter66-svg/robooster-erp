@@ -93,3 +93,7 @@ begin
 end $$;
 revoke all on function public.extrato_para_financeiro() from public, anon;
 grant execute on function public.extrato_para_financeiro() to authenticated, service_role;
+
+-- Publicação (02/10/2026): o pagamento "Receita Federal" do extrato é encargo da folha, não DAS (conferido com a planilha de DRE da empresa).
+update public.extrato_categoria_fin set slug = 'encargos_da_folha', nome = 'Encargos da folha (Receita Federal)', dre = 'despesa', dre_grupo = 'pessoal' where categoria = 'Imposto federal';
+select public.extrato_para_financeiro();
