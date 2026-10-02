@@ -154,6 +154,34 @@ def comparar(pay, bx):
             dif.append(f"item {b['sku']} qtd×preço: ERP {a['quantidade_comercial']:g}×{a['valor_unitario_comercial']:.2f} × Bling {b['qtd']:g}×{b['vun']:.2f}")
     return {"iguais": not dif, "diferencas": dif, "bling": {k: bx[k] for k in ("numero", "serie", "natOp", "vNF", "vFrete", "modFrete", "indFinal", "indIEDest", "crt")}}
 
+# ------------------------------------------------------------------ cancelamento (venda cancelada no ML depois da nota)
+def cancelar(ref, motivo):
+    """Cancela a nota de TESTE no Focus (homologação). A SEFAZ exige justificativa de 15 a 255 caracteres."""
+    code, r = focus("DELETE", f"/v2/nfe/{ref}", {"justificativa": motivo[:255]})
+    return r.get("status") or r.get("codigo") or f"http {code}", (r.get("mensagem_sefaz") or r.get("mensagem") or "")[:200]
+
+if "--teste-cancelamento" in args:
+    # prova do fluxo: emite uma cópia da nota de uma venda pronta com outra referência e cancela em seguida
+    v = prontas[0]; pay = montar(v); ref = "mlteste-canc-" + re.sub(r"\W", "", v["chave"]) + "-" + datetime.datetime.now().strftime("%H%M%S")
+    code, r = focus("POST", f"/v2/nfe?ref={ref}", pay); st = r.get("status")
+    for _ in range(12):
+        if st != "processando_autorizacao": break
+        time.sleep(4); code, r = focus("GET", f"/v2/nfe/{ref}"); st = r.get("status")
+    print("emitida para o teste:", st, "nº", r.get("numero"))
+    if st == "autorizado":
+        stc, msg = cancelar(ref, "Teste de cancelamento em homologacao - venda cancelada no Mercado Livre")
+        time.sleep(3); code, r2 = focus("GET", f"/v2/nfe/{ref}")
+        print("cancelamento:", stc, "|", msg, "| situação final:", r2.get("status"))
+    sys.exit(0)
+
+canceladas = [v for v in vendas.values() if v["canc"] and v["status_teste"] == "autorizado"]
+for v in canceladas:
+    ref = "mlteste-" + re.sub(r"\W", "", v["chave"])
+    stc, msg = cancelar(ref, "Venda cancelada no Mercado Livre - nota de teste em homologacao")
+    ids = ", ".join(lit(x) for x in v["pedidos"])
+    sql(f"update ml_pedidos set nfe_teste_status={lit(stc)}, nfe_teste_mensagem={lit(msg)}, updated_date=now() where id in ({ids});")
+    print(f"venda {v['chave']} cancelada no ML → nota de teste: {stc} {msg}", flush=True)
+
 # ------------------------------------------------------------------ execução
 feitas = 0
 for v in prontas:
