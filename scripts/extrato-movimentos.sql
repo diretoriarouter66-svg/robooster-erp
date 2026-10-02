@@ -33,3 +33,6 @@ end $$;
 grant select on public.extrato_movimentos to authenticated;
 grant all on public.extrato_movimentos to service_role;
 -- depois de criar: docker kill -s SIGUSR1 $(docker ps --format '{{.Names}}' | grep supabase_rest)
+
+-- 02/10/2026 — categoria sugerida/confirmada de cada movimento e de onde veio o arquivo
+alter table public.extrato_movimentos add column if not exists categoria text, add column if not exists categoria_confirmada boolean default false, add column if not exists arquivo text;
