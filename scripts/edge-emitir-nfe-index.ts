@@ -86,6 +86,23 @@ Deno.serve(async (req) => {
       return json(st)
     }
 
+    if (acao === 'cancelar') {
+      const just = String(body.justificativa || '').trim()
+      if (just.length < 15) return json({ error: 'Escreva a justificativa do cancelamento (pelo menos 15 caracteres).' }, 400)
+      if (nota.nfe_status !== 'autorizado') return json({ error: 'Só dá para cancelar NF-e que está autorizada.' }, 400)
+      const r = await fetch(`${base}/v2/nfe/${refA}`, {
+        method: 'DELETE',
+        headers: { Authorization: focusAuth(cfg.token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ justificativa: just.slice(0, 255) }),
+      })
+      const resp = await r.json()
+      const msg = (resp.mensagem_sefaz || resp.mensagem || '').slice(0, 300)
+      await admin.from('nfe_avulsas').update(
+        resp.status === 'cancelado' ? { nfe_status: 'cancelado', nfe_mensagem: msg || 'NF-e cancelada' } : { nfe_mensagem: msg || 'Cancelamento não aceito' },
+      ).eq('id', avulsaId)
+      return json(resp, r.ok && resp.status === 'cancelado' ? 200 : 400)
+    }
+
     if (acao === 'danfe' || acao === 'xml') {
       const r = await fetch(`${base}/v2/nfe/${refA}`, { headers: { Authorization: focusAuth(cfg.token) } })
       const st = await r.json()
@@ -104,6 +121,7 @@ Deno.serve(async (req) => {
 
     // ---- EMITIR AVULSA ----
     if (nota.nfe_status === 'autorizado') return json({ error: 'Esta nota já está autorizada.' }, 409)
+    if (nota.nfe_status === 'cancelado') return json({ error: 'Esta nota foi cancelada. Para emitir de novo, crie uma nota nova.' }, 409)
     if (nota.nfe_status === 'processando_autorizacao') {
       // Reenviar por cima de um processamento sobrescreveria o status e podia
       // esconder uma autorização — primeiro consulta o que o Focus tem.
@@ -356,7 +374,11 @@ Deno.serve(async (req) => {
   const { data: order } = await admin.from('sale_orders').select('*').eq('id', orderId).maybeSingle()
   if (!order) return json({ error: 'Pedido não encontrado.' }, 404)
 
-  const ref = order.nfe_ref || `pedido-${orderId}`
+  // Pedido cuja nota foi CANCELADA pode ganhar nota nova: a referência no Focus é de uso único,
+  // então a nova emissão usa outra (as consultas e o cancelamento usam a que está gravada no pedido).
+  const ref = (acao === 'emitir' && order.nfe_status === 'cancelado')
+    ? `pedido-${orderId}-${Date.now().toString(36)}`
+    : (order.nfe_ref || `pedido-${orderId}`)
 
   // ---------- STATUS ----------
   if (acao === 'status') {

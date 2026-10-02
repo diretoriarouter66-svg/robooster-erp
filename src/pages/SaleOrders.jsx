@@ -899,10 +899,10 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
                               {nfeBusy === o.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />} NF {o.nfe_numero}
                             </button>
                           ) : STATUS_BAIXA.includes(o.status) ? (
-                            <button onClick={() => handleEmitirNfe(o)} disabled={nfeBusy === o.id} title={o.nfe_mensagem || "Emitir NF-e"}
-                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium ${o.nfe_status && o.nfe_status !== "autorizado" ? "bg-destructive/10 text-destructive hover:bg-destructive/20" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
+                            <button onClick={() => handleEmitirNfe(o)} disabled={nfeBusy === o.id} title={o.nfe_status === "cancelado" ? `A NF-e ${o.nfe_numero || ""} foi cancelada — emitir uma nota nova para este pedido` : (o.nfe_mensagem || "Emitir NF-e")}
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium ${o.nfe_status === "cancelado" ? "bg-muted text-muted-foreground hover:bg-muted/70" : o.nfe_status && o.nfe_status !== "autorizado" ? "bg-destructive/10 text-destructive hover:bg-destructive/20" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
                               {nfeBusy === o.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-                              {o.nfe_status && o.nfe_status !== "autorizado" ? "Reemitir" : "Emitir NF-e"}
+                              {o.nfe_status === "cancelado" ? "NF cancelada · emitir nova" : o.nfe_status && o.nfe_status !== "autorizado" ? "Reemitir" : "Emitir NF-e"}
                             </button>
                           ) : null}
                           {(STATUS_BAIXA.includes(o.status) || o.status === "returned") && (

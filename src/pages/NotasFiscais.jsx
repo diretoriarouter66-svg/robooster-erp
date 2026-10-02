@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44, supabase } from "@/api/base44Client";
-import { Plus, Search, FileText, Pencil, Trash2, Loader2, Download } from "lucide-react";
+import { Plus, Search, FileText, Pencil, Trash2, Loader2, Download, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -92,6 +92,9 @@ export default function NotasFiscais() {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(null);
+  // 02/10/2026 — cancelamento de NF-e autorizada (avulsa ou de pedido), com justificativa obrigatória
+  const [cancelDialog, setCancelDialog] = useState(null); // { l, justificativa, erro }
+  const [cancelando, setCancelando] = useState(false);
   // 30/09: estados do cadastro de CFOP (Fase B, 17/09) nunca foram declarados — a página quebrava com
   // "setCfops is not defined" antes de sair do "carregando"; ninguém abriu a tela desde então.
   const [cfops, setCfops] = useState([]);
@@ -129,6 +132,25 @@ export default function NotasFiscais() {
       },
       body: JSON.stringify({ acao, nfe_id: nfeId }),
     });
+  };
+
+  const confirmarCancelamento = async () => {
+    const { l, justificativa } = cancelDialog;
+    const just = (justificativa || "").trim();
+    if (just.length < 15) { setCancelDialog({ ...cancelDialog, erro: "Escreva o motivo com pelo menos 15 caracteres." }); return; }
+    setCancelando(true);
+    try {
+      const { data: sessao } = await supabase.auth.getSession();
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/emitir-nfe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${sessao?.session?.access_token ?? ""}` },
+        body: JSON.stringify({ acao: "cancelar", justificativa: just, ...(l.kind === "avulsa" ? { nfe_id: l.id } : { sale_order_id: l.id }) }),
+      });
+      const resp = await r.json().catch(() => ({}));
+      if (!r.ok) { setCancelDialog({ ...cancelDialog, erro: resp.error || resp.mensagem_sefaz || resp.mensagem || "A SEFAZ não aceitou o cancelamento." }); }
+      else { setCancelDialog(null); await loadData(); }
+    } catch (err) { setCancelDialog({ ...cancelDialog, erro: err.message }); }
+    setCancelando(false);
   };
 
   const danfePedido = async (o) => {
@@ -402,6 +424,8 @@ export default function NotasFiscais() {
                             className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-success/10 text-success hover:bg-success/20">
                             {busy === l.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />} NF {l.nfe_numero}
                           </button>
+                        ) : l.nfe_status === "cancelado" ? (
+                          <span className="inline-flex px-2 py-1 rounded-lg text-[11px] font-medium bg-muted text-muted-foreground" title={l.nfe_mensagem || "NF-e cancelada"}>NF {l.nfe_numero} cancelada</span>
                         ) : l.kind === "avulsa" ? (
                           <button onClick={() => handleEmitir(n)} disabled={busy === l.id} title={l.nfe_mensagem || "Emitir NF-e"}
                             className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium ${l.nfe_status && l.nfe_status !== "autorizado" ? "bg-destructive/10 text-destructive hover:bg-destructive/20" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
@@ -411,9 +435,12 @@ export default function NotasFiscais() {
                         ) : (
                           <span className="text-[11px] text-muted-foreground">{l.nfe_status || "sem NF"}</span>
                         )}
-                        {l.nfe_status && l.nfe_status !== "autorizado" && <span className="block text-[9px] text-destructive mt-0.5 max-w-[140px] truncate" title={l.nfe_mensagem}>{l.nfe_mensagem}</span>}
+                        {l.nfe_status && !["autorizado", "cancelado"].includes(l.nfe_status) && <span className="block text-[9px] text-destructive mt-0.5 max-w-[140px] truncate" title={l.nfe_mensagem}>{l.nfe_mensagem}</span>}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {l.nfe_status === "autorizado" && (
+                          <button onClick={() => setCancelDialog({ l, justificativa: "", erro: "" })} className="p-1.5 hover:bg-destructive/10 rounded-lg" title="Cancelar esta NF-e na SEFAZ"><Ban className="w-4 h-4 text-destructive" /></button>
+                        )}
                         {l.kind === "avulsa" ? (<>
                           <button onClick={() => openEdit(n)} className="p-1.5 hover:bg-muted rounded-lg"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
                           <button onClick={() => handleDelete(n)} className="p-1.5 hover:bg-muted rounded-lg"><Trash2 className="w-4 h-4 text-destructive" /></button>
@@ -427,6 +454,35 @@ export default function NotasFiscais() {
           </div>
         </div>
       )}
+
+      <Dialog open={!!cancelDialog} onOpenChange={(v) => { if (!v && !cancelando) setCancelDialog(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Cancelar a NF-e {cancelDialog?.l?.nfe_numero}</DialogTitle></DialogHeader>
+          {cancelDialog && (
+            <div className="space-y-3 text-sm">
+              <p><span className="font-medium">{cancelDialog.l.dest}</span> · {formatCurrency(cancelDialog.l.total)} · {cancelDialog.l.origem}</p>
+              <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-xs space-y-1">
+                <p>O cancelamento é enviado à SEFAZ e <strong>não tem volta</strong>. Em regra ela só aceita até 24 horas depois da autorização; passado o prazo, o caminho é a nota de devolução.</p>
+                {cancelDialog.l.kind === "pedido"
+                  ? <p>Cancelar a nota <strong>não devolve o estoque nem estorna o financeiro</strong> do pedido. Para desfazer a venda, registre a devolução ou cancele o pedido em Pedidos de Venda. Depois de cancelada, o pedido pode receber uma nota nova.</p>
+                  : <p>A nota fica no histórico como cancelada. Para emitir de novo, crie uma nota nova.</p>}
+              </div>
+              <div>
+                <Label>Motivo do cancelamento (vai para a SEFAZ)</Label>
+                <Input value={cancelDialog.justificativa} onChange={(e) => setCancelDialog({ ...cancelDialog, justificativa: e.target.value, erro: "" })} placeholder="Ex.: Venda cancelada a pedido do cliente" maxLength={255} />
+                <p className="text-[11px] text-muted-foreground mt-1">{(cancelDialog.justificativa || "").trim().length} de 15 caracteres no mínimo</p>
+              </div>
+              {cancelDialog.erro && <p className="text-destructive text-xs">{cancelDialog.erro}</p>}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" onClick={() => setCancelDialog(null)} disabled={cancelando}>Voltar</Button>
+                <Button variant="destructive" onClick={confirmarCancelamento} disabled={cancelando || (cancelDialog.justificativa || "").trim().length < 15}>
+                  {cancelando ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Cancelando...</> : "Cancelar a NF-e"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">

@@ -455,6 +455,7 @@ const GRUPOS = [
         corpo: (
           <>
             <p><strong>NF do pedido:</strong> pedido faturado → "Emitir NF-e" na lista de pedidos → ~10 s → chip "NF nº" = autorizada (clique = DANFE). Rejeitou? O botão vira "Reemitir", a mensagem da SEFAZ fica no pedido; corrija e emita de novo — a numeração não queima.</p>
+            <p className="mt-2"><strong>Cancelar uma nota autorizada:</strong> em Notas Fiscais, na linha da nota, o ícone de proibido abre o cancelamento. Escreva o motivo (pelo menos 15 caracteres; vai para a SEFAZ) e confirme. Vale para nota de pedido e para nota avulsa. A SEFAZ em regra só aceita até 24 horas depois da autorização; depois disso o caminho é a nota de devolução. Cancelar a nota <strong>não devolve o estoque nem estorna o financeiro</strong>: para desfazer a venda, registre a devolução ou cancele o pedido. Pedido com nota cancelada pode receber nota nova (o botão vira "NF cancelada · emitir nova"); nota avulsa cancelada fica no histórico e a nova se cria do zero.</p>
             <p className="mt-2"><strong>Checklist que evita 95% das rejeições:</strong> CPF/CNPJ; PJ com IE (ou ISENTO); endereço completo; NCM correto no produto.</p>
             <p className="mt-2"><strong>Tela Notas Fiscais:</strong> lista única (pedidos + avulsas), filtro entrada/saída e por origem, exportar CSV. <strong>Nova NF avulsa</strong> — escolha a operação e o resto se ajusta (tipo, CFOP intra/inter pela UF):</p>
             <ul className="list-disc pl-5 mt-1 space-y-1.5">
