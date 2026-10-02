@@ -81,13 +81,27 @@ for emp in ("router", "saber"):
                 for x in ativos if str(x.get("codigo") or "").strip()]
     log(emp, "ativos sem kit:", len(cat[emp]), "| com estoque:", sum(1 for x in cat[emp] if (x["estoque"] or 0) > 0))
 
-# pares "mesmo produto nas duas empresas": master do precificador + nome igual
+# ------------------------------------------------------------------ 2) estado do ERP
+erp = {}       # sku -> (id, estoque, origem)
+por_origem = {}
+for l in sql("select id, coalesce(sku,''), coalesce(stock_quantity,0), coalesce(codigos_origem::text,'') from products;").split("\n"):
+    if not l.strip(): continue
+    pid, sku, est, orig = (l.split("\t") + ["", "", ""])[:4]
+    o = json.loads(orig) if orig else None
+    erp[sku] = (pid, float(est), o)
+    if o:
+        for emp in ("router", "saber"):
+            if o.get(emp): por_origem[(emp, str(o[emp]["bling_id"]))] = sku
+
+# pares "mesmo produto nas duas empresas": o que o ERP já uniu (decisão do dono vale mais) + master do precificador + nome igual
 pares = {}   # sku saber -> sku router
+for _sku, (_pid, _est, _o) in erp.items():
+    if _o and _o.get("router") and _o.get("saber"): pares[str(_o["saber"]["sku"])] = str(_o["router"]["sku"])
 m = {}
 for l in psql("select pe.produto_master_id, e.nome, pe.sku from prec_produto_empresa pe join prec_empresa e on e.id=pe.empresa_id").strip().split("\n"):
     mid, e, sku = l.split("\t"); m.setdefault(mid, {})["router" if e.startswith("Router") else "saber"] = sku.strip()
 for d in m.values():
-    if len(d) == 2: pares[d["saber"]] = d["router"]
+    if len(d) == 2: pares.setdefault(d["saber"], d["router"])
 rnome = {norm(x["nome"]): x for x in cat["router"]}
 for x in cat["saber"]:
     r = rnome.get(norm(x["nome"]))
@@ -105,18 +119,6 @@ for x in cat["saber"]:
     if x["sku"] in pares and pares[x["sku"]] in uni: uni[pares[x["sku"]]]["saber"] = x
     elif x["sku"] in rsku: uni[x["sku"] + "-S"] = {"saber": x}   # mesmo código, produto diferente
     else: uni[x["sku"]] = {"saber": x}
-
-# ------------------------------------------------------------------ 2) estado do ERP
-erp = {}       # sku -> (id, estoque, origem)
-por_origem = {}
-for l in sql("select id, coalesce(sku,''), coalesce(stock_quantity,0), coalesce(codigos_origem::text,'') from products;").split("\n"):
-    if not l.strip(): continue
-    pid, sku, est, orig = (l.split("\t") + ["", "", ""])[:4]
-    o = json.loads(orig) if orig else None
-    erp[sku] = (pid, float(est), o)
-    if o:
-        for emp in ("router", "saber"):
-            if o.get(emp): por_origem[(emp, str(o[emp]["bling_id"]))] = sku
 
 novos, ajustes, sem_dado = [], [], 0
 for sku, u in uni.items():
