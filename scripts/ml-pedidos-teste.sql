@@ -64,3 +64,12 @@ grant select on public.product_kits to authenticated;
 grant all on public.product_kits to service_role;
 -- Depois de criar tabela nova: recarregar o cache da API (o NOTIFY não pega nesta instalação):
 --   docker kill -s SIGUSR1 $(docker ps --format '{{.Names}}' | grep supabase_rest)
+
+-- 02/10/2026 — conciliação do recebimento (Mercado Pago), por pedido: o que o Mercado Pago realmente creditou,
+-- quando liberou, quanto estornou e as cobranças (taxa de venda, taxa de processamento, frete).
+alter table public.ml_pedidos add column if not exists mp_liquido numeric, add column if not exists mp_status text,
+  add column if not exists mp_liberacao timestamptz, add column if not exists mp_liberado boolean,
+  add column if not exists mp_estornado numeric, add column if not exists mp_cobrancas jsonb, add column if not exists mp_alerta text;
+-- e as colunas da nota de teste (homologação)
+alter table public.ml_pedidos add column if not exists nfe_teste_numero text, add column if not exists nfe_teste_mensagem text,
+  add column if not exists nfe_teste_total numeric, add column if not exists nfe_comparacao jsonb;

@@ -51,3 +51,15 @@ def get(emp,path):
             if e.code==429: time.sleep(2+2*i); continue
             return {"_erro":e.code,"_body":e.read().decode()[:300]}
     return {"_erro":429}
+
+def mp_get(emp,path):
+    """Mercado Pago (mesmo token da conta do Mercado Livre): detalhe do pagamento, liberação, estornos."""
+    for i in range(4):
+        try:
+            r=urllib.request.Request("https://api.mercadopago.com"+path,headers={"Authorization":"Bearer "+token(emp)})
+            return json.load(urllib.request.urlopen(r,timeout=40))
+        except urllib.error.HTTPError as e:
+            if e.code==429: time.sleep(2+2*i); continue
+            return {"_erro":e.code,"_body":e.read().decode()[:300]}
+    return {"_erro":429}
+

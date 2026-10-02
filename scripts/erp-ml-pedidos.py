@@ -169,13 +169,43 @@ for emp in CONTAS:
             nfn, nfc, nfs = bling_nf(emp, bp["id"])
         total = float(x.get("total_amount") or 0)
         liquido = round(total - taxa - (frete_v or 0), 2)
+        # ---- recebimento no Mercado Pago: o que realmente foi creditado, quando liberou, estornos e cobranças
+        mp_liq = mp_est = 0.0; mp_lib = None; mp_liberado = None; mp_st = []; cobr = {}; mp_ok = False
+        for pg in x.get("payments", []):
+            if pg.get("status") in ("rejected", "cancelled") or not pg.get("id"): continue
+            d = ml_ro.mp_get(emp, f"/v1/payments/{pg['id']}")
+            if "_erro" in d: continue
+            mp_ok = True
+            mp_liq += float((d.get("transaction_details") or {}).get("net_received_amount") or 0)
+            mp_est += float(d.get("transaction_amount_refunded") or 0)
+            mp_st.append(d.get("status") or "")
+            if d.get("money_release_date") and (mp_lib is None or d["money_release_date"] > mp_lib): mp_lib = d["money_release_date"]
+            lib = d.get("money_release_status") == "released"
+            mp_liberado = lib if mp_liberado is None else (mp_liberado and lib)
+            for c in d.get("charges_details") or []:
+                k = c.get("name") or c.get("type") or "outro"
+                cobr[k] = round(cobr.get(k, 0) + float((c.get("amounts") or {}).get("original") or 0) - float((c.get("amounts") or {}).get("refunded") or 0), 2)
+        # Com o extrato do Mercado Pago em mãos, vale o que ELE cobrou, não a estimativa: a taxa é a de venda mais a de
+        # processamento, e o frete nosso é o que sobra (inclui a parte do frete do comprador que o ML cobra do vendedor
+        # e exclui juros de parcelamento, que entram e saem). Pedido devolvido fica na estimativa.
+        if mp_ok and mp_est == 0 and x.get("status") != "cancelled":
+            taxa = round(cobr.get("ml_sale_fee", 0) + cobr.get("mp_processing_fee", 0), 2)
+            frete_v = round(total - taxa - mp_liq, 2)
+            liquido = round(mp_liq, 2)
+        alertas = []
+        if "in_mediation" in mp_st: alertas.append("reclamação em mediação no Mercado Livre")
+        if "charged_back" in mp_st: alertas.append("contestação de cartão (chargeback)")
+        if "refunded" in mp_st: alertas.append("pagamento devolvido ao comprador")
+        elif mp_est > 0: alertas.append(f"devolução parcial de R$ {mp_est:.2f}".replace(".", ","))
         cols = dict(id=oid, conta=emp, ml_user_id=uid, pack_id=str(x.get("pack_id") or "") or None, shipment_id=str(sh_id) if sh_id else None, status=x.get("status"),
                     status_detalhe=json.dumps(x.get("status_detail")) if x.get("status_detail") else None, data_pedido=x.get("date_created"), data_fechado=x.get("date_closed"),
                     total=total, pago=float(x.get("paid_amount") or 0), taxa_ml=round(taxa, 2), frete_vendedor=frete_v, frete_comprador=frete_c, liquido=liquido,
                     tipo_anuncio=tipo, logistica=logistica, comprador_apelido=(x.get("buyer") or {}).get("nickname"), comprador=comprador, itens=itens,
                     mapeado=not any("sem cadastro" in p or "sem SKU" in p for p in pend), pendencias="; ".join(pend) or None,
                     pagamentos=[{k: p.get(k) for k in ("id", "status", "date_approved", "transaction_amount", "total_paid_amount", "payment_type", "installments")} for p in x.get("payments", [])],
-                    bling_pedido_id=bid, bling_numero=bnum, bling_total=btot, bling_situacao=bsit, bling_nf_numero=nfn, bling_nf_chave=nfc, bling_nf_situacao=nfs, bruto=x)
+                    bling_pedido_id=bid, bling_numero=bnum, bling_total=btot, bling_situacao=bsit, bling_nf_numero=nfn, bling_nf_chave=nfc, bling_nf_situacao=nfs, bruto=x,
+                    mp_liquido=round(mp_liq, 2) if mp_ok else None, mp_status=",".join(sorted(set(mp_st))) or None, mp_liberacao=mp_lib,
+                    mp_liberado=mp_liberado, mp_estornado=round(mp_est, 2) if mp_ok else None, mp_cobrancas=cobr or None, mp_alerta="; ".join(alertas) or None)
         keys = list(cols)
         vals = [lit(cols[k]) if not (k in ("frete_vendedor", "frete_comprador") and cols[k] == 0) else "0" for k in keys]
         sql(f"insert into ml_pedidos ({', '.join(keys)}, updated_date) values ({', '.join(vals)}, now()) on conflict (id) do update set "
@@ -183,5 +213,5 @@ for emp in CONTAS:
         tot += 1
 # Compra com vários itens (carrinho) = vários pedidos com UM envio só: o frete vale uma vez.
 sql("""update ml_pedidos p set frete_vendedor=0, frete_comprador=0, liquido=round(total - coalesce(taxa_ml,0), 2), updated_date=now()
-        where shipment_id is not null and exists (select 1 from ml_pedidos q where q.shipment_id=p.shipment_id and q.id<p.id);""")
+        where shipment_id is not null and mp_liquido is null and exists (select 1 from ml_pedidos q where q.shipment_id=p.shipment_id and q.id<p.id);""")
 log("gravados/atualizados:", tot)

@@ -42,7 +42,8 @@ export default function MLPedidos() {
       if (mes && String(p.data_pedido || "").slice(0, 7) !== mes) continue;
       if (conta !== "todas" && p.conta !== conta) continue;
       const k = p.shipment_id || p.id;
-      if (!m.has(k)) m.set(k, { chave: k, conta: p.conta, data: p.data_pedido, status: p.status, itens: [], total: 0, taxa: 0, freteVend: 0, freteComp: 0, liquido: 0, pend: new Set(), bling: p.bling_numero, blingTotal: num(p.bling_total), nf: p.bling_nf_numero, logistica: p.logistica, pedidosML: [], teste: p.nfe_teste_status, testeNumero: p.nfe_teste_numero, testeMsg: p.nfe_teste_mensagem, comp: p.nfe_comparacao });
+      if (!m.has(k)) m.set(k, { chave: k, conta: p.conta, data: p.data_pedido, status: p.status, itens: [], total: 0, taxa: 0, freteVend: 0, freteComp: 0, liquido: 0, pend: new Set(), bling: p.bling_numero, blingTotal: num(p.bling_total), nf: p.bling_nf_numero, logistica: p.logistica, pedidosML: [], teste: p.nfe_teste_status, testeNumero: p.nfe_teste_numero, testeMsg: p.nfe_teste_mensagem, comp: p.nfe_comparacao,
+        mpLiq: 0, mpTem: false, mpLiberado: true, mpQuando: null, mpEstornado: 0, mpAlerta: new Set(), nfSit: p.bling_nf_situacao });
       const v = m.get(k);
       v.pedidosML.push(p.id);
       v.total += num(p.total); v.taxa += num(p.taxa_ml); v.freteVend += num(p.frete_vendedor); v.freteComp += num(p.frete_comprador); v.liquido += num(p.liquido);
@@ -51,8 +52,12 @@ export default function MLPedidos() {
       if (p.status === "cancelled") v.status = "cancelled";
       v.nf = v.nf || p.bling_nf_numero; v.bling = v.bling || p.bling_numero; v.blingTotal = v.blingTotal || num(p.bling_total);
       v.teste = v.teste || p.nfe_teste_status; v.testeNumero = v.testeNumero || p.nfe_teste_numero; v.comp = v.comp || p.nfe_comparacao;
+      // recebimento no Mercado Pago (02/10/2026)
+      if (p.mp_liquido != null) { v.mpTem = true; v.mpLiq += num(p.mp_liquido); v.mpEstornado += num(p.mp_estornado); if (!p.mp_liberado) v.mpLiberado = false; if (p.mp_liberacao && (!v.mpQuando || p.mp_liberacao > v.mpQuando)) v.mpQuando = p.mp_liberacao; }
+      String(p.mp_alerta || "").split(";").map((x) => x.trim()).filter(Boolean).forEach((x) => v.mpAlerta.add(x));
+      v.nfSit = v.nfSit || p.bling_nf_situacao;
     }
-    let lista = Array.from(m.values()).map((v) => ({ ...v, pend: Array.from(v.pend) }));
+    let lista = Array.from(m.values()).map((v) => ({ ...v, pend: Array.from(v.pend), mpAlerta: Array.from(v.mpAlerta) }));
     if (situacao === "pendencia") lista = lista.filter((v) => v.pend.length > 0);
     if (situacao === "pronta") lista = lista.filter((v) => v.pend.length === 0);
     return lista.sort((a, b) => String(b.data).localeCompare(String(a.data)));
@@ -66,6 +71,12 @@ export default function MLPedidos() {
   const prontas = pagas.filter((v) => v.pend.length === 0).length;
   const testadas = pagas.filter((v) => v.teste === "autorizado").length;
   const iguais = pagas.filter((v) => v.comp?.iguais).length;
+  const liberado = pagas.filter((v) => v.mpTem && v.mpLiberado).reduce((t, v) => t + v.mpLiq, 0);
+  const aLiberar = pagas.filter((v) => v.mpTem && !v.mpLiberado).reduce((t, v) => t + v.mpLiq, 0);
+  // Pontos que a contabilidade confere no fechamento: dinheiro devolvido com nota ainda autorizada, e reclamações abertas.
+  const notaViva = (v) => v.nf && ["5", "6"].includes(String(v.nfSit));
+  const devolvidasComNota = vendas.filter((v) => (v.status === "cancelled" || v.mpEstornado > 0) && notaViva(v));
+  const emMediacao = vendas.filter((v) => v.mpAlerta.some((a) => a.includes("mediação") || a.includes("chargeback")));
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" /></div>;
@@ -73,7 +84,7 @@ export default function MLPedidos() {
 
   return (
     <div>
-      <PageHeader title="Mercado Livre — modo de teste" description="Pedidos lidos das duas contas, com taxa e frete reais, conferidos com o Bling" />
+      <PageHeader title="Mercado Livre — modo de teste" description="Pedidos das duas contas com taxa, frete e recebimento reais (Mercado Pago), conferidos com o Bling" />
 
       <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 mb-6 text-sm">
         <p className="font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-warning" /> Tela de conferência. Nada aqui é oficial ainda.</p>
@@ -125,7 +136,20 @@ export default function MLPedidos() {
             <span><strong>{comNota}</strong> de {pagas.length} com nota emitida no Bling</span>
             <span className={difValor ? "text-destructive" : ""}><strong>{difValor}</strong> com valor diferente do Bling</span>
             <span><strong>{testadas}</strong> notas de teste autorizadas pela SEFAZ (sem valor fiscal), <strong>{iguais}</strong> iguais à nota do Bling</span>
+            <span>Mercado Pago: <strong>{formatCurrency(liberado)}</strong> já liberados e <strong>{formatCurrency(aLiberar)}</strong> a liberar</span>
           </div>
+
+          {(devolvidasComNota.length > 0 || emMediacao.length > 0) && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 mb-6 text-sm">
+              <p className="font-medium mb-1">Para conferir no fechamento com a contabilidade</p>
+              {devolvidasComNota.map((v) => (
+                <p key={"d" + v.chave} className="text-xs leading-5">• {fmtDia(v.data)} · {CONTAS[v.conta]} · venda de {formatCurrency(v.total)} <strong>devolvida ao comprador</strong>, mas a nota {v.nf} do Bling continua autorizada: falta cancelar a nota ou emitir a nota de devolução.</p>
+              ))}
+              {emMediacao.map((v) => (
+                <p key={"m" + v.chave} className="text-xs leading-5">• {fmtDia(v.data)} · {CONTAS[v.conta]} · venda de {formatCurrency(v.total)} (nota {v.nf || "—"}): {v.mpAlerta.join("; ")}. O dinheiro pode ser devolvido ao comprador.</p>
+              ))}
+            </div>
+          )}
 
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
@@ -138,12 +162,13 @@ export default function MLPedidos() {
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Taxa</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Frete</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Líquido</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Recebimento</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Bling</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nota de teste</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Situação no ERP</th>
                 </tr></thead>
                 <tbody>
-                  {vendas.length === 0 && <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">Nenhuma venda nesta visão.</td></tr>}
+                  {vendas.length === 0 && <tr><td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">Nenhuma venda nesta visão.</td></tr>}
                   {vendas.map((v) => (
                     <tr key={v.chave} className={`border-b border-border last:border-0 align-top ${v.status === "cancelled" ? "opacity-60" : ""}`}>
                       <td className="px-4 py-3 whitespace-nowrap">{fmtDia(v.data)}</td>
@@ -161,6 +186,13 @@ export default function MLPedidos() {
                       <td className="px-4 py-3 text-right whitespace-nowrap text-destructive">{formatCurrency(v.taxa)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap text-destructive">{v.logistica ? formatCurrency(v.freteVend) : "—"}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap font-medium">{formatCurrency(v.liquido)}</td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {!v.mpTem ? <span className="text-muted-foreground">—</span>
+                          : v.status === "cancelled" || v.mpEstornado >= v.total ? <span className="text-muted-foreground">devolvido ao comprador</span>
+                          : v.mpLiberado ? <span className="text-success">liberado em {fmtDia(v.mpQuando)}</span>
+                          : <span>libera em {fmtDia(v.mpQuando)}</span>}
+                        {v.mpAlerta.filter((a) => !a.includes("devolvido")).map((a, k) => <div key={k} className="text-destructive whitespace-normal max-w-[150px]">{a}</div>)}
+                      </td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         {v.bling ? <>pedido {v.bling}<br />{v.nf ? `nota ${v.nf}` : <span className="text-muted-foreground">sem nota</span>}</> : <span className="text-destructive">não achei</span>}
                       </td>
