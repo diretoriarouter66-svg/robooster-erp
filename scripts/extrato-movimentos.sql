@@ -56,3 +56,19 @@ do $$ begin
 end $$;
 grant select on public.extrato_regras to authenticated;
 grant all on public.extrato_regras to service_role;
+
+-- 02/10/2026 — tela de conciliação: quem pode editar o Financeiro confirma/corrige categorias e ensina regras.
+do $$ begin
+  if not exists (select 1 from pg_policy where polname='extrato_movimentos_upd') then
+    create policy extrato_movimentos_upd on public.extrato_movimentos for update using (pode('financeiro','editar')) with check (pode('financeiro','editar'));
+  end if;
+  if not exists (select 1 from pg_policy where polname='extrato_regras_ins') then
+    create policy extrato_regras_ins on public.extrato_regras for insert with check (pode('financeiro','editar'));
+  end if;
+  if not exists (select 1 from pg_policy where polname='extrato_regras_del') then
+    create policy extrato_regras_del on public.extrato_regras for delete using (pode('financeiro','editar'));
+  end if;
+end $$;
+grant update on public.extrato_movimentos to authenticated;
+grant insert, delete on public.extrato_regras to authenticated;
+grant usage, select on sequence public.extrato_regras_id_seq to authenticated;

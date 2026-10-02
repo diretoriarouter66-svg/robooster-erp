@@ -71,10 +71,11 @@ while ini <= hoje:
             cols = dict(id="paypal:" + i.get("transaction_id", ""), fonte="paypal", conta=CONTA, data=i.get("transaction_initiation_date"), tipo=tipo, descricao=desc[:240],
                         valor=round(bruto + taxa, 2), bruto=bruto if tipo == "venda" else None, taxa=taxa if taxa else None, moeda=moeda,
                         referencia=i.get("invoice_id") or i.get("custom_field") or i.get("paypal_reference_id"), contraparte=nome,
-                        saldo_apos=float(saldo) if saldo not in (None, "") else None, codigo_origem=cod + " " + (i.get("transaction_status") or ""), bruto_json=x)
+                        saldo_apos=float(saldo) if saldo not in (None, "") else None, codigo_origem=cod + " " + (i.get("transaction_status") or ""), bruto_json=x,
+                        categoria={"venda": "Venda pelo site (PayPal)", "saque": "Saque do PayPal para o banco", "estorno": "Estorno de venda (PayPal)", "taxa": "Taxa do PayPal"}.get(tipo))
             ks = list(cols)
             sql(f"insert into extrato_movimentos ({', '.join(ks)}) values ({', '.join(lit(cols[k]) for k in ks)}) on conflict (id) do update set "
-                + ", ".join(f"{k}=excluded.{k}" for k in ks if k != "id") + ", updated_date=now();")
+                + ", ".join(f"{k}=excluded.{k}" for k in ks if k not in ("id", "categoria")) + ", categoria=coalesce(extrato_movimentos.categoria, excluded.categoria), updated_date=now();")
             n += 1
         if pag >= int(d.get("total_pages") or 0): break
         pag += 1
