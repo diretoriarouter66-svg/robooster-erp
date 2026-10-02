@@ -124,7 +124,7 @@ for emp in CONTAS:
         pedidos += o.get("results", [])
         off += 50
         if off >= (o.get("paging") or {}).get("total", 0): break
-    log("ML", emp, me.get("nickname"), "pedidos desde", desde + ":", len(pedidos))
+    log("ML", emp, me.get("nickname"), "pedidos desde", desde + ":", len(pedidos), "| conexão:", ml_ro.ORIGEM.get(emp))
     for x in pedidos:
         oid = str(x["id"]); sh_id = (x.get("shipping") or {}).get("id")
         frete_v = frete_c = None; logistica = None

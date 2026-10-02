@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import PageHeader from "../components/shared/PageHeader";
 import StatCard from "../components/shared/StatCard";
 import EmptyState from "../components/shared/EmptyState";
+import MLContas from "../components/pricing/MLContas";
 
 // 02/10/2026 — Mercado Livre no ERP em MODO DE TESTE (virada só em jan/2027).
 // A rotina erp-ml-pedidos.py lê as duas contas e grava em ml_pedidos; esta tela só mostra.
@@ -78,6 +79,8 @@ export default function MLPedidos() {
         <p className="font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-warning" /> Tela de conferência. Nada aqui é oficial ainda.</p>
         <p className="text-muted-foreground mt-1">Até a virada de janeiro, quem recebe o pedido e emite a nota é o Bling. O ERP só lê o Mercado Livre e mostra o que faria: estes pedidos não viram pedido de venda, não mexem no estoque e não emitem nota.</p>
       </div>
+
+      <MLContas />
 
       {pedidos.length === 0 ? (
         <EmptyState icon={ShoppingBag} title="Nenhum pedido lido ainda" description="A rotina de leitura do Mercado Livre roda algumas vezes por dia." />

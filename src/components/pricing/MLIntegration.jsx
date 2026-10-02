@@ -29,7 +29,9 @@ const chamarML = async (payload) => {
 const formatBRL = (v) => v == null ? "—" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
 export default function MLIntegration() {
-  const [status, setStatus] = useState({ carregando: true, connected: false, nickname: null, reason: null });
+  const [status, setStatus] = useState({ carregando: true, connected: false, nickname: null, reason: null, contas: [] });
+  // 02/10/2026: o ERP pode ter mais de uma conta do ML conectada; o envio de preços vale para UMA conta por vez.
+  const [contaSync, setContaSync] = useState(null);
   const [busy, setBusy] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [preview, setPreview] = useState(null);
@@ -39,7 +41,9 @@ export default function MLIntegration() {
 
   const checar = useCallback(async () => {
     const { data } = await chamarML({ acao: "check" });
-    setStatus({ carregando: false, connected: !!data.connected, nickname: data.nickname, reason: data.reason });
+    const contas = data.contas || [];
+    setStatus({ carregando: false, connected: !!data.connected, nickname: data.nickname, reason: data.reason, contas });
+    setContaSync((atual) => (contas.some((c) => c.ml_user_id === atual) ? atual : contas[0]?.ml_user_id || null));
   }, []);
 
   useEffect(() => { checar(); }, [checar]);
@@ -59,9 +63,10 @@ export default function MLIntegration() {
   };
 
   const desconectar = async () => {
-    if (!confirm("Desconectar a conta do Mercado Livre?")) return;
+    const nome = status.contas.find((c) => c.ml_user_id === contaSync)?.nickname || "do Mercado Livre";
+    if (!confirm(`Desconectar a conta ${nome}?`)) return;
     setBusy(true);
-    await chamarML({ acao: "disconnect" });
+    await chamarML({ acao: "disconnect", ...(contaSync ? { ml_user_id: contaSync } : {}) });
     setBusy(false);
     checar();
   };
@@ -71,7 +76,7 @@ export default function MLIntegration() {
     setResultado(null);
     setPreview(null);
     setPreviewLoading(true);
-    const { ok, status: st, data } = await chamarML({ acao: "sync", dry_run: true });
+    const { ok, status: st, data } = await chamarML({ acao: "sync", dry_run: true, ml_user_id: contaSync });
     setPreviewLoading(false);
     if (!ok) {
       if (st === 401) { alert("Conexão com o ML expirou — conecte de novo."); setModalOpen(false); checar(); return; }
@@ -86,11 +91,11 @@ export default function MLIntegration() {
     const alvo = onlySkus ? `o SKU ${onlySkus[0]}` : `${preview?.aMudar ?? "?"} anúncios`;
     if (!confirm(`Enviar os preços para ${alvo} no Mercado Livre AGORA?\n\nIsso altera o preço público dos anúncios.`)) return;
     setSending(true);
-    const { ok, data } = await chamarML({ acao: "sync", ...(onlySkus ? { only_skus: onlySkus } : {}) });
+    const { ok, data } = await chamarML({ acao: "sync", ml_user_id: contaSync, ...(onlySkus ? { only_skus: onlySkus } : {}) });
     setSending(false);
     if (!ok) { alert(data.error || "Erro no envio."); return; }
     setResultado(data);
-    const { data: pv } = await chamarML({ acao: "sync", dry_run: true });
+    const { data: pv } = await chamarML({ acao: "sync", dry_run: true, ml_user_id: contaSync });
     setPreview(pv);
   };
 
@@ -109,8 +114,13 @@ export default function MLIntegration() {
       <div className="flex items-center gap-1">
         <Button variant="outline" onClick={abrirPrevia}>
           <ShoppingCart className="w-4 h-4 mr-1" /> Sincronizar ML
-          <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-success/10 text-success">{status.nickname || "conectado"}</span>
+          <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-success/10 text-success">{status.contas.find((c) => c.ml_user_id === contaSync)?.nickname || status.nickname || "conectado"}</span>
         </Button>
+        {status.contas.length > 1 && (
+          <select value={contaSync || ""} onChange={(e) => setContaSync(e.target.value)} className="text-xs border border-border rounded-md px-1.5 py-1 bg-background" title="Conta do Mercado Livre que recebe os preços">
+            {status.contas.map((c) => <option key={c.ml_user_id} value={c.ml_user_id}>{c.nickname || c.ml_user_id}</option>)}
+          </select>
+        )}
         <button onClick={desconectar} className="text-[10px] text-muted-foreground hover:text-destructive underline px-1" title="Desconectar conta">sair</button>
       </div>
 
