@@ -182,7 +182,9 @@ for sku, total, partes in novos:
     notas = f"Importado do Bling em {HOJE} ({' + '.join(NOME[e] + ' ' + p['sku'] for e, p in partes.items())})."
     if not det["ncm"]: notas += " CADASTRO INCOMPLETO: falta o NCM — não emite nota fiscal até completar."
     pid = secrets.token_hex(12)
-    pais = "Brasil" if det["origem"] in (0, "0") else "Exterior"
+    # Ordem do Mauricio (02/10/2026): tudo que vem do Bling é IMPORTADO, mesmo que o cadastro de lá diga "nacional".
+    # O valor original do Bling fica guardado em codigos_origem.icms_origem só como registro.
+    pais = "Exterior"
     stmts.append(
         "insert into products (id, sku, name, ncm, origin_country, unit, weight_kg, width_cm, height_cm, length_cm, custo_manual_brl, stock_quantity, "
         "image_url, barcode, brand, status, notes, codigos_origem, created_date, updated_date, created_by) values ("
