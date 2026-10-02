@@ -12,6 +12,7 @@ import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import StatCard from "../components/shared/StatCard";
 import EmptyState from "../components/shared/EmptyState";
+import { saldoConta as calcSaldoConta, saldoAntesDe, dataBR } from "@/lib/saldoConta";
 
 export default function Financial() {
   const [entries, setEntries] = useState([]);
@@ -37,7 +38,8 @@ export default function Financial() {
   const extratoLinhas = (c, mes) => {
     const movs = entries.filter(e => e.account_id === c.id && e.status === "paid").map(e => ({ ...e, _d: dataMov(e), _v: (e.type === "receivable" ? 1 : -1) * (parseFloat(e.amount) || 0) })).sort((a, b) => a._d.localeCompare(b._d) || String(a.id).localeCompare(String(b.id)));
     const ini = mes === "todos" ? "" : mes + "-01";
-    let saldo = (parseFloat(c.saldo_inicial) || 0) + movs.filter(m => ini && m._d < ini).reduce((t, m) => t + m._v, 0);
+    // abertura do mês: a partir do saldo conferido com o banco (quando há extrato lido); sem extrato, soma desde o início
+    let saldo = ini ? saldoAntesDe(c, entries, ini) : (c.saldo_conferido != null && c.saldo_conferido_em ? saldoAntesDe(c, entries, "0000-00-00") : (parseFloat(c.saldo_inicial) || 0));
     const saldoAbertura = saldo;
     const doMes = movs.filter(m => !ini || m._d.slice(0, 7) === mes).map(m => { saldo = Math.round((saldo + m._v) * 100) / 100; return { ...m, _saldo: saldo }; });
     return { saldoAbertura, linhas: doMes, saldoFinal: saldo, entradas: doMes.filter(m => m._v > 0).reduce((t, m) => t + m._v, 0), saidas: doMes.filter(m => m._v < 0).reduce((t, m) => t - m._v, 0) };
@@ -138,12 +140,7 @@ export default function Financial() {
     await base44.entities.CashAccount.delete(c.id);
     loadData();
   };
-  const saldoConta = (c) => {
-    const pagos = entries.filter(e => e.account_id === c.id && e.status === "paid");
-    const entrou = pagos.filter(e => e.type === "receivable").reduce((t, e) => t + (e.amount || 0), 0);
-    const saiu = pagos.filter(e => e.type === "payable").reduce((t, e) => t + (e.amount || 0), 0);
-    return (parseFloat(c.saldo_inicial) || 0) + entrou - saiu;
-  };
+  const saldoConta = (c) => calcSaldoConta(c, entries).saldo;
 
   const openNew = (type) => {
     setEditing(null);
@@ -341,10 +338,14 @@ export default function Financial() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {contas.filter(c => c.ativo !== false).map(c => {
               const s = saldoConta(c);
+              const info = calcSaldoConta(c, entries);
               return (
                 <div key={c.id} className="rounded-lg border border-border p-3 cursor-pointer hover:border-primary hover:bg-muted/20 transition-colors" onClick={() => { setExtMes(new Date().toISOString().slice(0, 7)); setExtratoConta(c); }} title="Ver extrato">
                   <p className="text-xs text-muted-foreground">{c.nome}</p>
                   <p className={`font-semibold ${s < 0 ? "text-destructive" : ""}`}>{formatCurrency(s)}</p>
+                  {info.conferido
+                    ? <p className="text-[10px] text-success" title={`Saldo informado pelo banco em ${dataBR(info.conferidoEm)}: ${formatCurrency(info.saldoConferido)}; depois disso, ${info.nDepois} lançamento(s) pago(s) no ERP (${formatCurrency(info.movimentoDepois)})`}>conferido com o banco em {dataBR(info.conferidoEm)}</p>
+                    : <p className="text-[10px] text-muted-foreground">sem extrato do banco lido</p>}
                 </div>
               );
             })}
@@ -576,7 +577,7 @@ export default function Financial() {
                 <Button size="sm" variant="outline" onClick={() => exportarExtrato(c, extMes)}>Exportar extrato (CSV)</Button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
-                <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saldo anterior</p><p className="font-semibold">{formatCurrency(ex.saldoAbertura)}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saldo anterior</p><p className="font-semibold">{formatCurrency(ex.saldoAbertura)}</p>{c.saldo_conferido_em && <p className="text-[10px] text-muted-foreground">a partir do saldo do banco em {dataBR(c.saldo_conferido_em)}</p>}</div>
                 <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Entradas</p><p className="font-semibold text-success">{formatCurrency(ex.entradas)}</p></div>
                 <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saídas</p><p className="font-semibold text-destructive">{formatCurrency(ex.saidas)}</p></div>
                 <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saldo final</p><p className={`font-semibold ${ex.saldoFinal < 0 ? "text-destructive" : ""}`}>{formatCurrency(ex.saldoFinal)}</p></div>

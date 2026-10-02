@@ -13,7 +13,11 @@ import EmptyState from "../components/shared/EmptyState";
 // categoria de cada lançamento e ensina a regra ("lembrar para os próximos").
 const brl = (v) => (parseFloat(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const num = (v) => parseFloat(v) || 0;
-const dia = (d) => (d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" }) : "—");
+const dia = (d) => {
+  if (!d) return "—";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(d))) return String(d).slice(8, 10) + "/" + String(d).slice(5, 7); // data sem hora: não converter fuso
+  return new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" });
+};
 const mesDe = (d) => new Date(d).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
 // Na fatura do cartão o que importa é a fatura (vencimento), não o mês de cada compra.
 const periodoDe = (m) => (m.fonte === "cartao" ? m.referencia || "fatura" : mesDe(m.data));
@@ -25,6 +29,8 @@ const chaveDe = (m) => m.referencia && /\d{2,3}\.\d{3}\.\d{3}/.test(m.referencia
 
 export default function Conciliacao() {
   const [movs, setMovs] = useState([]);
+  const [lancamentos, setLancamentos] = useState([]); // Financeiro, para apontar o que o ERP diz ter pago e o banco não mostra
+  const [contasCaixa, setContasCaixa] = useState([]);
   const [loading, setLoading] = useState(true);
   const [conta, setConta] = useState("");
   const [periodo, setPeriodo] = useState("");
@@ -35,8 +41,12 @@ export default function Conciliacao() {
   const [erro, setErro] = useState("");
 
   const carregar = async () => {
-    const m = await base44.entities.ExtratoMovimento.list("-data", 5000);
-    setMovs(m || []);
+    const [m, f, cx] = await Promise.all([
+      base44.entities.ExtratoMovimento.list("-data", 5000),
+      base44.entities.FinancialEntry.list("-created_date", 10000).catch(() => []),
+      base44.entities.CashAccount.list("nome", 50).catch(() => []),
+    ]);
+    setMovs(m || []); setLancamentos(f || []); setContasCaixa(cx || []);
     return m || [];
   };
   useEffect(() => {
@@ -56,6 +66,22 @@ export default function Conciliacao() {
 
   const doPeriodo = useMemo(() => movs.filter((m) => m.conta === conta && periodoDe(m) === periodo), [movs, conta, periodo]);
   const ehCartao = doPeriodo.some((m) => m.fonte === "cartao");
+  const ehBanco = doPeriodo.some((m) => m.fonte === "banco");
+  // saldo no banco no período, pelo próprio extrato (saldo após cada lançamento, ancorado no saldo informado pelo banco)
+  const saldoBanco = useMemo(() => {
+    const comSaldo = doPeriodo.filter((m) => m.fonte === "banco" && m.saldo_apos != null).sort((a, b) => String(a.data).localeCompare(String(b.data)) || a.id.localeCompare(b.id));
+    if (!comSaldo.length) return null;
+    const ini = comSaldo[0], fim = comSaldo[comSaldo.length - 1];
+    return { abertura: num(ini.saldo_apos) - num(ini.valor), fechamento: num(fim.saldo_apos), de: ini.data, ate: fim.data };
+  }, [doPeriodo]);
+  // lançamentos do ERP pagos por esta conta no período que NÃO estão no extrato (conta errada, data errada ou pagamento que não saiu daqui)
+  const foraDoExtrato = useMemo(() => {
+    if (!ehBanco || !/^\d{4}-\d{2}$/.test(periodo)) return [];
+    const cx = contasCaixa.find((c) => conta.toLowerCase().startsWith(String(c.nome || "").toLowerCase()));
+    if (!cx) return [];
+    const ligados = new Set(movs.map((m) => m.financeiro_id).filter(Boolean));
+    return lancamentos.filter((e) => e.account_id === cx.id && e.status === "paid" && e.reference_type !== "extrato" && String(e.payment_date || "").startsWith(periodo) && !ligados.has(e.id));
+  }, [ehBanco, periodo, conta, contasCaixa, lancamentos, movs]);
   const entradas = doPeriodo.filter((m) => !ehTransferencia(m) && num(m.valor) > 0);
   const saidas = doPeriodo.filter((m) => !ehTransferencia(m) && num(m.valor) < 0);
   const transf = doPeriodo.filter(ehTransferencia);
@@ -174,6 +200,27 @@ export default function Conciliacao() {
               : <StatCard icon={ArrowLeftRight} label={`Transferências entre contas (${transf.length})`} value={brl(soma(transf))} subtitle="aplicação, resgate, fatura do cartão, saques: não são receita nem despesa" />}
             <StatCard icon={HelpCircle} label="Para você olhar" value={semCategoria.length + aConfirmar.length} color={semCategoria.length ? "destructive" : aConfirmar.length ? "warning" : "success"} subtitle={`${semCategoria.length} sem categoria · ${aConfirmar.length} com categoria sugerida`} />
           </div>
+
+          {ehBanco && (saldoBanco || foraDoExtrato.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+              {saldoBanco && (
+                <div className="bg-card rounded-xl border border-border p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-1">Saldo no banco, pelo extrato</h3>
+                  <p className="text-sm">{dia(saldoBanco.de)}: <span className="font-semibold">{brl(saldoBanco.abertura)}</span> → {dia(saldoBanco.ate)}: <span className="font-semibold">{brl(saldoBanco.fechamento)}</span></p>
+                  <p className="text-[11px] text-muted-foreground mt-1">É o saldo que o próprio banco informou no arquivo, recontado lançamento a lançamento. A conta no Financeiro parte desse número.</p>
+                </div>
+              )}
+              {foraDoExtrato.length > 0 && (
+                <div className="bg-card rounded-xl border border-warning/40 p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-1 text-warning">O ERP diz que pagou por esta conta, mas o extrato não mostra ({foraDoExtrato.length})</h3>
+                  <ul className="text-xs space-y-0.5">
+                    {foraDoExtrato.map((e) => <li key={e.id} className="flex justify-between gap-3"><span className="truncate">{dia(e.payment_date)} · {e.description}</span><span className="whitespace-nowrap font-medium">{e.type === "receivable" ? "" : "−"}{brl(e.amount)}</span></li>)}
+                  </ul>
+                  <p className="text-[11px] text-muted-foreground mt-2">Lançados à mão no Financeiro como pagos pelo {conta.split(" ")[0]} neste mês. Ou saíram de outra conta, ou a data está errada, ou não aconteceram: vale abrir cada um no Financeiro e acertar.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className={`grid grid-cols-1 ${ehCartao ? "lg:grid-cols-2" : "lg:grid-cols-3"} gap-3 mb-6`}>
             <Quadro titulo={ehCartao ? "Estornos e créditos por categoria" : "Entradas por categoria"} lista={entradas} cor="text-success" />

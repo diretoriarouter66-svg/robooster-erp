@@ -82,7 +82,17 @@ if arq.lower().endswith(".ofx"):
         gravar(dict(id=f"banco:{conta_id}:{g('FITID', b)}", fonte="banco", conta=conta, data=f"{d[:4]}-{d[4:6]}-{d[6:8]}T12:00:00-03:00", tipo=tipo, descricao=memo[:240],
                     valor=valor, moeda=g("CURDEF", raw) or "BRL", referencia=doc.group(1) if doc else None, categoria=cat, categoria_confirmada=ok, codigo_origem=g("TRNTYPE", b), arquivo=nome_arq,
                     bruto_json={"memo": memo, "fitid": g("FITID", b)}))
-    print(f"{conta}: {n} movimentos | saldo final informado R$ {g('BALAMT', raw)} em {g('DTASOF', raw)[:8]}")
+    # saldo informado pelo banco (LEDGERBAL) ancora a conta do ERP; e preenche o saldo após cada lançamento, de trás para frente
+    bal, dtasof = g("BALAMT", raw), g("DTASOF", raw)[:8]
+    if bal and len(dtasof) == 8:
+        d_as = f"{dtasof[:4]}-{dtasof[4:6]}-{dtasof[6:8]}"
+        sql(f"insert into extrato_saldos (conta, data, saldo, arquivo) values ({lit(conta)}, '{d_as}', {float(bal)!r}, {lit(nome_arq)}) "
+            f"on conflict (conta, data) do update set saldo=excluded.saldo, arquivo=excluded.arquivo;")
+        sql(f"""with o as (select id, valor, row_number() over (order by data desc, id desc) rn from extrato_movimentos
+                           where fonte='banco' and id like {lit('banco:' + conta_id + ':%')} and (data at time zone 'America/Sao_Paulo')::date <= '{d_as}'),
+                     s as (select id, {float(bal)!r} - coalesce(sum(valor) over (order by rn rows between unbounded preceding and 1 preceding), 0) as saldo from o)
+                update extrato_movimentos e set saldo_apos = round(s.saldo::numeric, 2), updated_date = now() from s where s.id = e.id and e.saldo_apos is distinct from round(s.saldo::numeric, 2);""")
+    print(f"{conta}: {n} movimentos | saldo informado pelo banco R$ {bal} em {dtasof}")
 elif arq.lower().endswith(".xlsx"):
     import openpyxl, warnings; warnings.simplefilter("ignore")
     ws = openpyxl.load_workbook(arq, data_only=True).active

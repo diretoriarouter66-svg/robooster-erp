@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import PageHeader from "../components/shared/PageHeader";
 import EmptyState from "../components/shared/EmptyState";
 import { getCustoVigente, formatBRL } from "@/lib/pricingCalc";
+import { saldoConta } from "@/lib/saldoConta";
 
 // Patrimônio & Valor da Empresa — o "suprassumo":
 // (1) cadastro de ativos físicos com depreciação linear (taxas da Receita);
@@ -108,12 +109,8 @@ export default function Patrimonio() {
 
     // Caixa e bancos pelo Financeiro: saldo inicial + recebidos − pagos, por conta (mesma conta do
     // "Saldos por conta"). Só lançamentos PAGOS com conta apontada.
-    const contas = contasCaixa.filter(c => c.ativo !== false).map(c => {
-      const pagos = entries.filter(e => e.account_id === c.id && e.status === "paid");
-      const entrou = pagos.filter(e => e.type === "receivable").reduce((s, e) => s + num(e.amount), 0);
-      const saiu = pagos.filter(e => e.type === "payable").reduce((s, e) => s + num(e.amount), 0);
-      return { nome: c.nome, saldo: num(c.saldo_inicial) + entrou - saiu };
-    });
+    // (02/10/2026) com extrato do banco lido, parte do saldo conferido com o banco — ver lib/saldoConta.js
+    const contas = contasCaixa.filter(c => c.ativo !== false).map(c => ({ nome: c.nome, saldo: saldoConta(c, entries).saldo }));
     const caixaContas = contas.reduce((s, c) => s + c.saldo, 0);
     const pagosSemConta = entries.filter(e => !e.account_id && e.status === "paid").length;
 
