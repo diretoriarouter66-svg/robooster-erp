@@ -69,9 +69,11 @@ if "--kits" in args:
 
 # ------------------------------------------------------------------ mapa SKU do anúncio -> produto do ERP
 prod = {"router": {}, "saber": {}, "sku": {}}
-for l in sql("select id, sku, coalesce(codigos_origem::text,'') from products;").split("\n"):
+sem_ncm = set()
+for l in sql("select id, sku, coalesce(codigos_origem::text,''), coalesce(ncm,'') from products;").split("\n"):
     if not l.strip(): continue
-    pid, sku, o = (l.split("\t") + ["", ""])[:3]
+    pid, sku, o, ncm = (l.split("\t") + ["", "", ""])[:4]
+    if not ncm.strip(): sem_ncm.add(pid)
     prod["sku"][sku.lower()] = (pid, sku)
     if o:
         o = json.loads(o)
@@ -146,7 +148,9 @@ for emp in CONTAS:
             reg = {"item_id": i.get("id"), "titulo": i.get("title"), "sku_anuncio": sku, "variation_id": i.get("variation_id"), "qtd": q,
                    "preco": float(it.get("unit_price") or 0), "taxa": float(it.get("sale_fee") or 0), "product_id": None, "product_sku": None, "kit": False}
             m = casar(emp, sku)
-            if m: reg["product_id"], reg["product_sku"] = m
+            if m:
+                reg["product_id"], reg["product_sku"] = m
+                if m[0] in sem_ncm: pend.append(f"produto {m[1]} sem NCM no cadastro (não emite nota)")
             elif (emp, sku.lower()) in kits:
                 reg["kit"] = True; reg["componentes"] = []
                 for c in kits[(emp, sku.lower())]:

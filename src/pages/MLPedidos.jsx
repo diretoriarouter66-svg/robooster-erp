@@ -41,7 +41,7 @@ export default function MLPedidos() {
       if (mes && String(p.data_pedido || "").slice(0, 7) !== mes) continue;
       if (conta !== "todas" && p.conta !== conta) continue;
       const k = p.shipment_id || p.id;
-      if (!m.has(k)) m.set(k, { chave: k, conta: p.conta, data: p.data_pedido, status: p.status, itens: [], total: 0, taxa: 0, freteVend: 0, freteComp: 0, liquido: 0, pend: new Set(), bling: p.bling_numero, blingTotal: num(p.bling_total), nf: p.bling_nf_numero, logistica: p.logistica, pedidosML: [] });
+      if (!m.has(k)) m.set(k, { chave: k, conta: p.conta, data: p.data_pedido, status: p.status, itens: [], total: 0, taxa: 0, freteVend: 0, freteComp: 0, liquido: 0, pend: new Set(), bling: p.bling_numero, blingTotal: num(p.bling_total), nf: p.bling_nf_numero, logistica: p.logistica, pedidosML: [], teste: p.nfe_teste_status, testeNumero: p.nfe_teste_numero, testeMsg: p.nfe_teste_mensagem, comp: p.nfe_comparacao });
       const v = m.get(k);
       v.pedidosML.push(p.id);
       v.total += num(p.total); v.taxa += num(p.taxa_ml); v.freteVend += num(p.frete_vendedor); v.freteComp += num(p.frete_comprador); v.liquido += num(p.liquido);
@@ -49,6 +49,7 @@ export default function MLPedidos() {
       String(p.pendencias || "").split(";").map((s) => s.trim()).filter(Boolean).forEach((s) => v.pend.add(s));
       if (p.status === "cancelled") v.status = "cancelled";
       v.nf = v.nf || p.bling_nf_numero; v.bling = v.bling || p.bling_numero; v.blingTotal = v.blingTotal || num(p.bling_total);
+      v.teste = v.teste || p.nfe_teste_status; v.testeNumero = v.testeNumero || p.nfe_teste_numero; v.comp = v.comp || p.nfe_comparacao;
     }
     let lista = Array.from(m.values()).map((v) => ({ ...v, pend: Array.from(v.pend) }));
     if (situacao === "pendencia") lista = lista.filter((v) => v.pend.length > 0);
@@ -62,6 +63,8 @@ export default function MLPedidos() {
   const comNota = pagas.filter((v) => v.nf).length;
   const difValor = pagas.filter((v) => v.blingTotal && Math.abs(v.total + v.freteComp - v.blingTotal) > 0.02).length;
   const prontas = pagas.filter((v) => v.pend.length === 0).length;
+  const testadas = pagas.filter((v) => v.teste === "autorizado").length;
+  const iguais = pagas.filter((v) => v.comp?.iguais).length;
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" /></div>;
@@ -118,6 +121,7 @@ export default function MLPedidos() {
             <span><strong>{prontas}</strong> de {pagas.length} vendas prontas para virar pedido e nota</span>
             <span><strong>{comNota}</strong> de {pagas.length} com nota emitida no Bling</span>
             <span className={difValor ? "text-destructive" : ""}><strong>{difValor}</strong> com valor diferente do Bling</span>
+            <span><strong>{testadas}</strong> notas de teste autorizadas pela SEFAZ (sem valor fiscal), <strong>{iguais}</strong> iguais à nota do Bling</span>
           </div>
 
           <div className="bg-card rounded-xl border border-border overflow-hidden">
@@ -132,10 +136,11 @@ export default function MLPedidos() {
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Frete</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Líquido</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Bling</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nota de teste</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Situação no ERP</th>
                 </tr></thead>
                 <tbody>
-                  {vendas.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Nenhuma venda nesta visão.</td></tr>}
+                  {vendas.length === 0 && <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">Nenhuma venda nesta visão.</td></tr>}
                   {vendas.map((v) => (
                     <tr key={v.chave} className={`border-b border-border last:border-0 align-top ${v.status === "cancelled" ? "opacity-60" : ""}`}>
                       <td className="px-4 py-3 whitespace-nowrap">{fmtDia(v.data)}</td>
@@ -155,6 +160,16 @@ export default function MLPedidos() {
                       <td className="px-4 py-3 text-right whitespace-nowrap font-medium">{formatCurrency(v.liquido)}</td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         {v.bling ? <>pedido {v.bling}<br />{v.nf ? `nota ${v.nf}` : <span className="text-muted-foreground">sem nota</span>}</> : <span className="text-destructive">não achei</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {v.teste === "autorizado" ? (
+                          <>
+                            <span className="text-success">autorizada{v.testeNumero ? ` nº ${v.testeNumero}` : ""}</span><br />
+                            {v.comp?.iguais ? <span className="text-muted-foreground">igual à do Bling</span>
+                              : v.comp?.diferencas?.length ? <span className="text-warning" title={v.comp.diferencas.join("\n")}>{v.comp.diferencas.length} diferença{v.comp.diferencas.length === 1 ? "" : "s"} do Bling</span>
+                              : <span className="text-muted-foreground">sem nota do Bling para comparar</span>}
+                          </>
+                        ) : v.teste ? <span className="text-muted-foreground">{v.teste === "nao_enviada" ? "não enviada" : v.teste}</span> : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-3 text-xs">
                         {v.status === "cancelled" ? <span className="text-muted-foreground">Cancelada no Mercado Livre</span>
