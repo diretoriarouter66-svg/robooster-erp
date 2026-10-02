@@ -72,6 +72,7 @@ export default function Conciliacao() {
   // Par do lançamento em outra conta (saque do PayPal/Mercado Pago ↔ entrada no banco), gravado pela rotina de casamento.
   const porId = useMemo(() => new Map(movs.map((m) => [m.id, m])), [movs]);
   const parDe = (m) => {
+    if (m.casado_tipo === "fatura") return { ok: true, texto: `pagamento da fatura do cartão que venceu em ${String(m.casado_com || "").slice(-10).split("-").reverse().join("/")} — lançamentos da fatura quitados no Financeiro` };
     if (m.casado_com) { const o = porId.get(m.casado_com); return { ok: true, texto: o ? `casado com ${o.conta}, ${dia(o.data)} (${brl(o.valor)})` : "casado com lançamento de outra conta" }; }
     if (m.situacao === "sem_extrato_banco") return { ok: false, texto: "falta o extrato do banco deste período para achar a entrada" };
     if (m.situacao === "sem_par") return { ok: false, texto: "saque sem entrada correspondente no banco" };

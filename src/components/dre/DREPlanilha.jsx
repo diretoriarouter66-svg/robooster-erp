@@ -29,6 +29,7 @@ const num = (v) => parseFloat(v) || 0;
 const fmt = (v) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 const mesSP = (d) => (d ? new Date(d).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7) : "");
 const zeros = () => Array(12).fill(0);
+const mesAnterior = (ym) => { if (!/^\d{4}-\d{2}$/.test(ym)) return ""; const [a, m] = ym.split("-").map(Number); return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, "0")}`; };
 
 export default function DREPlanilha({ config, onVoltar }) {
   const hoje = new Date().toISOString().slice(0, 7);
@@ -77,6 +78,7 @@ export default function DREPlanilha({ config, onVoltar }) {
     const add = (k, i, v) => { if (!v) return; (L[k] = L[k] || zeros())[i] += v; };
     let itensSemCusto = 0;
     const temExtrato = Array(12).fill(false);
+    const temCartao = Array(12).fill(false);
 
     for (let i = 0; i < 12; i++) {
       const mes = `${ano}-${String(i + 1).padStart(2, "0")}`;
@@ -137,6 +139,14 @@ export default function DREPlanilha({ config, onVoltar }) {
       // ---- Financeiro: lançamentos pagos no mês, pela categoria
       for (const e of entries) {
         if (e.status === "cancelled") continue;
+        // FATURA DO CARTÃO: conta por competência — a fatura que vence num mês traz as compras do mês anterior.
+        // Entra mesmo antes de ser paga (fatura fechada é despesa certa); estorno maior que compra entra negativo.
+        if (e.reference_type === "extrato" && (e.reference_id || "").startsWith("fatura:")) {
+          if (mesAnterior((e.due_date || "").slice(0, 7)) !== mes) continue;
+          const c = cat[e.category];
+          if (c?.dre_grupo) { add(`cat:${c.slug}`, i, e.type === "payable" ? num(e.amount) : -num(e.amount)); temCartao[i] = true; }
+          continue;
+        }
         const quando = e.payment_date || e.due_date || "";
         if (!quando.startsWith(mes)) continue;
         if (e.category === "servicos_os" && e.type === "receivable") { add("servicos", i, num(e.amount)); semCarimbo += simples ? num(e.amount) : 0; continue; }
@@ -159,7 +169,7 @@ export default function DREPlanilha({ config, onVoltar }) {
     const v = (k) => L[k] || zeros();
     const soma = (...ks) => zeros().map((_, i) => ks.reduce((s, k) => s + (Array.isArray(k) ? k[i] : v(k)[i]), 0));
     const menos = (a, b) => a.map((x, i) => x - b[i]);
-    const catsDoGrupo = (g) => categorias.filter((c) => c.dre_grupo === g && L[`cat:${c.slug}`]).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    const catsDoGrupo = (g) => categorias.filter((c) => c.dre_grupo === g && (L[`cat:${c.slug}`] || []).some((x) => Math.abs(x) >= 0.005)).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
     const linhasCat = (g) => catsDoGrupo(g).map((c) => ({ label: c.nome, vals: v(`cat:${c.slug}`) }));
     const somaGrupo = (g) => soma(...catsDoGrupo(g).map((c) => `cat:${c.slug}`));
 
@@ -210,7 +220,7 @@ export default function DREPlanilha({ config, onVoltar }) {
     push("resultado final", "(=) Resultado Líquido", liquido, 0);
 
     const informativo = linhasCat("informativo");
-    return { linhas: R, informativo, itensSemCusto, temExtrato, usaConfig: !!L.fixas_config };
+    return { linhas: R, informativo, itensSemCusto, temExtrato, temCartao, usaConfig: !!L.fixas_config };
   }, [dados, ano, contaML, config]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!dre) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
@@ -257,7 +267,7 @@ export default function DREPlanilha({ config, onVoltar }) {
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left px-3 py-2.5 font-medium text-muted-foreground sticky left-0 bg-muted min-w-[240px]">{ano}</th>
                 {MESES.map((m, i) => (
-                  <th key={m} onClick={() => setMesSel(i)} title={dre.temExtrato[i] ? "Despesas deste mês vêm do extrato do banco" : "Mês sem extrato do banco lançado"}
+                  <th key={m} onClick={() => setMesSel(i)} title={`${dre.temExtrato[i] ? "Despesas deste mês vêm do extrato do banco" : "Mês sem extrato do banco lançado"}${dre.temCartao[i] ? " · fatura do cartão lançada" : ""}`}
                     className={`px-1.5 py-2.5 text-right font-medium cursor-pointer select-none min-w-[70px] ${i === mesSel ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}>
                     {m}{dre.temExtrato[i] ? " •" : ""}
                   </th>
@@ -292,7 +302,8 @@ export default function DREPlanilha({ config, onVoltar }) {
 
       <div className="mt-3 space-y-1 text-[11px] text-muted-foreground max-w-4xl">
         <p>• Mês com ponto (•) no cabeçalho: despesas pagas de verdade, lançadas pelo extrato do banco. {dre.usaConfig && "Mês já corrido sem extrato usa a lista de despesas fixas da Configuração como estimativa."}</p>
-        <p>• Despesas pagas no cartão de crédito ainda não entram. Vendas do Mercado Livre são as pagas na conta; devolvida inteira sai da receita, da comissão e do custo.</p>
+        <p>• Cartão de crédito: a fatura entra no mês anterior ao vencimento (a que vence em outubro são as compras de setembro), por categoria, já descontados os estornos. Mês sem fatura lançada fica sem as despesas do cartão.</p>
+        <p>• Vendas do Mercado Livre são as pagas na conta; devolvida inteira sai da receita, da comissão e do custo.</p>
         {dre.itensSemCusto > 0 && <p className="text-warning">⚠️ {dre.itensSemCusto} item(ns) vendidos sem custo cadastrado no ano — o custo real é maior e o resultado, menor.</p>}
         {(config?.rbt12 || 0) <= 0 && (config?.regime || "simples") === "simples" && <p className="text-warning">⚠️ RBT12 zerado na Configuração — Simples calculado pela 1ª faixa (4%).</p>}
       </div>
