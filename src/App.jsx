@@ -39,6 +39,7 @@ import EstoqueCaixa from './pages/EstoqueCaixa';
 import MLCallback from './pages/MLCallback';
 import Patrimonio from './pages/Patrimonio';
 import Sites from './pages/Sites';
+import MLPedidos from './pages/MLPedidos';
 import RequireModulo from '@/components/RequireModulo';
 
 const AuthenticatedApp = () => {
@@ -97,6 +98,7 @@ const AuthenticatedApp = () => {
           <Route path="/import-fechamento/:opId" element={<RequireModulo modulo="importacao"><ImportFechamento /></RequireModulo>} />
           <Route path="/dre" element={<RequireModulo modulo="financeiro"><DRE /></RequireModulo>} />
           <Route path="/sites" element={<RequireModulo modulo="comercial"><Sites /></RequireModulo>} />
+          <Route path="/ml-pedidos" element={<RequireModulo modulo="comercial"><MLPedidos /></RequireModulo>} />
           <Route path="/breakeven" element={<RequireModulo modulo="financeiro"><Breakeven /></RequireModulo>} />
           <Route path="/container" element={<RequireModulo modulo="importacao"><ContainerPage /></RequireModulo>} />
           <Route path="/config-tributaria" element={<RequireModulo modulo="config"><ConfigTributaria /></RequireModulo>} />

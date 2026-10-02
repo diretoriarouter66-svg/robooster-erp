@@ -226,6 +226,11 @@ const GRUPOS = [
             </Bloco>
             <Aviso>Não troque o status para "Devolvido" ou "Cancelado" no dropdown de um pedido faturado para registrar devolução: o estoque até volta, mas sem reembolso, sem NF e sem rastro. Use o botão ↩. E lembre: reeditar um pedido faturado mudando valores recria as parcelas pendentes com vencimentos contados a partir de hoje — as pagas ficam.</Aviso>
             <p className="mt-2 text-sm text-muted-foreground">Item sem custo cadastrado = aviso amarelo no painel ("a margem real é menor"). Resolva cadastrando o custo, não ignorando o aviso.</p>
+            <Bloco titulo="Mercado Livre em modo de teste (menu Comercial → Mercado Livre (teste))">
+              <p>Desde 02/10/2026 o ERP <strong>lê</strong> os pedidos das duas contas do Mercado Livre (ROUTER 66 e SABERDAELETRÔNICA) algumas vezes por dia e mostra, para cada venda: os itens e o produto do ERP correspondente, o valor dos produtos, a <strong>taxa real</strong> cobrada, o <strong>frete pago por nós</strong>, o líquido, e o pedido e a nota que o Bling emitiu para a mesma venda. Compra com vários itens (carrinho) aparece como uma venda só.</p>
+              <p className="mt-1">A coluna "Situação no ERP" diz se a venda já poderia virar pedido e nota aqui ("Pronta") ou o que falta: produto sem cadastro, comprador sem dados fiscais.</p>
+            </Bloco>
+            <Aviso>É tela de conferência: até a virada de janeiro/2027 quem recebe o pedido e emite a nota é o Bling. Nada dessa tela vira pedido de venda, mexe no estoque ou emite nota.</Aviso>
           </>
         ),
       },

@@ -5,7 +5,7 @@ import {
   FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse,
   Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container, KeyRound, Wrench, Coins, Gem,
-  Globe } from "lucide-react";
+  Globe, ShoppingBag } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 // Módulo de cada item — precisa bater com o mapa de public.permissoes.
@@ -60,6 +60,7 @@ const menuGroups = [
   items: [
   { icon: FileText, label: "Pedidos de Compra", path: "/purchase-orders" },
   { icon: ShoppingCart, label: "Pedidos de Venda", path: "/sale-orders" },
+  { icon: ShoppingBag, label: "Mercado Livre (teste)", path: "/ml-pedidos" },
   { icon: Wrench, label: "Ordens de Serviço", path: "/ordens-servico" },
   { icon: Factory, label: "Base Instalada", path: "/base-instalada" },
   { icon: Percent, label: "Precificação", path: "/precificacao" },

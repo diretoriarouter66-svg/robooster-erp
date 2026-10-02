@@ -1,0 +1,174 @@
+import React, { useState, useEffect, useMemo } from "react";
+import { base44 } from "@/api/base44Client";
+import { ShoppingBag, AlertTriangle, CheckCircle2, Percent, Truck, DollarSign } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import PageHeader from "../components/shared/PageHeader";
+import StatCard from "../components/shared/StatCard";
+import EmptyState from "../components/shared/EmptyState";
+
+// 02/10/2026 — Mercado Livre no ERP em MODO DE TESTE (virada só em jan/2027).
+// A rotina erp-ml-pedidos.py lê as duas contas e grava em ml_pedidos; esta tela só mostra.
+// Nada aqui vira pedido de venda, movimento de estoque ou nota fiscal.
+const CONTAS = { router: "ROUTER 66", saber: "SABERDAELETRÔNICA" };
+const fmtDia = (d) => (d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—");
+const num = (v) => parseFloat(v) || 0;
+const formatCurrency = (v) => (parseFloat(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+export default function MLPedidos() {
+  const [pedidos, setPedidos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [mes, setMes] = useState("");
+  const [conta, setConta] = useState("todas");
+  const [situacao, setSituacao] = useState("todas");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const p = await base44.entities.MlPedido.list("-data_pedido", 1000);
+        setPedidos(p);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const meses = useMemo(() => Array.from(new Set(pedidos.map((x) => String(x.data_pedido || "").slice(0, 7)).filter(Boolean))).sort().reverse(), [pedidos]);
+
+  // Uma compra com vários itens (carrinho) chega do Mercado Livre como vários pedidos com um envio só: aqui vira UMA venda.
+  const vendas = useMemo(() => {
+    const m = new Map();
+    for (const p of pedidos) {
+      if (mes && String(p.data_pedido || "").slice(0, 7) !== mes) continue;
+      if (conta !== "todas" && p.conta !== conta) continue;
+      const k = p.shipment_id || p.id;
+      if (!m.has(k)) m.set(k, { chave: k, conta: p.conta, data: p.data_pedido, status: p.status, itens: [], total: 0, taxa: 0, freteVend: 0, freteComp: 0, liquido: 0, pend: new Set(), bling: p.bling_numero, blingTotal: num(p.bling_total), nf: p.bling_nf_numero, logistica: p.logistica, pedidosML: [] });
+      const v = m.get(k);
+      v.pedidosML.push(p.id);
+      v.total += num(p.total); v.taxa += num(p.taxa_ml); v.freteVend += num(p.frete_vendedor); v.freteComp += num(p.frete_comprador); v.liquido += num(p.liquido);
+      for (const i of p.itens || []) v.itens.push(i);
+      String(p.pendencias || "").split(";").map((s) => s.trim()).filter(Boolean).forEach((s) => v.pend.add(s));
+      if (p.status === "cancelled") v.status = "cancelled";
+      v.nf = v.nf || p.bling_nf_numero; v.bling = v.bling || p.bling_numero; v.blingTotal = v.blingTotal || num(p.bling_total);
+    }
+    let lista = Array.from(m.values()).map((v) => ({ ...v, pend: Array.from(v.pend) }));
+    if (situacao === "pendencia") lista = lista.filter((v) => v.pend.length > 0);
+    if (situacao === "pronta") lista = lista.filter((v) => v.pend.length === 0);
+    return lista.sort((a, b) => String(b.data).localeCompare(String(a.data)));
+  }, [pedidos, mes, conta, situacao]);
+
+  const pagas = vendas.filter((v) => v.status !== "cancelled");
+  const soma = (f) => pagas.reduce((t, v) => t + f(v), 0);
+  const total = soma((v) => v.total), taxa = soma((v) => v.taxa), frete = soma((v) => v.freteVend), liquido = soma((v) => v.liquido);
+  const comNota = pagas.filter((v) => v.nf).length;
+  const difValor = pagas.filter((v) => v.blingTotal && Math.abs(v.total + v.freteComp - v.blingTotal) > 0.02).length;
+  const prontas = pagas.filter((v) => v.pend.length === 0).length;
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" /></div>;
+  }
+
+  return (
+    <div>
+      <PageHeader title="Mercado Livre — modo de teste" description="Pedidos lidos das duas contas, com taxa e frete reais, conferidos com o Bling" />
+
+      <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 mb-6 text-sm">
+        <p className="font-medium flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-warning" /> Tela de conferência. Nada aqui é oficial ainda.</p>
+        <p className="text-muted-foreground mt-1">Até a virada de janeiro, quem recebe o pedido e emite a nota é o Bling. O ERP só lê o Mercado Livre e mostra o que faria: estes pedidos não viram pedido de venda, não mexem no estoque e não emitem nota.</p>
+      </div>
+
+      {pedidos.length === 0 ? (
+        <EmptyState icon={ShoppingBag} title="Nenhum pedido lido ainda" description="A rotina de leitura do Mercado Livre roda algumas vezes por dia." />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <Select value={mes || "x"} onValueChange={(v) => setMes(v === "x" ? "" : v)}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="Mês" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="x">Todos os meses</SelectItem>
+                {meses.map((m) => <SelectItem key={m} value={m}>{m.slice(5)}/{m.slice(0, 4)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={conta} onValueChange={setConta}>
+              <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">As duas contas</SelectItem>
+                <SelectItem value="router">{CONTAS.router}</SelectItem>
+                <SelectItem value="saber">{CONTAS.saber}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={situacao} onValueChange={setSituacao}>
+              <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as vendas</SelectItem>
+                <SelectItem value="pendencia">Com pendência</SelectItem>
+                <SelectItem value="pronta">Prontas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+            <StatCard icon={ShoppingBag} label={`Vendas pagas (${vendas.length - pagas.length} cancelada${vendas.length - pagas.length === 1 ? "" : "s"})`} value={pagas.length} />
+            <StatCard icon={DollarSign} label="Valor dos produtos" value={formatCurrency(total)} color="success" />
+            <StatCard icon={Percent} label={`Taxa do Mercado Livre${total ? ` (${((taxa / total) * 100).toFixed(1).replace(".", ",")}%)` : ""}`} value={formatCurrency(taxa)} color="destructive" />
+            <StatCard icon={Truck} label="Frete pago por nós" value={formatCurrency(frete)} color="destructive" />
+            <StatCard icon={DollarSign} label="Líquido (produtos − taxa − frete)" value={formatCurrency(liquido)} color="success" />
+          </div>
+
+          <div className="bg-card rounded-xl border border-border p-4 mb-6 text-sm flex flex-wrap gap-x-8 gap-y-1">
+            <span><strong>{prontas}</strong> de {pagas.length} vendas prontas para virar pedido e nota</span>
+            <span><strong>{comNota}</strong> de {pagas.length} com nota emitida no Bling</span>
+            <span className={difValor ? "text-destructive" : ""}><strong>{difValor}</strong> com valor diferente do Bling</span>
+          </div>
+
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-border bg-muted/30">
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Data</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Conta</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Itens (código do anúncio → produto no ERP)</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Produtos</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Taxa</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Frete</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Líquido</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Bling</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Situação no ERP</th>
+                </tr></thead>
+                <tbody>
+                  {vendas.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Nenhuma venda nesta visão.</td></tr>}
+                  {vendas.map((v) => (
+                    <tr key={v.chave} className={`border-b border-border last:border-0 align-top ${v.status === "cancelled" ? "opacity-60" : ""}`}>
+                      <td className="px-4 py-3 whitespace-nowrap">{fmtDia(v.data)}</td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">{CONTAS[v.conta] || v.conta}</td>
+                      <td className="px-4 py-3">
+                        {v.itens.map((i, k) => (
+                          <div key={k} className="text-xs leading-5">
+                            <span className="font-mono">{i.qtd}× {i.sku_anuncio || "sem código"}</span>
+                            {i.product_sku ? <span className="text-success"> → {i.product_sku}</span> : i.kit ? <span className="text-primary"> → kit ({(i.componentes || []).map((c) => `${c.quantidade}× ${c.sku}`).join(", ")})</span> : <span className="text-destructive"> → sem cadastro</span>}
+                            <span className="text-muted-foreground"> · {String(i.titulo || "").slice(0, 46)}</span>
+                          </div>
+                        ))}
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatCurrency(v.total)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap text-destructive">{formatCurrency(v.taxa)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap text-destructive">{v.logistica ? formatCurrency(v.freteVend) : "—"}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap font-medium">{formatCurrency(v.liquido)}</td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {v.bling ? <>pedido {v.bling}<br />{v.nf ? `nota ${v.nf}` : <span className="text-muted-foreground">sem nota</span>}</> : <span className="text-destructive">não achei</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {v.status === "cancelled" ? <span className="text-muted-foreground">Cancelada no Mercado Livre</span>
+                          : v.pend.length === 0 ? <span className="text-success inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Pronta</span>
+                          : v.pend.map((p, k) => <div key={k} className="text-destructive">{p}</div>)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
