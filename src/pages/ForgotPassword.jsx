@@ -1,37 +1,68 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { KeyRound, ArrowLeft } from "lucide-react";
+import { KeyRound, ArrowLeft, Mail, Loader2, CheckCircle2 } from "lucide-react";
+import { base44 } from "@/api/base44Client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import AuthLayout from "@/components/AuthLayout";
 
-// A recuperação por e-mail está desativada de propósito: o servidor não envia
-// e-mails (sem SMTP) e os acessos são gerenciados pelo administrador na tela
-// de Contatos. Esta página só orienta — prometer um e-mail que nunca chega
-// deixaria a pessoa esperando para sempre.
+// 02/10/2026 — o servidor de login passou a enviar e-mail (caixa diretoria@, Hostinger).
+// Antes esta página só mandava procurar o administrador. O administrador continua podendo
+// definir a senha de alguém na tela de Contatos.
 export default function ForgotPassword() {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await base44.auth.resetPasswordRequest(email.trim());
+      setEnviado(true);
+    } catch (err) {
+      setError(/rate limit|security purposes/i.test(err.message || "") ? "Aguarde um minuto antes de pedir outro link." : "Não foi possível enviar agora. Tente de novo em instantes.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AuthLayout
       icon={KeyRound}
       title="Esqueceu a senha?"
-      subtitle="A redefinição é feita pelo administrador"
+      subtitle="Enviamos um link para você criar uma senha nova"
       footer={
         <Link to="/login" className="text-primary font-medium hover:underline">
           <ArrowLeft className="w-3 h-3 inline mr-1" />Voltar para o login
         </Link>
       }
     >
-      <div className="space-y-3 text-sm text-foreground">
-        <p>
-          Por segurança, este sistema não envia e-mails de redefinição de senha.
-        </p>
-        <p>
-          Fale com o <span className="font-medium">administrador do sistema</span> (diretoria)
-          e peça uma nova senha — ele define uma senha nova para o seu e-mail na
-          tela de Contatos, na hora.
-        </p>
-        <p className="text-muted-foreground text-xs">
-          Assim que receber a senha nova, volte ao login e entre normalmente.
-        </p>
-      </div>
+      {enviado ? (
+        <div className="space-y-3 text-sm text-foreground">
+          <p className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" /> Se <span className="font-medium">{email}</span> tiver acesso ao sistema, o link chega em instantes.</p>
+          <p className="text-muted-foreground text-xs">O link vale por 1 hora e só pode ser usado uma vez. Confira também a caixa de spam. A senha nova vale para o ERP e para o Precificador.</p>
+        </div>
+      ) : (
+        <>
+          {error && <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail de acesso</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                <Input id="email" type="email" autoComplete="email" autoFocus placeholder="voce@robooster.com.br" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10 h-12" required />
+              </div>
+            </div>
+            <Button type="submit" className="w-full h-12 font-medium" disabled={loading}>
+              {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Enviando...</> : "Enviar link"}
+            </Button>
+          </form>
+        </>
+      )}
     </AuthLayout>
   );
 }

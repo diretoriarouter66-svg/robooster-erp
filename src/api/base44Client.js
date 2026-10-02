@@ -10,6 +10,9 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const UPLOAD_BUCKET = import.meta.env.VITE_SUPABASE_BUCKET || 'uploads';
 
+// O supabase-js limpa o # da URL ao iniciar; a página de nova senha precisa saber se o link veio com erro (vencido/usado).
+export const HASH_INICIAL = typeof window !== 'undefined' ? String(window.location.hash || '') : '';
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
