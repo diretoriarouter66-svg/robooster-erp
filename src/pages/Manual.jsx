@@ -434,6 +434,7 @@ const GRUPOS = [
               <li><strong>Parcelas:</strong> ao criar lançamento, "Parcelas" divide o total em N mensais (resíduo na última);</li>
               <li><strong>Gerar Contas do Mês:</strong> cria as despesas fixas da Config como contas a pagar no dia 5 — uma vez por mês (bloqueia repetição);</li>
               <li><strong>Categorias:</strong> crie/renomeie/desative as suas; Venda, Importação e Outro são de sistema. Categoria com lançamento não exclui;</li>
+              <li><strong>A lista de lançamentos</strong> tem dois seletores: o tipo (Todos · A Receber · A Pagar · Vencidos) e a situação (<strong>Em aberto</strong> · Pagos/Recebidos · Tudo). Abre sempre em "Em aberto", por ordem de vencimento, então em "A Pagar" só aparece o que ainda falta pagar; o que já foi pago fica em "Pagos". Ao lado da busca aparecem a quantidade e a soma do que está na tela;</li>
               <li><strong>Vencido</strong> é calculado pela data (pendente com vencimento passado) — não precisa marcar status.</li>
             </ul>
           </>

@@ -18,6 +18,8 @@ export default function Financial() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("all");
+  // Situação: por padrão a lista mostra só o que ainda está em aberto; pago/recebido vira histórico
+  const [situacao, setSituacao] = useState("open");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
@@ -265,9 +267,19 @@ export default function Financial() {
     if (tab === "receivable" && e.type !== "receivable") return false;
     if (tab === "payable" && e.type !== "payable") return false;
     if (tab === "overdue" && statusFinanceiro(e) !== "overdue") return false;
+    if (tab !== "overdue") {
+      if (situacao === "open" && !emAberto(e)) return false;
+      if (situacao === "paid" && e.status !== "paid") return false;
+    }
     if (search && !e.description?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+  // Em aberto: o que vence primeiro aparece primeiro (sem data vai para o fim)
+  if (tab === "overdue" || situacao === "open") {
+    filtered.sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
+  }
+  const somaLista = (tipo) => filtered.filter(e => e.type === tipo).reduce((t, e) => t + (parseFloat(e.amount) || 0), 0);
+  const rotuloPagos = tab === "receivable" ? "Recebidos" : tab === "payable" ? "Pagos" : "Pagos e recebidos";
 
   // Rótulos vêm do cadastro de categorias; a lista fixa é só fallback de segurança
   const categoryLabels = categories.length
@@ -350,22 +362,40 @@ export default function Financial() {
         </div>
       )}
 
-      <Tabs value={tab} onValueChange={setTab} className="mb-4">
-        <TabsList>
-          <TabsTrigger value="all">Todos</TabsTrigger>
-          <TabsTrigger value="receivable">A Receber</TabsTrigger>
-          <TabsTrigger value="payable">A Pagar</TabsTrigger>
-          <TabsTrigger value="overdue">Vencidos</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            <TabsTrigger value="all">Todos</TabsTrigger>
+            <TabsTrigger value="receivable">A Receber</TabsTrigger>
+            <TabsTrigger value="payable">A Pagar</TabsTrigger>
+            <TabsTrigger value="overdue">Vencidos</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {tab !== "overdue" && (
+          <Tabs value={situacao} onValueChange={setSituacao}>
+            <TabsList>
+              <TabsTrigger value="open">Em aberto</TabsTrigger>
+              <TabsTrigger value="paid">{rotuloPagos}</TabsTrigger>
+              <TabsTrigger value="all">Tudo</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+      </div>
 
       {entries.length === 0 ? (
         <EmptyState icon={DollarSign} title="Nenhum lançamento" description="Registre suas contas a pagar e receber." actionLabel="Novo Lançamento" onAction={() => openNew("payable")} />
       ) : (
         <>
-          <div className="mb-4 max-w-sm relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Buscar lançamento..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="max-w-sm w-full relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Buscar lançamento..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {filtered.length} lançamento{filtered.length === 1 ? "" : "s"}
+              {tab !== "payable" && somaLista("receivable") > 0 && <> · receber <span className="font-semibold text-success">{formatCurrency(somaLista("receivable"))}</span></>}
+              {tab !== "receivable" && somaLista("payable") > 0 && <> · pagar <span className="font-semibold text-destructive">{formatCurrency(somaLista("payable"))}</span></>}
+            </p>
           </div>
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
@@ -380,6 +410,11 @@ export default function Financial() {
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Ações</th>
                 </tr></thead>
                 <tbody>
+                  {filtered.length === 0 && (
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      {tab === "overdue" ? "Nenhum lançamento vencido." : situacao === "open" ? "Nada em aberto aqui. O que já foi pago ou recebido está no botão ao lado." : "Nenhum lançamento nesta visão."}
+                    </td></tr>
+                  )}
                   {filtered.map((e) => (
                     <tr key={e.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3 font-medium">{e.description}</td>
