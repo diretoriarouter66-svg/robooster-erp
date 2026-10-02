@@ -44,6 +44,16 @@ REGRAS_BANCO = [
 REGRAS_CARTAO = [("GOOGLE ADS", "Anúncios (Google Ads)"), ("HOSTINGER", "Hospedagem e servidores (Hostinger)"), ("ANUIDADE", "Anuidade do cartão"),
                  ("MERCADOLIVRE", "Compra no Mercado Livre"), ("ADAPTAORG", "Assinatura de software")]
 
+# Regras ensinadas pelo dono (tabela extrato_regras) valem ANTES das embutidas.
+REGRAS_DONO = []
+for _l in sql("select coalesce(fonte,''), upper(contem), coalesce(tipo,''), categoria, confirmada from extrato_regras order by length(contem) desc;").split("\n"):
+    if _l.strip():
+        _f, _c, _t, _cat, _ok = (_l.split("\t") + [""] * 5)[:5]; REGRAS_DONO.append((_f, _c, _t, _cat, _ok == "t"))
+def regra_dono(fonte, texto):
+    for f, c, t, cat, ok in REGRAS_DONO:
+        if (not f or f == fonte) and c in texto.upper(): return t or None, cat, ok
+    return None
+
 arq = sys.argv[1]; args = sys.argv[2:]
 rotulo = args[args.index("--conta") + 1] if "--conta" in args else None
 nome_arq = os.path.basename(arq); n = 0
@@ -52,7 +62,7 @@ def gravar(c):
     global n
     ks = list(c)
     sql(f"insert into extrato_movimentos ({', '.join(ks)}) values ({', '.join(lit(c[k]) for k in ks)}) on conflict (id) do update set "
-        + ", ".join(f"{k}=excluded.{k}" for k in ks if k not in ("id", "categoria")) + ", categoria=coalesce(extrato_movimentos.categoria, excluded.categoria), updated_date=now();")
+        + ", ".join(f"{k}=excluded.{k}" for k in ks if k not in ("id", "categoria", "categoria_confirmada")) + ", categoria=coalesce(extrato_movimentos.categoria, excluded.categoria), updated_date=now();")
     n += 1
 
 if arq.lower().endswith(".ofx"):
@@ -63,11 +73,14 @@ if arq.lower().endswith(".ofx"):
     for b in re.findall(r"<STMTTRN>(.*?)</STMTTRN>", raw, re.S):
         memo = g("MEMO", b); valor = float(g("TRNAMT", b)); d = g("DTPOSTED", b)[:8]
         tipo, cat = ("entrada" if valor > 0 else "saida"), None
-        for k, t, c in REGRAS_BANCO:
-            if k in memo.upper(): tipo, cat = t, c; break
+        ok = False; rd = regra_dono("banco", memo)
+        if rd: tipo, cat, ok = rd[0] or tipo, rd[1], rd[2]
+        else:
+            for k, t, c in REGRAS_BANCO:
+                if k in memo.upper(): tipo, cat = t, c; break
         doc = re.search(r"(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})\s*$", memo)
         gravar(dict(id=f"banco:{conta_id}:{g('FITID', b)}", fonte="banco", conta=conta, data=f"{d[:4]}-{d[4:6]}-{d[6:8]}T12:00:00-03:00", tipo=tipo, descricao=memo[:240],
-                    valor=valor, moeda=g("CURDEF", raw) or "BRL", referencia=doc.group(1) if doc else None, categoria=cat, codigo_origem=g("TRNTYPE", b), arquivo=nome_arq,
+                    valor=valor, moeda=g("CURDEF", raw) or "BRL", referencia=doc.group(1) if doc else None, categoria=cat, categoria_confirmada=ok, codigo_origem=g("TRNTYPE", b), arquivo=nome_arq,
                     bruto_json={"memo": memo, "fitid": g("FITID", b)}))
     print(f"{conta}: {n} movimentos | saldo final informado R$ {g('BALAMT', raw)} em {g('DTASOF', raw)[:8]}")
 elif arq.lower().endswith(".xlsx"):
@@ -91,8 +104,11 @@ elif arq.lower().endswith(".xlsx"):
         if v[0].lower().startswith("total de lan"): em_lanc = False; continue
         if em_lanc and len(v) >= 3 and re.match(r"\d{4}-\d{2}-\d{2}", v[0]):
             desc = v[1]; valor = float(v[2]); cat = None
-            for k, c in REGRAS_CARTAO:
-                if k in desc.upper(): cat = c; break
+            rd = regra_dono("cartao", desc)
+            if rd: cat = rd[1]
+            else:
+                for k, c in REGRAS_CARTAO:
+                    if k in desc.upper(): cat = c; break
             if valor < 0 and cat is None: cat = "Estorno no cartão"
             hid = hashlib.sha1(f"{venc}|{v[0][:10]}|{desc}|{valor}|{n}".encode()).hexdigest()[:14]
             gravar(dict(id=f"cartao:{(cartao or 'cartao').replace(' ', '')}:{venc}:{hid}", fonte="cartao", conta=rotulo or cartao or "Cartão de crédito", data=v[0][:10] + "T12:00:00-03:00",

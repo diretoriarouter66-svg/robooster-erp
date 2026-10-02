@@ -36,3 +36,23 @@ grant all on public.extrato_movimentos to service_role;
 
 -- 02/10/2026 — categoria sugerida/confirmada de cada movimento e de onde veio o arquivo
 alter table public.extrato_movimentos add column if not exists categoria text, add column if not exists categoria_confirmada boolean default false, add column if not exists arquivo text;
+
+-- 02/10/2026 — regras de categoria ensinadas pelo dono ("depois o sistema lembra"): valem antes das regras embutidas.
+create table if not exists public.extrato_regras (
+  id bigserial primary key,
+  fonte text,                 -- banco | cartao | null (qualquer)
+  contem text not null,       -- trecho do histórico (sem diferenciar maiúsculas)
+  tipo text,                  -- entrada | saida | transferencia (opcional)
+  categoria text not null,
+  confirmada boolean default true,
+  observacao text,
+  created_date timestamptz default now()
+);
+alter table public.extrato_regras enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policy where polname='extrato_regras_ver') then
+    create policy extrato_regras_ver on public.extrato_regras for select using (pode('financeiro','ver'));
+  end if;
+end $$;
+grant select on public.extrato_regras to authenticated;
+grant all on public.extrato_regras to service_role;
