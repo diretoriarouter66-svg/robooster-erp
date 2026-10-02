@@ -81,3 +81,5 @@ while ini <= hoje:
         pag += 1
     ini = fim + datetime.timedelta(days=1)
 log(f"PayPal: {n} movimentos gravados/atualizados desde {desde}")
+# casa os saques das contas de pagamento com as entradas no banco (02/10/2026)
+import subprocess as _sp; _sp.run(["python3", "/root/rotinas/erp-concilia-saques.py"])

@@ -69,12 +69,23 @@ export default function Conciliacao() {
     return Array.from(g.values()).sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   };
 
+  // Par do lançamento em outra conta (saque do PayPal/Mercado Pago ↔ entrada no banco), gravado pela rotina de casamento.
+  const porId = useMemo(() => new Map(movs.map((m) => [m.id, m])), [movs]);
+  const parDe = (m) => {
+    if (m.casado_com) { const o = porId.get(m.casado_com); return { ok: true, texto: o ? `casado com ${o.conta}, ${dia(o.data)} (${brl(o.valor)})` : "casado com lançamento de outra conta" }; }
+    if (m.situacao === "sem_extrato_banco") return { ok: false, texto: "falta o extrato do banco deste período para achar a entrada" };
+    if (m.situacao === "sem_par") return { ok: false, texto: "saque sem entrada correspondente no banco" };
+    if (m.fonte === "banco" && num(m.valor) > 0 && (m.categoria || "").startsWith("Transferência de conta própria")) return { ok: false, texto: "sem par: falta o extrato da conta de onde o dinheiro saiu" };
+    return null;
+  };
+
   const linhas = doPeriodo.filter((m) => {
     if (filtro === "sem" && m.categoria) return false;
     if (filtro === "confirmar" && (!m.categoria || m.categoria_confirmada)) return false;
     if (filtro === "entradas" && !(num(m.valor) > 0 && !ehTransferencia(m))) return false;
     if (filtro === "saidas" && !(num(m.valor) < 0 && !ehTransferencia(m))) return false;
     if (filtro === "transf" && !ehTransferencia(m)) return false;
+    if (filtro === "sempar" && !(parDe(m) && !parDe(m).ok)) return false;
     if (busca && !`${m.descricao} ${m.categoria || ""} ${m.contraparte || ""}`.toLowerCase().includes(busca.toLowerCase())) return false;
     return true;
   }).sort((a, b) => String(a.data).localeCompare(String(b.data)));
@@ -165,7 +176,7 @@ export default function Conciliacao() {
 
           <div className="flex flex-wrap items-center gap-3 mb-3">
             <Select value={filtro} onValueChange={setFiltro}>
-              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos os lançamentos</SelectItem>
                 <SelectItem value="sem">Sem categoria</SelectItem>
@@ -173,6 +184,7 @@ export default function Conciliacao() {
                 <SelectItem value="entradas">Entradas</SelectItem>
                 <SelectItem value="saidas">Saídas</SelectItem>
                 <SelectItem value="transf">Transferências</SelectItem>
+                <SelectItem value="sempar">Saques e transferências sem par</SelectItem>
               </SelectContent>
             </Select>
             <div className="relative w-full max-w-xs">
@@ -198,7 +210,10 @@ export default function Conciliacao() {
                   {linhas.map((m) => (
                     <tr key={m.id} className="border-b border-border last:border-0 align-top hover:bg-muted/20">
                       <td className="px-4 py-2.5 whitespace-nowrap">{dia(m.data)}</td>
-                      <td className="px-4 py-2.5 text-xs max-w-md">{m.descricao}{m.contraparte && m.fonte !== "banco" ? <span className="text-muted-foreground"> · {m.contraparte}</span> : null}</td>
+                      <td className="px-4 py-2.5 text-xs max-w-md">
+                        {m.descricao}{m.contraparte && m.fonte !== "banco" ? <span className="text-muted-foreground"> · {m.contraparte}</span> : null}
+                        {parDe(m) && <div className={`mt-0.5 text-[11px] ${parDe(m).ok ? "text-success" : "text-warning"}`}>{parDe(m).texto}</div>}
+                      </td>
                       <td className="px-4 py-2.5 text-xs whitespace-nowrap">{TIPO[m.tipo] || m.tipo}</td>
                       <td className="px-4 py-2.5 text-xs">
                         {edit?.id === m.id ? (

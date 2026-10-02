@@ -117,3 +117,5 @@ elif arq.lower().endswith(".xlsx"):
     print(f"{rotulo or cartao}: {n} lançamentos | fatura com vencimento {venc}, total R$ {total}")
 else:
     raise SystemExit("formato não reconhecido (use .ofx ou .xlsx)")
+# casa os saques das contas de pagamento com as entradas no banco (02/10/2026)
+import subprocess as _sp; _sp.run(["python3", "/root/rotinas/erp-concilia-saques.py"])
