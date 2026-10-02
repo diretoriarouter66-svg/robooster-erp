@@ -119,3 +119,5 @@ else:
     raise SystemExit("formato não reconhecido (use .ofx ou .xlsx)")
 # casa os saques das contas de pagamento com as entradas no banco (02/10/2026)
 import subprocess as _sp; _sp.run(["python3", "/root/rotinas/erp-concilia-saques.py"])
+# lançamento confirmado do banco vira lançamento pago no Financeiro (02/10/2026; a função não duplica)
+print("Financeiro:", sql("select extrato_para_financeiro();").strip())
