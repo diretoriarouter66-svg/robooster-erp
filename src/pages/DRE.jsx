@@ -475,7 +475,9 @@ export default function DRE() {
 /**
  * DRE REALIZADA — o mês como ele foi de verdade, direto dos pedidos faturados.
  * Receita e CMV vêm dos pedidos (status faturado/enviado/entregue no mês);
- * imposto pelo regime da config (DAS efetivo no Simples); despesas fixas da config.
+ * imposto pelo regime da config (DAS efetivo no Simples).
+ * Despesas (02/10/2026): quando o mês tem extrato do banco lançado no Financeiro, valem as despesas PAGAS de verdade
+ * (categorias com dre = 'despesa'); sem extrato no mês, continua a lista de despesas fixas da config.
  */
 function DRERealizado({ config, onVoltar }) {
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
@@ -484,14 +486,16 @@ function DRERealizado({ config, onVoltar }) {
   const [channels, setChannels] = useState([]);
   const [entries, setEntries] = useState([]);
   const [devolucoes, setDevolucoes] = useState([]);
+  const [categorias, setCategorias] = useState([]);
   const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
+    base44.entities.FinancialCategory.list("nome", 500).then(c => setCategorias(c || [])).catch(() => {});
     Promise.all([
       base44.entities.SaleOrder.list("-created_date", 2000),
       base44.entities.Product.list("-created_date", 1000),
       base44.entities.SalesChannel.list("-created_date", 50),
-      base44.entities.FinancialEntry.list("-created_date", 2000).catch(() => []),
+      base44.entities.FinancialEntry.list("-created_date", 5000).catch(() => []),
       // Devoluções (16/09/2026): entram no mês em que acontecem, nunca reabrem o mês da venda
       base44.entities.SaleReturn.list("-data", 2000).catch(() => []),
     ]).then(([o, p, ch, fe, dv]) => { setOrders(o || []); setProducts(p || []); setChannels(ch || []); setEntries(fe || []); setDevolucoes(dv || []); setCarregando(false); });
@@ -541,7 +545,24 @@ function DRERealizado({ config, onVoltar }) {
         : "Impostos (Presumido)",
       valor: impostosCarimbados + fallback,
     };
-    const despesasFixas = (config?.despesas_fixas || []).reduce((s, d) => s + (d.valor || 0), 0);
+    const despesasConfig = (config?.despesas_fixas || []).reduce((s, d) => s + (d.valor || 0), 0);
+    // DESPESAS REAIS do mês: saídas pagas no Financeiro (vindas do extrato do banco), pela categoria.
+    const catPorSlug = Object.fromEntries(categorias.map(c => [c.slug, c]));
+    const pagasMes = entries.filter(e => e.type === "payable" && e.status === "paid" && (e.payment_date || "").startsWith(mes));
+    const temExtrato = entries.some(e => e.reference_type === "extrato" && (e.payment_date || "").startsWith(mes));
+    const agrupar = (papel) => {
+      const g = new Map();
+      for (const e of pagasMes) {
+        const c = catPorSlug[e.category];
+        if (c?.dre !== papel) continue;
+        const a = g.get(c.slug) || { nome: c.nome, valor: 0, n: 0 };
+        a.valor += parseFloat(e.amount) || 0; a.n += 1; g.set(c.slug, a);
+      }
+      return Array.from(g.values()).sort((a, b) => b.valor - a.valor);
+    };
+    const despesasReais = temExtrato ? agrupar("despesa") : [];
+    const saidasInformativas = temExtrato ? agrupar("informativo") : [];
+    const despesasFixas = temExtrato ? despesasReais.reduce((s, d) => s + d.valor, 0) : despesasConfig;
     // ORDENS DE SERVIÇO do mês: receita e despesas de viagem vêm do Financeiro,
     // pelas categorias exclusivas de OS (competência pelo vencimento/pagamento).
     const noMesFin = (e) => ((e.payment_date || e.due_date || "").startsWith(mes));
@@ -560,8 +581,9 @@ function DRERealizado({ config, onVoltar }) {
     const lucroOperacional = lucroBruto + receitaServicos - despesasViagem - impostos.valor - impostoServicos - comissoesCanal - comissoesVendedor + comissaoEstornada;
     const resultado = lucroOperacional - despesasFixas;
     return { noMes: noMes.length, receita, cmv, lucroBruto, impostos, comissoesCanal, despesasFixas, lucroOperacional, resultado, itensSemCusto, receitaServicos, despesasViagem, impostoServicos,
-      devolucoes: devolucoesRs, nDevolucoes: devMes.length, cmvDevolvido, comissaoEstornada, comissoesVendedor, receitaLiquida };
-  }, [orders, products, channels, entries, devolucoes, mes, config]);
+      devolucoes: devolucoesRs, nDevolucoes: devMes.length, cmvDevolvido, comissaoEstornada, comissoesVendedor, receitaLiquida,
+      temExtrato, despesasReais, saidasInformativas };
+  }, [orders, products, channels, entries, devolucoes, categorias, mes, config]);
 
   if (carregando) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
@@ -596,8 +618,31 @@ function DRERealizado({ config, onVoltar }) {
         <Row label="(−) Comissões de vendedor / representante" value={dre.comissoesVendedor} negative />
         {dre.comissaoEstornada > 0 && <Row label="(+) Estorno de comissão (devoluções)" value={dre.comissaoEstornada} positive />}
         <Row label="(=) Lucro Operacional" value={dre.lucroOperacional} bold />
-        <Row label="(−) Despesas fixas (config)" value={dre.despesasFixas} negative />
+        {dre.temExtrato ? (
+          <>
+            <Row label="(−) Despesas do mês (pagas, pelo extrato do banco)" value={dre.despesasFixas} negative />
+            {dre.despesasReais.map(d => (
+              <div key={d.nome} className="flex justify-between py-1 pl-5 text-xs text-muted-foreground border-b border-border/30">
+                <span>{d.nome}{d.n > 1 ? ` (${d.n}×)` : ""}</span><span>{fmtBRL(d.valor)}</span>
+              </div>
+            ))}
+          </>
+        ) : (
+          <Row label="(−) Despesas fixas (config)" value={dre.despesasFixas} negative />
+        )}
         <Row label="(=) RESULTADO DO MÊS" value={dre.resultado} bold positive={dre.resultado >= 0} negative={dre.resultado < 0} />
+        {dre.temExtrato && dre.saidasInformativas.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-border">
+            <p className="text-xs font-medium mb-1">Saíram do banco no mês e não entram como despesa</p>
+            {dre.saidasInformativas.map(d => (
+              <div key={d.nome} className="flex justify-between py-1 text-xs text-muted-foreground">
+                <span>{d.nome}{d.n > 1 ? ` (${d.n}×)` : ""}</span><span>{fmtBRL(d.valor)}</span>
+              </div>
+            ))}
+            <p className="text-[11px] text-muted-foreground mt-1">Imposto já está na linha do DAS (pela receita do mês); retirada de sócio é distribuição; parcela de empréstimo é devolução do valor emprestado; compra de peças vira estoque e entra no CMV quando vende.</p>
+          </div>
+        )}
+        {dre.temExtrato && <p className="text-[11px] text-muted-foreground mt-2">Despesas pagas no cartão de crédito ainda não entram nesta conta.</p>}
         {dre.itensSemCusto > 0 && (
           <p className="text-[11px] text-warning mt-3">⚠️ {dre.itensSemCusto} item(ns) vendidos sem custo cadastrado — o CMV real é maior e o resultado, menor.</p>
         )}

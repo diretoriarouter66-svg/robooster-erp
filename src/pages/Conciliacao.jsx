@@ -90,9 +90,15 @@ export default function Conciliacao() {
     return true;
   }).sort((a, b) => String(a.data).localeCompare(String(b.data)));
 
+  // Lançamento confirmado do banco vira lançamento pago no Financeiro (função do banco de dados; não duplica).
+  const lancarNoFinanceiro = async () => {
+    const { error } = await supabase.rpc("extrato_para_financeiro");
+    if (error) throw new Error("categoria gravada, mas o Financeiro não foi atualizado: " + error.message);
+  };
+
   const confirmar = async (m) => {
     setSalvando(true); setErro("");
-    try { await base44.entities.ExtratoMovimento.update(m.id, { categoria_confirmada: true }); await carregar(); }
+    try { await base44.entities.ExtratoMovimento.update(m.id, { categoria_confirmada: true }); await lancarNoFinanceiro(); await carregar(); }
     catch (e) { setErro("Não foi possível gravar: " + (e.message || "erro")); }
     setSalvando(false);
   };
@@ -111,7 +117,7 @@ export default function Conciliacao() {
         const iguais = movs.filter((x) => x.id !== m.id && x.fonte === m.fonte && !x.categoria_confirmada && `${x.descricao} ${x.referencia || ""}`.toUpperCase().includes(chave.toUpperCase()));
         for (const x of iguais) await base44.entities.ExtratoMovimento.update(x.id, { categoria: cat, categoria_confirmada: true });
       }
-      setEdit(null); await carregar();
+      setEdit(null); await lancarNoFinanceiro(); await carregar();
     } catch (e) { setErro("Não foi possível gravar: " + (e.message || "erro")); }
     setSalvando(false);
   };
@@ -235,6 +241,7 @@ export default function Conciliacao() {
                               : <span className="inline-flex px-2 py-0.5 rounded-full bg-destructive/10 text-destructive">sem categoria</span>}
                             {m.categoria && !m.categoria_confirmada && <button onClick={() => confirmar(m)} disabled={salvando} className="p-1 hover:bg-success/10 rounded" title="Está certa: confirmar"><Check className="w-3.5 h-3.5 text-success" /></button>}
                             <button onClick={() => { setErro(""); setEdit({ id: m.id, categoria: m.categoria || "", lembrar: true }); }} className="p-1 hover:bg-muted rounded" title="Mudar a categoria"><Pencil className="w-3.5 h-3.5 text-muted-foreground" /></button>
+                            {m.financeiro_id && <span className="text-[11px] text-success whitespace-nowrap" title="Este lançamento já está no Financeiro como pago">no Financeiro</span>}
                           </div>
                         )}
                       </td>
