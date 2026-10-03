@@ -5,7 +5,7 @@ import {
   FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse,
   Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container, KeyRound, Wrench, Coins, Gem,
-  Globe, ShoppingBag, ListChecks } from "lucide-react";
+  Globe, ShoppingBag, ListChecks, ClipboardCheck } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 // Módulo de cada item — precisa bater com o mapa de public.permissoes.
@@ -34,6 +34,7 @@ const MODULO_DO_ITEM = {
   "/config-tributaria": "config",
   "/financial": "financeiro",
   "/conciliacao": "financeiro",
+  "/fechamento": "financeiro",
   "/reports": "financeiro",
   "/acessos": "cofre",             // o cofre tem regra própria (cofre_membros)
 };
@@ -84,6 +85,7 @@ const menuGroups = [
   items: [
   { icon: DollarSign, label: "Financeiro", path: "/financial" },
   { icon: ListChecks, label: "Conciliação", path: "/conciliacao" },
+  { icon: ClipboardCheck, label: "Fechamento do mês", path: "/fechamento" },
   { icon: FileText, label: "Notas Fiscais", path: "/notas-fiscais" },
   { icon: Gem, label: "Patrimônio & Valor", path: "/patrimonio" },
   { icon: BarChart3, label: "Relatórios", path: "/reports" }]

@@ -47,7 +47,8 @@ const TABLE = {
   // 16/09/2026 — devoluções de venda, transportadoras e histórico de custo (pedidos da Larissa)
   SaleReturn: 'sale_returns',
   MlPedido: 'ml_pedidos',
-  ExtratoMovimento: 'extrato_movimentos', // 02/10/2026 — conciliação do caixa (extratos de banco, cartão, PayPal, Mercado Pago)
+  ExtratoMovimento: 'extrato_movimentos',
+  FiscalNota: 'fiscal_notas', // 03/10/2026 — notas de saída (Bling hoje, ERP na virada) para o fechamento do mês // 02/10/2026 — conciliação do caixa (extratos de banco, cartão, PayPal, Mercado Pago)
   ExtratoRegra: 'extrato_regras', // 02/10/2026 — Mercado Livre em modo de teste (só leitura)
   Transportadora: 'transportadoras',
   ProductCostHistory: 'product_cost_history',
