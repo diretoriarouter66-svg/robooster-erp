@@ -215,3 +215,5 @@ for emp in CONTAS:
 sql("""update ml_pedidos p set frete_vendedor=0, frete_comprador=0, liquido=round(total - coalesce(taxa_ml,0), 2), updated_date=now()
         where shipment_id is not null and mp_liquido is null and exists (select 1 from ml_pedidos q where q.shipment_id=p.shipment_id and q.id<p.id);""")
 log("gravados/atualizados:", tot)
+# venda devolvida/cancelada com nota autorizada → rascunho da NF-e de devolução em Notas Fiscais (03/10/2026)
+import subprocess as _sp; _sp.run(["python3", "/root/rotinas/erp-devolucoes-nf.py"])
