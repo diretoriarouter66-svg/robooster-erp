@@ -89,8 +89,21 @@ export default function Financial() {
     if (!nome) return;
     const slug = slugify(nome);
     if (categories.some(c => c.slug === slug)) { alert("Já existe uma categoria com esse nome."); return; }
-    await base44.entities.FinancialCategory.create({ nome, slug, sistema: false, ativo: true });
+    await base44.entities.FinancialCategory.create({ nome, slug, sistema: false, ativo: true, dre: "despesa", dre_grupo: "outras" }); // nasce entrando na DRE
     setNewCatName("");
+    loadData();
+  };
+  // Onde a categoria entra na DRE Realizada (02/10/2026). Padrão de categoria nova: entra ("Outras despesas").
+  // Venda, serviços de OS, devolução e transferência são tratadas pela própria estrutura da DRE e não têm escolha.
+  const DRE_FIXAS = { sale: "receita (vendas)", servicos_os: "receita de serviços", despesas_viagem_os: "despesas comerciais", devolucao_venda: "devoluções", transferencia: "não é receita nem despesa", import: "custo da mercadoria (CMV)", supplier: "custo da mercadoria (CMV)" };
+  const DRE_OPCOES = [
+    ["outras", "Entra — outras despesas"], ["administrativa", "Entra — despesas administrativas"], ["pessoal", "Entra — despesas com pessoal"],
+    ["comercial", "Entra — despesas comerciais"], ["assistencia", "Entra — assistência técnica"], ["financeira", "Entra — despesa financeira"],
+    ["imposto", "Entra — impostos e taxas"], ["receita_financeira", "Entra — receita financeira"],
+    ["informativo", "NÃO entra — mostrar abaixo do resultado"], ["nao", "NÃO entra — nem mostrar"],
+  ];
+  const setDreGrupo = async (c, v) => {
+    await base44.entities.FinancialCategory.update(c.id, { dre_grupo: v === "nao" ? null : v, dre: v === "nao" || v === "informativo" ? (v === "nao" ? null : "informativo") : "despesa" });
     loadData();
   };
   const renameCategory = async (c, nome) => {
@@ -344,8 +357,8 @@ export default function Financial() {
                   <p className="text-xs text-muted-foreground">{c.nome}</p>
                   <p className={`font-semibold ${s < 0 ? "text-destructive" : ""}`}>{formatCurrency(s)}</p>
                   {info.conferido
-                    ? <p className="text-[10px] text-success" title={`Saldo informado pelo banco em ${dataBR(info.conferidoEm)}: ${formatCurrency(info.saldoConferido)}; depois disso, ${info.nDepois} lançamento(s) pago(s) no ERP (${formatCurrency(info.movimentoDepois)})`}>conferido com o banco em {dataBR(info.conferidoEm)}</p>
-                    : <p className="text-[10px] text-muted-foreground">sem extrato do banco lido</p>}
+                    ? <p className="text-[10px] text-success" title={`Saldo informado pelo banco em ${dataBR(info.conferidoEm)}: ${formatCurrency(info.saldoConferido)}; depois disso, ${info.nDepois} lançamento(s) pago(s) no ERP (${formatCurrency(info.movimentoDepois)})`}>conferido com o extrato em {dataBR(info.conferidoEm)}</p>
+                    : <p className="text-[10px] text-muted-foreground">sem extrato lido</p>}
                 </div>
               );
             })}
@@ -529,15 +542,17 @@ export default function Financial() {
 
       {/* ==== Cadastro de Categorias do Financeiro ==== */}
       <Dialog open={catOpen} onOpenChange={setCatOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Categorias do Financeiro</DialogTitle></DialogHeader>
+          <p className="text-[11px] text-muted-foreground -mt-2">Cada categoria diz onde entra na DRE Realizada. Categoria nova já nasce entrando ("outras despesas"); se não for entrar, é só mudar aqui.</p>
           <div className="flex gap-2 mb-3">
             <Input placeholder="Nova categoria (ex.: Marketing)" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => e.key === "Enter" && addCategory()} />
             <Button onClick={addCategory} disabled={!newCatName.trim()}><Plus className="w-4 h-4" /></Button>
           </div>
-          <div className="space-y-1 max-h-80 overflow-y-auto">
+          <div className="space-y-1 max-h-[60vh] overflow-y-auto">
             {categories.map(c => (
-              <div key={c.id} className={`flex items-center gap-2 border border-border rounded-lg px-2 py-1.5 ${c.ativo === false ? "opacity-50" : ""}`}>
+              <div key={c.id} className={`border border-border rounded-lg px-2 py-1.5 ${c.ativo === false ? "opacity-50" : ""}`}>
+               <div className="flex items-center gap-2">
                 <Input defaultValue={c.nome} onBlur={e => renameCategory(c, e.target.value)} className="h-7 text-sm border-0 shadow-none focus-visible:ring-1 flex-1" />
                 {c.sistema && <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground whitespace-nowrap" title="Usada pelos lançamentos automáticos (pedidos/importação) — não pode ser excluída">sistema</span>}
                 <span className="text-[10px] text-muted-foreground">{entries.filter(e => e.category === c.slug).length} lçtos</span>
@@ -549,6 +564,15 @@ export default function Financial() {
                     <Trash2 className="w-3.5 h-3.5 text-destructive" />
                   </button>
                 )}
+               </div>
+               <div className="flex items-center gap-2 mt-1 pl-1">
+                <span className="text-[10px] text-muted-foreground w-12 shrink-0">Na DRE:</span>
+                {DRE_FIXAS[c.slug]
+                  ? <span className="text-[10px] text-muted-foreground">{DRE_FIXAS[c.slug]} (fixo)</span>
+                  : <select value={c.dre_grupo || "nao"} onChange={e => setDreGrupo(c, e.target.value)} className={`h-6 text-[11px] rounded border border-border bg-background px-1 ${c.dre_grupo ? (c.dre_grupo === "informativo" ? "text-warning" : "") : "text-destructive"}`}>
+                      {DRE_OPCOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>}
+               </div>
               </div>
             ))}
           </div>
@@ -577,7 +601,7 @@ export default function Financial() {
                 <Button size="sm" variant="outline" onClick={() => exportarExtrato(c, extMes)}>Exportar extrato (CSV)</Button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
-                <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saldo anterior</p><p className="font-semibold">{formatCurrency(ex.saldoAbertura)}</p>{c.saldo_conferido_em && <p className="text-[10px] text-muted-foreground">a partir do saldo do banco em {dataBR(c.saldo_conferido_em)}</p>}</div>
+                <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saldo anterior</p><p className="font-semibold">{formatCurrency(ex.saldoAbertura)}</p>{c.saldo_conferido_em && <p className="text-[10px] text-muted-foreground">a partir do saldo do extrato em {dataBR(c.saldo_conferido_em)}</p>}</div>
                 <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Entradas</p><p className="font-semibold text-success">{formatCurrency(ex.entradas)}</p></div>
                 <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saídas</p><p className="font-semibold text-destructive">{formatCurrency(ex.saidas)}</p></div>
                 <div className="rounded-lg border border-border p-2"><p className="text-muted-foreground">Saldo final</p><p className={`font-semibold ${ex.saldoFinal < 0 ? "text-destructive" : ""}`}>{formatCurrency(ex.saldoFinal)}</p></div>

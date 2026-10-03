@@ -81,5 +81,17 @@ while ini <= hoje:
         pag += 1
     ini = fim + datetime.timedelta(days=1)
 log(f"PayPal: {n} movimentos gravados/atualizados desde {desde}")
+# saldo disponível hoje, para a conta do ERP partir dele (igual ao banco)
+try:
+    b = get("/v1/reporting/balances?currency_code=BRL")
+    disp = next((x for x in b.get("balances", []) if x.get("currency") == "BRL"), None) or (b.get("balances") or [None])[0]
+    if disp and disp.get("total_balance"):
+        hoje_sp = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-3))).date().isoformat()
+        sql(f"insert into extrato_saldos (conta, data, saldo, arquivo) values ({lit(CONTA)}, '{hoje_sp}', {float(disp['total_balance']['value'])!r}, 'api paypal') "
+            f"on conflict (conta, data) do update set saldo=excluded.saldo, arquivo=excluded.arquivo;")
+        log("PayPal: saldo disponível", disp["total_balance"]["value"], disp["total_balance"].get("currency_code"))
+except Exception as e: log("PayPal: saldo não lido", e)
 # casa os saques das contas de pagamento com as entradas no banco (02/10/2026)
 import subprocess as _sp; _sp.run(["python3", "/root/rotinas/erp-concilia-saques.py"])
+# movimento confirmado do PayPal vira lançamento no Financeiro e o saldo da conta se reancora (02/10/2026)
+log("Financeiro:", sql("select extrato_para_financeiro();").strip())

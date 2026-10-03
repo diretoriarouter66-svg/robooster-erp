@@ -17,6 +17,9 @@ export function saldoConta(conta, entries) {
 
 // Saldo da conta logo antes de uma data (para abrir o extrato de um mês): a partir do saldo conferido, para frente ou para trás.
 export function saldoAntesDe(conta, entries, data) {
+  return Math.round(saldoAntesDeBruto(conta, entries, data) * 100) / 100 + 0; // "+ 0" evita o −0,00
+}
+function saldoAntesDeBruto(conta, entries, data) {
   const pagos = entries.filter((e) => e.account_id === conta.id && e.status === "paid");
   if (conta.saldo_conferido != null && conta.saldo_conferido_em) {
     const ref = conta.saldo_conferido_em;
