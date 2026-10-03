@@ -21,7 +21,7 @@ const diaSP = (d) => (d ? (/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? String(d).sli
 const EMPRESA = { router: "ROUTER 66", saber: "SABER" };
 const TIPOS = {
   sem_nota: ["Venda paga sem nota fiscal", "Emitir a nota (ou registrar o número, se já foi emitida fora do sistema)."],
-  nota_de_cancelada: ["Nota autorizada de venda cancelada ou devolvida", "Cancelar a nota (até o prazo) ou emitir nota de devolução/entrada."],
+  nota_de_cancelada: ["Nota autorizada de venda cancelada ou devolvida", "Cancelar a nota (até o prazo) ou emitir a nota de devolução. Para venda do Mercado Livre da empresa do ERP, o rascunho da nota de devolução é preparado sozinho em Notas Fiscais."],
   nota_cancelada_venda_paga: ["Nota cancelada, mas a venda continua paga", "Emitir nova nota para a venda."],
   valor_diferente: ["Valor da nota diferente do valor da venda", "Conferir frete/desconto; se a nota estiver errada, carta de correção não resolve valor: cancelar e reemitir."],
   nome_diferente: ["Nota em nome diferente do cliente do pedido", "Conferir se é a mesma venda; se for outro cliente, o pedido está sem nota e essa nota é de outra venda."],
@@ -84,7 +84,8 @@ export default function Fechamento() {
         else if (Math.abs(num(n.valor) - (somaPorNota.get(n.id) || num(p.total))) > 0.01) itens.push({ ...base, tipo: "valor_diferente", obs: `nota ${brl(n.valor)} × vendas da mesma nota ${brl(somaPorNota.get(n.id) || p.total)}` });
         if (["in_mediation", "charged_back", "refunded"].includes(p.mp_status) || (num(p.mp_estornado) > 0 && !devolvida)) itens.push({ ...base, tipo: "disputa", obs: `${p.mp_status || ""}${num(p.mp_estornado) ? ` · estornado ${brl(p.mp_estornado)}` : ""}` });
       } else if (p.status === "cancelled" || devolvida) {
-        if (n && n.situacao === "autorizada") itens.push({ ...base, tipo: "nota_de_cancelada", obs: devolvida ? "venda devolvida (dinheiro voltou ao comprador)" : "venda cancelada" });
+        if (n && n.situacao === "autorizada") itens.push({ ...base, tipo: "nota_de_cancelada", obs: (devolvida ? "venda devolvida (dinheiro voltou ao comprador)" : "venda cancelada")
+          + (p.devolucao_nfe_id ? " · rascunho da NF de devolução já preparado em Notas Fiscais: conferir e emitir" : p.devolucao_obs ? ` · ${p.devolucao_obs}` : "") });
       }
     }
 
