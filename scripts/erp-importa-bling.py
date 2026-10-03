@@ -222,3 +222,5 @@ if DRY:
 if stmts:
     sql("begin;\n" + "\n".join(stmts) + "\ncommit;")
 log(f"gravado: {len(resumo_novos)} produtos criados, {len(ajustes)} ajustes de estoque")
+# fotos: o link do Bling vence em dias; copiar para o armazenamento do ERP logo depois de importar (03/10/2026)
+import subprocess as _sp; _sp.run(["python3", "/root/rotinas/erp-fotos-bling.py"])
