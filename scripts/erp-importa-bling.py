@@ -120,6 +120,15 @@ for x in cat["saber"]:
     elif x["sku"] in rsku: uni[x["sku"] + "-S"] = {"saber": x}   # mesmo código, produto diferente
     else: uni[x["sku"]] = {"saber": x}
 
+# 05/10/2026 — achado do checkup: o Mercado Livre vende itens que o Bling marca com estoque 0 (anúncio segue ativo).
+# Regra dele continua ("nenhum produto sem estoque"), com uma exceção: produto VENDIDO nos últimos 90 dias entra mesmo
+# zerado, marcado, para a nota não travar na virada. Comparação de SKU sem diferenciar maiúsculas.
+vendidos90 = set()
+for l in sql("select distinct upper(coalesce(i->>'sku_anuncio', i->>'product_sku', '')) from ml_pedidos p, jsonb_array_elements(p.itens) i "
+             "where p.status = 'paid' and p.data_pedido >= now() - interval '90 days';").split("\n"):
+    if l.strip(): vendidos90.add(l.strip())
+log("SKUs vendidos no ML nos últimos 90 dias:", len(vendidos90))
+sem_estoque_vendidos = []
 novos, ajustes, sem_dado = [], [], 0
 for sku, u in uni.items():
     partes = {emp: u[emp] for emp in ("router", "saber") if emp in u}
@@ -131,8 +140,9 @@ for sku, u in uni.items():
     if ja:
         pid, atual, _ = erp[ja]
         if abs(atual - total) > 1e-9: ajustes.append((ja, pid, atual, total, partes))
-    elif total > 0:
+    elif total > 0 or sku.upper() in vendidos90 or any(p["sku"].upper() in vendidos90 for p in partes.values()):
         if sku in erp: log("aviso: SKU", sku, "já existe no ERP sem origem Bling — não importado"); continue
+        if total <= 0: sem_estoque_vendidos.append(sku)
         novos.append((sku, total, partes))
 
 # produtos do ERP cuja origem saiu da lista de ativos (inativado/excluído no Bling): saldo direto pelo id guardado
@@ -183,6 +193,7 @@ for sku, total, partes in novos:
     if det["origem"] is not None: origem["icms_origem"] = det["origem"]
     notas = f"Importado do Bling em {HOJE} ({' + '.join(NOME[e] + ' ' + p['sku'] for e, p in partes.items())})."
     if not det["ncm"]: notas += " CADASTRO INCOMPLETO: falta o NCM — não emite nota fiscal até completar."
+    if sku in sem_estoque_vendidos: notas += f" SEM ESTOQUE no Bling em {HOJE}, mas vendido no Mercado Livre nos últimos 90 dias (importado para a nota não travar)."
     pid = secrets.token_hex(12)
     # Ordem do Mauricio (02/10/2026): tudo que vem do Bling é IMPORTADO, mesmo que o cadastro de lá diga "nacional".
     # O valor original do Bling fica guardado em codigos_origem.icms_origem só como registro.
@@ -194,7 +205,7 @@ for sku, total, partes in novos:
                      lit(det["prof"]), lit(round(custo, 4)), "0", lit(det["img"] or b.get("img")), lit(det["gtin"]), lit(det["marca"]), "'active'", lit(notas),
                      lit(json.dumps(origem, ensure_ascii=False)) + "::jsonb", "now()", "now()", "'importacao-bling'"]) + ");")
     motivo = "Saldo inicial importado do Bling (" + " + ".join(f"{NOME[e]} {p['estoque']:g}" for e, p in partes.items()) + ")"
-    stmts.append((
+    if total > 0: stmts.append((
         "insert into stock_movements (id, product_id, product_name, sku, product_sku, tipo, quantidade, origem_tipo, origem_id, origem_ref, motivo, unit_cost, "
         "type, quantity, reference_type, reference_id, notes, created_date, updated_date, created_by) values ("
         + ", ".join([lit(secrets.token_hex(12)), lit(pid), lit(b["nome"]), lit(sku), lit(sku), "'ajuste_inventario'", lit(total), "'manual'", "''", "'Bling'",
