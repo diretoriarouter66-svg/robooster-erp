@@ -6,7 +6,7 @@ taxa e frete reais, dados fiscais do comprador, casamento de cada item com o pro
 (products.codigos_origem) e, para conferência, o pedido e a nota que o Bling emitiu para a mesma venda.
 NÃO cria pedido de venda, NÃO move estoque, NÃO emite nota, NÃO escreve no Mercado Livre nem no Bling.
 
-Uso: erp-ml-pedidos.py [--desde AAAA-MM-DD] [--kits]     (padrão: últimos 20 dias)
+Uso: erp-ml-pedidos.py [--desde AAAA-MM-DD] [--kits]     (padrão: últimos 20 dias; nunca antes da DATA DE CORTE)
 """
 import sys, json, time, datetime, subprocess
 sys.path.insert(0, "/root/rotinas"); sys.path.insert(0, "/root/precificador-unificado/scripts")
@@ -33,6 +33,10 @@ def lit(v):
 
 args = sys.argv[1:]
 desde = args[args.index("--desde") + 1] if "--desde" in args else (datetime.date.today() - datetime.timedelta(days=20)).isoformat()
+# DATA DE CORTE (06/10/2026, "PODE LIMPAR" do Mauricio): o ERP guarda só vendas de 01/10/2026 em diante.
+# Nada anterior volta, nem com --desde. Não remover sem ordem dele.
+CORTE = "2026-10-01"
+desde = max(desde, CORTE)
 CONTAS = ("router", "saber")
 
 def garantir_bling(emp):
@@ -218,28 +222,5 @@ log("gravados/atualizados:", tot)
 # venda devolvida/cancelada com nota autorizada → rascunho da NF-e de devolução em Notas Fiscais (03/10/2026)
 import subprocess as _sp; _sp.run(["python3", "/root/rotinas/erp-devolucoes-nf.py"])
 
-# ---- AVISO ESTOQUE ZERO (05/10/2026, achado do checkup): venda paga de item sem cadastro ou com estoque 0 no ERP
-# avisa o Mauricio no WhatsApp uma vez por pedido (estado em state/ml-aviso-estoque.json).
-try:
-    import json as _json, os as _os, urllib.request as _ur
-    _ST = "/root/rotinas/state/ml-aviso-estoque.json"
-    _avisados = set(_json.load(open(_ST))) if _os.path.exists(_ST) else set()
-    _env = dict(l.strip().split("=", 1) for l in open("/root/atendimento/.env") if "=" in l and not l.startswith("#"))
-    _rows = [l.split("\t") for l in sql(
-        "select p.id, p.conta, to_char(p.data_pedido at time zone 'America/Sao_Paulo','DD/MM HH24:MI'), coalesce(i->>'sku_anuncio', i->>'product_sku',''), "
-        "left(coalesce(i->>'titulo',''),50), coalesce(pr.stock_quantity, -1) "
-        "from ml_pedidos p, jsonb_array_elements(p.itens) i left join products pr on pr.id = i->>'product_id' "
-        "where p.status = 'paid' and p.data_pedido >= now() - interval '3 days' and coalesce(pr.stock_quantity, -1) <= 0;").split("\n") if l.strip()]
-    _novos = [r for r in _rows if r[0] + ":" + r[3] not in _avisados]
-    if _novos:
-        _txt = "📦 ERP — venda no Mercado Livre de item SEM estoque no ERP:\n" + "\n".join(
-            f"• {r[2]} {r[1].upper()} · {r[3]} {r[4]} → " + ("sem cadastro no ERP" if r[5] == "-1" else "estoque 0 no ERP/Bling") for r in _novos[:8])
-        _txt += "\n\nSe o produto existe de verdade, acerte o estoque no Bling (o ERP espelha às 05:50). Se não existe, pause o anúncio."
-        _req = _ur.Request("https://evo.robooster.com.br/message/sendText/mauricio", data=_json.dumps({"number": "5515998522350", "text": _txt}).encode(),
-                           headers={"Content-Type": "application/json", "apikey": _env["EVO_API_KEY"]})
-        try: _ur.urlopen(_req, timeout=20); log(f"aviso de estoque zero enviado: {len(_novos)} item(ns)")
-        except Exception as e: log("aviso de estoque zero falhou:", e)
-        _avisados |= {r[0] + ":" + r[3] for r in _novos}
-        _json.dump(sorted(_avisados), open(_ST, "w"))
-except Exception as e:
-    log("bloco de aviso de estoque zero falhou:", e)
+# 06/10/2026 — o aviso de WhatsApp de venda de item sem estoque (criado em 05/10) foi DESLIGADO por ordem dele. Venda de
+# item sem cadastro fica só com a pendência "sem cadastro" na tela Mercado Livre (teste). Não religar sem ordem.

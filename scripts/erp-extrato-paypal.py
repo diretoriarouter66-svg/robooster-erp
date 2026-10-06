@@ -3,7 +3,7 @@
 
 Lê as transações da conta (API de relatórios, janelas de até 31 dias) e grava em public.extrato_movimentos:
 venda (valor cheio, taxa e líquido), saque para o banco, estorno e o resto como "outro".
-Uso: erp-extrato-paypal.py [--desde AAAA-MM-DD]     (padrão: últimos 35 dias; o PayPal demora até 3 h para mostrar)
+Uso: erp-extrato-paypal.py [--desde AAAA-MM-DD]     (padrão: últimos 35 dias, nunca antes da DATA DE CORTE; o PayPal demora até 3 h para mostrar)
 """
 import sys, json, time, base64, datetime, subprocess, urllib.request, urllib.parse
 ENV = {}
@@ -51,6 +51,10 @@ def tipo_de(cod, valor):
 
 args = sys.argv[1:]
 desde = datetime.date.fromisoformat(args[args.index("--desde") + 1]) if "--desde" in args else datetime.date.today() - datetime.timedelta(days=35)
+# DATA DE CORTE (06/10/2026, "PODE LIMPAR" do Mauricio): o ERP guarda só movimentos de 01/10/2026 em diante.
+# Nada anterior volta, nem com --desde. Não remover sem ordem dele.
+CORTE = datetime.date(2026, 10, 1)
+desde = max(desde, CORTE)
 hoje = datetime.date.today(); n = 0; ini = desde
 while ini <= hoje:
     fim = min(ini + datetime.timedelta(days=30), hoje); pag = 1

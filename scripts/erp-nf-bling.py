@@ -3,7 +3,7 @@
 
 Lê as NF-e de saída das duas empresas (lista por período + detalhe de cada nota) e grava/atualiza no ERP, para o
 fechamento mensal com a contabilidade (venda × nota, nota cancelada × estorno, receita do mês).
-Uso: erp-nf-bling.py [--mes AAAA-MM] [--desde AAAA-MM-DD --ate AAAA-MM-DD]   (padrão: mês atual e o anterior)
+Uso: erp-nf-bling.py [--mes AAAA-MM] [--desde AAAA-MM-DD --ate AAAA-MM-DD]   (padrão: mês atual e o anterior; nunca antes da DATA DE CORTE)
 """
 import sys, json, time, datetime, subprocess, urllib.parse
 sys.path.insert(0, "/root/precificador-unificado/scripts"); import bling_ro
@@ -34,6 +34,12 @@ elif "--mes" in args:
     ate = (datetime.date(a + (m == 12), (m % 12) + 1, 1) - datetime.timedelta(days=1)).isoformat()
 else:
     p = (hoje.replace(day=1) - datetime.timedelta(days=1)).replace(day=1); desde, ate = p.isoformat(), hoje.isoformat()
+# DATA DE CORTE (06/10/2026, "PODE LIMPAR" do Mauricio): o ERP guarda só notas de 01/10/2026 em diante.
+# Nada anterior volta, nem com --mes/--desde. Não remover sem ordem dele.
+CORTE = "2026-10-01"
+if desde < CORTE: desde = CORTE
+if ate < desde:
+    log(f"NF-e de saída: o período pedido termina antes da data de corte {CORTE}; nada lido"); sys.exit(0)
 
 # o que já está gravado (para só buscar detalhe de nota nova ou que mudou de situação)
 ja = {}

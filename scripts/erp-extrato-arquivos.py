@@ -57,6 +57,10 @@ def regra_dono(fonte, texto):
 arq = sys.argv[1]; args = sys.argv[2:]
 rotulo = args[args.index("--conta") + 1] if "--conta" in args else None
 nome_arq = os.path.basename(arq); n = 0
+# DATA DE CORTE (06/10/2026, "PODE LIMPAR" do Mauricio): o ERP guarda só o que aconteceu de 01/10/2026 em diante.
+# Banco: lançamento anterior a 01/10 não entra. Cartão: só fatura com vencimento a partir de 01/10 — a fatura entra
+# inteira, com as parcelas de compras antigas, porque é dívida de outubro em diante. Não remover sem ordem dele.
+CORTE = "2026-10-01"; pulados = 0
 
 def gravar(c):
     global n
@@ -72,6 +76,7 @@ if arq.lower().endswith(".ofx"):
     conta = rotulo or f"Banco {banco} conta {conta_id}"
     for b in re.findall(r"<STMTTRN>(.*?)</STMTTRN>", raw, re.S):
         memo = g("MEMO", b); valor = float(g("TRNAMT", b)); d = g("DTPOSTED", b)[:8]
+        if f"{d[:4]}-{d[4:6]}-{d[6:8]}" < CORTE: pulados += 1; continue
         tipo, cat = ("entrada" if valor > 0 else "saida"), None
         ok = False; rd = regra_dono("banco", memo)
         if rd: tipo, cat, ok = rd[0] or tipo, rd[1], rd[2]
@@ -92,7 +97,7 @@ if arq.lower().endswith(".ofx"):
                            where fonte='banco' and id like {lit('banco:' + conta_id + ':%')} and (data at time zone 'America/Sao_Paulo')::date <= '{d_as}'),
                      s as (select id, {float(bal)!r} - coalesce(sum(valor) over (order by rn rows between unbounded preceding and 1 preceding), 0) as saldo from o)
                 update extrato_movimentos e set saldo_apos = round(s.saldo::numeric, 2), updated_date = now() from s where s.id = e.id and e.saldo_apos is distinct from round(s.saldo::numeric, 2);""")
-    print(f"{conta}: {n} movimentos | saldo informado pelo banco R$ {bal} em {dtasof}")
+    print(f"{conta}: {n} movimentos | saldo informado pelo banco R$ {bal} em {dtasof}" + (f" | {pulados} anteriores à data de corte {CORTE}, ignorados" if pulados else ""))
 elif arq.lower().endswith(".xlsx"):
     import openpyxl, warnings; warnings.simplefilter("ignore")
     ws = openpyxl.load_workbook(arq, data_only=True).active
@@ -113,6 +118,7 @@ elif arq.lower().endswith(".xlsx"):
         if v[0].lower() == "data" and len(v) >= 3: em_lanc = True; continue
         if v[0].lower().startswith("total de lan"): em_lanc = False; continue
         if em_lanc and len(v) >= 3 and re.match(r"\d{4}-\d{2}-\d{2}", v[0]):
+            if venc and re.match(r"\d{4}-\d{2}-\d{2}$", venc) and venc < CORTE: pulados += 1; continue
             desc = v[1]; valor = float(v[2]); cat = None
             rd = regra_dono("cartao", desc)
             if rd: cat = rd[1]
@@ -124,7 +130,7 @@ elif arq.lower().endswith(".xlsx"):
             gravar(dict(id=f"cartao:{(cartao or 'cartao').replace(' ', '')}:{venc}:{hid}", fonte="cartao", conta=rotulo or cartao or "Cartão de crédito", data=v[0][:10] + "T12:00:00-03:00",
                         tipo="estorno" if valor < 0 else "saida", descricao=desc[:240], valor=-valor, referencia=f"fatura {venc}", contraparte=titular, categoria=cat, arquivo=nome_arq,
                         bruto_json={"fatura_vencimento": venc, "fatura_total": total, "titular": titular}))
-    print(f"{rotulo or cartao}: {n} lançamentos | fatura com vencimento {venc}, total R$ {total}")
+    print(f"{rotulo or cartao}: {n} lançamentos | fatura com vencimento {venc}, total R$ {total}" + (f" | {pulados} ignorados: fatura vence antes da data de corte {CORTE}" if pulados else ""))
 else:
     raise SystemExit("formato não reconhecido (use .ofx ou .xlsx)")
 # casa os saques das contas de pagamento com as entradas no banco (02/10/2026)
