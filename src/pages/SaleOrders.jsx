@@ -1185,7 +1185,7 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
               </div>
               <div className="col-span-2">
                 <Label className="text-xs">Frete por conta</Label>
-                <Select value={String(form.frete_por_conta ?? 9)} onValueChange={v => setForm({ ...form, frete_por_conta: parseInt(v) })}>
+                <Select value={String(form.frete_por_conta ?? 1)} onValueChange={v => setForm({ ...form, frete_por_conta: parseInt(v) })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {[[0, "0 — Remetente (CIF)"], [1, "1 — Destinatário (FOB)"], [2, "2 — Terceiros"], [3, "3 — Próprio (remetente)"], [4, "4 — Próprio (destinatário)"], [9, "9 — Sem transporte"]].map(([v, l]) => <SelectItem key={v} value={String(v)}>{l}</SelectItem>)}
