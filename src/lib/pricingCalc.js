@@ -52,10 +52,11 @@ export function calcSellerCommissionRs(masterPrice, impostosPctTotal, sellerComm
   return masterPrice * (1 - impostosPctTotal / 100) * (sellerCommissionPct / 100);
 }
 
-export function calcMasterPriceFromMargin(targetMargemLiquidaPct, custo, impostosPctTotal, sellerCommissionPct, frete, indiceCustoFixo) {
-  const denom = 1 - impostosPctTotal / 100 - (1 - impostosPctTotal / 100) * (sellerCommissionPct / 100) - targetMargemLiquidaPct / 100;
+// 06/10/2026: custo fixo = percentual sobre o PREÇO (despesas fixas ÷ faturamento, base_despesas_fixas) — entra no divisor.
+export function calcMasterPriceFromMargin(targetMargemLiquidaPct, custo, impostosPctTotal, sellerCommissionPct, frete, pctCustoFixo) {
+  const denom = 1 - impostosPctTotal / 100 - (1 - impostosPctTotal / 100) * (sellerCommissionPct / 100) - targetMargemLiquidaPct / 100 - (pctCustoFixo || 0);
   if (denom <= 0) return 0;
-  return (custo * (1 + indiceCustoFixo) + frete) / denom;
+  return (custo + frete) / denom;
 }
 
 /**
@@ -78,7 +79,7 @@ export function calcChannelPrice(margemBrutaAlvo, channel, custo, impostosPctTot
   return (margemBrutaAlvo + custo + (channel.fixed_fee || 0) + frete + sellerCommissionRs) / denom;
 }
 
-export function calcChannelBreakdown(price, channel, custo, impostosPctTotal, sellerCommissionRs, frete, clientePagaFrete, indiceCustoFixo) {
+export function calcChannelBreakdown(price, channel, custo, impostosPctTotal, sellerCommissionRs, frete, clientePagaFrete, pctCustoFixo) {
   const freteEff = clientePagaFrete ? 0 : (frete || 0);
   const impostos = price * impostosPctTotal / 100;
   // Tarifa fixa do canal entra na comissão — as fórmulas de preço já a incluem
@@ -86,7 +87,8 @@ export function calcChannelBreakdown(price, channel, custo, impostosPctTotal, se
   const comissaoCanal = price * (channel.commission_percent || 0) / 100 + (channel.fixed_fee || 0);
   const margemBruta = price - custo - impostos - comissaoCanal - sellerCommissionRs - freteEff;
   const margemBrutaPct = price > 0 ? (margemBruta / price) * 100 : 0;
-  const custoFixoAlocado = indiceCustoFixo * custo;
+  // 06/10/2026: custo fixo alocado = % do preço (despesas fixas marcadas no Financeiro ÷ faturamento das notas).
+  const custoFixoAlocado = price * (pctCustoFixo || 0);
   const margemLiquida = margemBruta - custoFixoAlocado;
   const margemLiquidaPct = price > 0 ? (margemLiquida / price) * 100 : 0;
   const markup = custo > 0 ? ((price - custo) / custo) * 100 : 0;

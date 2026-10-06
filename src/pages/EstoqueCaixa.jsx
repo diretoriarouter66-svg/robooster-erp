@@ -7,6 +7,7 @@ import {
   getCustoVigente, calcImpostosPct, calcSellerCommissionRs,
   getSellerCommissionPct, calcChannelBreakdown, getMasterChannel, formatBRL, formatPct
 } from "@/lib/pricingCalc";
+import { useBaseFixas, fmtPctFixo, origemBaseFixas } from "@/lib/despesasFixas";
 
 // Estoque & Caixa — espelho do InventoryDashboard + InventoryAnalysis do
 // precificador unificado, com uma diferença: aqui as margens são calculadas
@@ -38,7 +39,9 @@ export default function EstoqueCaixa() {
     })();
   }, []);
 
-  const indiceCustoFixo = config?.indice_custo_fixo || 0;
+  // 06/10/2026: custo fixo = % da receita, vindo das despesas marcadas como fixas no Financeiro
+  const baseFixas = useBaseFixas();
+  const pctFixo = baseFixas?.pct || 0;
 
   // ==== Totais gerais do estoque (a preço de custo) ====
   const geral = useMemo(() => {
@@ -82,7 +85,7 @@ export default function EstoqueCaixa() {
         const temPrecoMaster = (masterPricing?.price || 0) > 0;
         const impMaster = masterCh ? calcImpostosPct(config, p, masterCh) : imp;
         const scRs = calcSellerCommissionRs(temPrecoMaster ? masterPricing.price : pricing.price, (temPrecoMaster ? impMaster : imp).total, scPct);
-        const bd = calcChannelBreakdown(pricing.price, ch, custo, imp.total, scRs, freteProd, clientePaga, indiceCustoFixo);
+        const bd = calcChannelBreakdown(pricing.price, ch, custo, imp.total, scRs, freteProd, clientePaga, pctFixo);
         receita += qty * pricing.price;
         lucroBruto += qty * bd.margemBruta;
         lucroLiquido += qty * bd.margemLiquida;
@@ -103,7 +106,7 @@ export default function EstoqueCaixa() {
         liquidaPct: receita > 0 ? (lucroLiquido / receita) * 100 : 0,
       };
     }).filter(c => c.itens > 0);
-  }, [channels, products, pricings, config, indiceCustoFixo]);
+  }, [channels, products, pricings, config, pctFixo]);
 
   const linhasFiltradas = geral.linhas.filter(l => !search || l.nome?.toLowerCase().includes(search.toLowerCase()) || l.sku?.toLowerCase().includes(search.toLowerCase()));
 
@@ -112,6 +115,9 @@ export default function EstoqueCaixa() {
   return (
     <div>
       <PageHeader title="Estoque & Caixa" description="Quanto vale o estoque a custo — e quanto entra no caixa vendendo tudo, canal por canal" />
+      <p className={`text-xs -mt-3 mb-4 ${baseFixas?.erro ? "text-destructive" : "text-muted-foreground"}`}>
+        Custo fixo = <strong>{fmtPctFixo(pctFixo)}</strong> da receita de cada canal — {origemBaseFixas(baseFixas)}.
+      </p>
 
       {/* HERO: custo do estoque + receita por canal */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
@@ -159,7 +165,7 @@ export default function EstoqueCaixa() {
               <div className="rounded bg-destructive/5 p-1.5"><p className="text-muted-foreground">Com. canal</p><p className="font-medium">{formatBRL(c.comCanal)}</p></div>
               <div className="rounded bg-destructive/5 p-1.5"><p className="text-muted-foreground">Com. vendedor</p><p className="font-medium">{formatBRL(c.comVendedor)}</p></div>
               {c.frete > 0 && <div className="rounded bg-destructive/5 p-1.5"><p className="text-muted-foreground">Frete</p><p className="font-medium">{formatBRL(c.frete)}</p></div>}
-              <div className="rounded bg-destructive/5 p-1.5"><p className="text-muted-foreground">Custo fixo</p><p className="font-medium">{formatBRL(c.custoFixo)}</p></div>
+              <div className="rounded bg-destructive/5 p-1.5"><p className="text-muted-foreground">Custo fixo ({fmtPctFixo(pctFixo)})</p><p className="font-medium">{formatBRL(c.custoFixo)}</p></div>
               <div className="rounded bg-destructive/10 p-1.5"><p className="text-muted-foreground">Total deduções</p><p className="font-semibold">{formatBRL(c.deducoes)}</p></div>
             </div>
           </div>

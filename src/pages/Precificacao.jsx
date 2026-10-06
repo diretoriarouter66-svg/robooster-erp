@@ -12,6 +12,7 @@ import {
   getSellerCommissionPct, calcSellerCommissionRs, calcMasterPriceFromMarkup,
   calcChannelPrice, calcChannelBreakdown, formatBRL, formatPct
 } from "@/lib/pricingCalc";
+import { useBaseFixas, fmtPctFixo, origemBaseFixas } from "@/lib/despesasFixas";
 import CompetitorSection from "@/components/pricing/CompetitorSection";
 import MLIntegration from "@/components/pricing/MLIntegration";
 
@@ -90,12 +91,14 @@ export default function Precificacao() {
   const masterChannelPre = getMasterChannel(channels);
   const impostos = selectedProduct ? calcImpostosPct(config, selectedProduct, masterChannelPre) : null;
   const masterChannel = masterChannelPre;
-  const indiceCustoFixo = config?.indice_custo_fixo || 0;
+  // 06/10/2026: custo fixo = % do preço (despesas fixas marcadas no Financeiro ÷ faturamento das notas)
+  const baseFixas = useBaseFixas();
+  const pctFixo = baseFixas?.pct || 0;
 
   const calculatedMasterPrice = useMemo(() => {
     if (mode === "preco") return masterPriceInput || 0;
     return calcMasterPriceFromMarkup(targetMargin, custo, impostos?.total || 0, masterChannel?.commission_percent || 0, masterChannel?.fixed_fee || 0, sellerCommPct, clientePagaFrete ? 0 : frete);
-  }, [mode, masterPriceInput, targetMargin, custo, impostos, sellerCommPct, frete, clientePagaFrete, indiceCustoFixo]);
+  }, [mode, masterPriceInput, targetMargin, custo, impostos, sellerCommPct, frete, clientePagaFrete, pctFixo]);
 
   const sellerCommRs = useMemo(() =>
     calcSellerCommissionRs(calculatedMasterPrice, impostos?.total || 0, sellerCommPct),
@@ -103,8 +106,8 @@ export default function Precificacao() {
 
   const masterBreakdown = useMemo(() => {
     if (!masterChannel || !impostos) return null;
-    return calcChannelBreakdown(calculatedMasterPrice, masterChannel, custo, impostos.total, sellerCommRs, frete, clientePagaFrete, indiceCustoFixo);
-  }, [calculatedMasterPrice, masterChannel, custo, impostos, sellerCommRs, frete, clientePagaFrete, indiceCustoFixo]);
+    return calcChannelBreakdown(calculatedMasterPrice, masterChannel, custo, impostos.total, sellerCommRs, frete, clientePagaFrete, pctFixo);
+  }, [calculatedMasterPrice, masterChannel, custo, impostos, sellerCommRs, frete, clientePagaFrete, pctFixo]);
 
   const channelResults = useMemo(() => {
     if (!masterBreakdown || !impostos) return [];
@@ -119,10 +122,10 @@ export default function Precificacao() {
         : isDecoupled
           ? decoupled[ch.id]
           : calcChannelPrice(margemBrutaAlvo, ch, custo, impCh.total, sellerCommRs, freteEff);
-      const breakdown = calcChannelBreakdown(price, ch, custo, impCh.total, sellerCommRs, frete, clientePagaFrete, indiceCustoFixo);
+      const breakdown = calcChannelBreakdown(price, ch, custo, impCh.total, sellerCommRs, frete, clientePagaFrete, pctFixo);
       return { channel: ch, isMaster, isDecoupled, price, breakdown, impostosPct: impCh.total, icmsPct: impCh.icms };
     });
-  }, [masterBreakdown, channels, masterChannel, calculatedMasterPrice, decoupled, custo, impostos, sellerCommRs, frete, clientePagaFrete, indiceCustoFixo]);
+  }, [masterBreakdown, channels, masterChannel, calculatedMasterPrice, decoupled, custo, impostos, sellerCommRs, frete, clientePagaFrete, pctFixo]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -159,7 +162,7 @@ export default function Precificacao() {
       } catch {}
       const freteEff = clientePaga ? 0 : freteProd;
       const scRs = calcSellerCommissionRs(masterPricing.price, impProd.total, scPct);
-      const masterBd = calcChannelBreakdown(masterPricing.price, masterCh, custoProd, impProd.total, scRs, freteProd, clientePaga, config.indice_custo_fixo || 0);
+      const masterBd = calcChannelBreakdown(masterPricing.price, masterCh, custoProd, impProd.total, scRs, freteProd, clientePaga, pctFixo);
       const margemBrutaAlvo = masterBd.margemBruta;
 
       const updates = [];
@@ -202,7 +205,7 @@ export default function Precificacao() {
         const masterPrice = calcMasterPriceFromMarkup(alvo, custoProd, impProd.total, masterCh.commission_percent || 0, masterCh.fixed_fee || 0, scPct, freteEff);
         if (!masterPrice || masterPrice <= 0) continue;
         const scRs = calcSellerCommissionRs(masterPrice, impProd.total, scPct);
-        const masterBd = calcChannelBreakdown(masterPrice, masterCh, custoProd, impProd.total, scRs, freteProd, clientePaga, config?.indice_custo_fixo || 0);
+        const masterBd = calcChannelBreakdown(masterPrice, masterCh, custoProd, impProd.total, scRs, freteProd, clientePaga, pctFixo);
         const notesData = JSON.stringify({ frete: freteProd, cliente_paga_frete: clientePaga });
         for (const ch of channels) {
           const isMaster = ch.id === masterCh.id;
@@ -355,7 +358,7 @@ export default function Precificacao() {
                 <div className="flex justify-between font-semibold border-t border-border mt-1 pt-1"><span>Total Impostos</span><span className="text-primary">{formatPct(impostos.total)}</span></div>
               </div>
               <div className="flex justify-between text-xs border-t border-border pt-2"><span className="text-muted-foreground">Comissão Vendedor</span><span>{formatPct(sellerCommPct)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-muted-foreground">Custo Fixo Alocado</span><span>{formatBRL(indiceCustoFixo * custo)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-muted-foreground">Custo Fixo Alocado</span><span title={origemBaseFixas(baseFixas)}>{fmtPctFixo(pctFixo)} do preço · {formatBRL(masterBreakdown?.custoFixoAlocado || 0)}</span></div>
             </div>
           </div>
 

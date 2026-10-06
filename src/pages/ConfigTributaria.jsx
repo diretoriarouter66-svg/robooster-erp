@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Plus, Trash2, Save, Users, SlidersHorizontal, Loader2, Landmark, AlertTriangle } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
 import { SIMPLES_ANEXO_I, simplesFaixa, simplesEfetivaPct, simplesAlertas } from "@/lib/taxEngine";
+import { useBaseFixas, fmtPctFixo, nomeMes } from "@/lib/despesasFixas";
 
 const DEFAULT_CONFIG = {
   nome: "Padrão",
@@ -24,8 +25,7 @@ const DEFAULT_CONFIG = {
   lc224_limite_anual: 5000000,
   irrf_dividendos: 10,
   irrf_piso_residente: 50000,
-  cambio_usd: 5.3,
-  despesas_fixas: []
+  cambio_usd: 5.3
 };
 
 export default function ConfigTributaria() {
@@ -62,9 +62,8 @@ export default function ConfigTributaria() {
     setSaving(false);
   };
 
-  const addDespesa = () => setConfig(prev => ({ ...prev, despesas_fixas: [...(prev.despesas_fixas || []), { nome: "", valor: 0 }] }));
-  const updateDespesa = (i, field, val) => setConfig(prev => ({ ...prev, despesas_fixas: prev.despesas_fixas.map((d, idx) => idx === i ? { ...d, [field]: val } : d) }));
-  const removeDespesa = (i) => setConfig(prev => ({ ...prev, despesas_fixas: prev.despesas_fixas.filter((_, idx) => idx !== i) }));
+  const baseFixas = useBaseFixas(); // 06/10/2026: substitui a lista "Despesas Fixas Mensais" e o índice digitado
+  const brl = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
   // Taxas de recebimento por operadora × parcelas (jsonb `taxas_operadoras`)
   const addOperadora = () => setConfig(prev => ({ ...prev, taxas_operadoras: [...(prev.taxas_operadoras || []), { nome: "", debito: "", parcelas: {} }] }));
   const updateOperadora = (i, patch) => setConfig(prev => ({ ...prev, taxas_operadoras: (prev.taxas_operadoras || []).map((o, idx) => idx === i ? { ...o, ...patch } : o) }));
@@ -168,7 +167,6 @@ export default function ConfigTributaria() {
             <div><Label>Piso IRRF Residente (R$/mês)</Label><Input type="number" step="1000" value={config.irrf_piso_residente ?? 50000} onChange={f("irrf_piso_residente")} /></div>
             <div><Label>Câmbio USD Padrão (R$)</Label><Input type="number" step="0.01" value={config.cambio_usd ?? 5.3} onChange={f("cambio_usd")} /></div>
             <div><Label>Comissão Padrão Vendedor (%)</Label><Input type="number" step="0.1" value={config.comissao_vendedor_padrao ?? 0} onChange={f("comissao_vendedor_padrao")} /></div>
-            <div><Label>Índice de Custo Fixo</Label><Input type="number" step="0.01" value={config.indice_custo_fixo ?? 0} onChange={f("indice_custo_fixo")} /></div>
           </div>
         </Card>
 
@@ -205,26 +203,24 @@ export default function ConfigTributaria() {
         </Card>
 
         <Card className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-heading font-semibold text-sm">Despesas Fixas Mensais</h3>
-            <Button variant="outline" size="sm" onClick={addDespesa}><Plus className="w-3.5 h-3.5 mr-1" /> Adicionar</Button>
-          </div>
-          <div className="space-y-2">
-            {(config.despesas_fixas || []).map((d, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Input placeholder="Descrição" value={d.nome || ""} onChange={e => updateDespesa(i, "nome", e.target.value)} className="flex-1" />
-                <Input type="number" step="0.01" placeholder="0,00" value={d.valor || ""} onChange={e => updateDespesa(i, "valor", parseFloat(e.target.value) || 0)} className="w-28" />
-                <button onClick={() => removeDespesa(i)} className="p-2 hover:bg-destructive/10 rounded-lg"><Trash2 className="w-3.5 h-3.5 text-destructive" /></button>
+          <h3 className="font-heading font-semibold text-sm">Despesas fixas — calculado</h3>
+          <p className="text-[11px] text-muted-foreground mt-1">Não se digita aqui: vem das despesas marcadas como <strong>Despesa fixa</strong> no Financeiro (o padrão é da categoria, em Financeiro → Categorias, e muda lançamento a lançamento). Entra na DRE, no Estoque &amp; Caixa e na Precificação.</p>
+          {!baseFixas ? (
+            <p className="text-xs text-muted-foreground mt-3">Carregando…</p>
+          ) : baseFixas.erro ? (
+            <p className="text-xs text-destructive mt-3">Não foi possível ler a base: {baseFixas.erro}</p>
+          ) : !baseFixas.meses_usados ? (
+            <p className="text-xs text-muted-foreground mt-3">Ainda não há despesa fixa paga marcada no Financeiro.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-3 mt-3 text-sm">
+                <div><p className="text-[11px] text-muted-foreground">Despesas fixas por mês</p><p className="font-semibold">{brl(baseFixas.media_fixas)}</p></div>
+                <div><p className="text-[11px] text-muted-foreground">Faturamento por mês (notas)</p><p className="font-semibold">{brl(baseFixas.media_faturamento)}</p></div>
+                <div><p className="text-[11px] text-muted-foreground">Percentual usado nas contas</p><p className="font-semibold text-primary">{fmtPctFixo(baseFixas.pct)}</p></div>
               </div>
-            ))}
-            {(config.despesas_fixas || []).length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Nenhuma despesa fixa cadastrada.</p>}
-            {(config.despesas_fixas || []).length > 0 && (
-              <div className="flex justify-between pt-2 border-t border-border text-sm font-medium">
-                <span>Total Mensal</span>
-                <span>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((config.despesas_fixas || []).reduce((s, d) => s + (d.valor || 0), 0))}</span>
-              </div>
-            )}
-          </div>
+              <p className="text-[11px] text-muted-foreground mt-2">Base: {(baseFixas.meses || []).map(m => `${nomeMes(m.mes)} (fixas ${brl(m.fixas)} · faturado ${brl(m.faturamento)})`).join(" · ")} — média dos últimos 3 meses fechados com despesas fixas pagas.</p>
+            </>
+          )}
         </Card>
       </div>
 

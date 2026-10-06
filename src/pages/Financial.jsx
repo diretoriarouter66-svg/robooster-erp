@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
@@ -155,20 +156,35 @@ export default function Financial() {
   };
   const saldoConta = (c) => calcSaldoConta(c, entries).saldo;
 
+  // 06/10/2026: DESPESA FIXA — o padrão vem da categoria (Categorias → "Despesa fixa"); no lançamento dá para mudar.
+  // fixa_manual = a marcação difere do padrão da categoria (o banco guarda; trocar o padrão da categoria não mexe nela).
+  const fixaPadrao = (slug) => !!categories.find(c => c.slug === slug)?.fixa_padrao;
+  const setFixaPadrao = async (c, v) => {
+    await base44.entities.FinancialCategory.update(c.id, { fixa_padrao: v });
+    loadData();
+  };
+
   const openNew = (type) => {
     setEditing(null);
-    setForm({ type: type || "payable", category: "other", status: "pending", payment_method: "pix" });
+    setForm({ type: type || "payable", category: "other", status: "pending", payment_method: "pix", fixa: fixaPadrao("other"), _fixaTocada: false });
     setDialogOpen(true);
   };
 
   const openEdit = (e) => {
     setEditing(e);
-    setForm({ ...e });
+    setForm({ ...e, _fixaTocada: !!e.fixa_manual });
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
+    // 06/10/2026: tira o campo de controle da tela e grava a marcação de despesa fixa (fixa_manual = difere da categoria)
+    const { _fixaTocada, ...dadosLancamento } = form;
+    if ((dadosLancamento.type || "payable") === "payable") {
+      dadosLancamento.fixa = !!dadosLancamento.fixa;
+      dadosLancamento.fixa_manual = dadosLancamento.fixa !== fixaPadrao(dadosLancamento.category);
+    } else { delete dadosLancamento.fixa; delete dadosLancamento.fixa_manual; }
     try {
+      const form = dadosLancamento; // eslint-disable-line no-shadow
       const nParcelas = Math.max(1, parseInt(form.parcelas) || 1);
       // Conta automática pelo método ("qual método cai em qual conta"), quando o usuário não apontou
       const contaPadrao = (m) => contas.find(c => c.ativo !== false && (c.metodos || []).includes(m))?.id || null;
@@ -206,32 +222,6 @@ export default function Financial() {
       return;
     }
     setDialogOpen(false);
-    loadData();
-  };
-
-  const gerarContasDoMes = async () => {
-    try {
-      const mesRef = new Date().toISOString().slice(0, 7); // YYYY-MM
-      const configs = await base44.entities.ConfigTributaria.list("-created_date", 1);
-      const despesas = configs?.[0]?.despesas_fixas || [];
-      if (!despesas.length) { alert("Nenhuma despesa fixa cadastrada na Config. Tributária."); return; }
-      // Se esta consulta falhar, o erro tem que subir — senão gera tudo em dobro
-      const existentes = await base44.entities.FinancialEntry.filter({ reference_type: "despesa_fixa", reference_id: mesRef }, "-created_date", 100);
-      if ((existentes || []).length > 0) { alert(`As contas fixas de ${mesRef} já foram geradas (${existentes.length} lançamentos).`); return; }
-      if (!confirm(`Gerar ${despesas.length} contas a pagar das despesas fixas de ${mesRef} (vencimento dia 5)?`)) return;
-      const venc = `${mesRef}-05`;
-      for (const d of despesas) {
-        if (!d?.nome || !(d?.valor > 0)) continue;
-        await base44.entities.FinancialEntry.create({
-          type: "payable", category: "other",
-          description: `${d.nome} — ${mesRef}`,
-          reference_id: mesRef, reference_type: "despesa_fixa",
-          amount: d.valor, due_date: venc, status: "pending", payment_method: "boleto",
-        });
-      }
-    } catch (err) {
-      alert(`Não foi possível gerar as contas do mês: ${err.message}`);
-    }
     loadData();
   };
 
@@ -315,7 +305,6 @@ export default function Financial() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setCatOpen(true)}><Tag className="w-4 h-4 mr-1" /> Categorias</Button>
             <Button variant="outline" onClick={() => setContasOpen(true)}><DollarSign className="w-4 h-4 mr-1" /> Contas</Button>
-            <Button variant="outline" onClick={gerarContasDoMes}><Plus className="w-4 h-4 mr-1" /> Gerar Contas do Mês</Button>
             <Button variant="outline" onClick={() => openNew("receivable")}><TrendingUp className="w-4 h-4 mr-1" /> A Receber</Button>
             <Button onClick={() => openNew("payable")}><TrendingDown className="w-4 h-4 mr-1" /> A Pagar</Button>
           </div>
@@ -431,7 +420,7 @@ export default function Financial() {
                   )}
                   {filtered.map((e) => (
                     <tr key={e.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-3 font-medium">{e.description}</td>
+                      <td className="px-4 py-3 font-medium">{e.description}{e.type === "payable" && e.fixa && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary align-middle" title="Despesa fixa">fixa</span>}</td>
                       <td className="px-4 py-3 text-center text-xs hidden sm:table-cell">{categoryLabels[e.category] || e.category}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`text-xs font-medium ${e.type === "receivable" ? "text-success" : "text-destructive"}`}>
@@ -474,13 +463,22 @@ export default function Financial() {
             </div>
             <div>
               <Label>Categoria</Label>
-              <Select value={form.category || "other"} onValueChange={v => setForm({...form, category: v})}>
+              <Select value={form.category || "other"} onValueChange={v => setForm(f => ({ ...f, category: v, fixa: f._fixaTocada ? f.fixa : fixaPadrao(v) }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {categoriasAtivas.map(c => <SelectItem key={c.slug} value={c.slug}>{c.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
+            {(form.type || "payable") === "payable" && (
+              <div className="sm:col-span-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                <div>
+                  <Label className="text-sm">Despesa fixa</Label>
+                  <p className="text-[11px] text-muted-foreground">Entra no custo fixo da DRE, do Estoque &amp; Caixa e da Precificação. {fixaPadrao(form.category) ? "Esta categoria é fixa por padrão." : "Esta categoria é variável por padrão."}</p>
+                </div>
+                <Switch checked={!!form.fixa} onCheckedChange={v => setForm(f => ({ ...f, fixa: v, _fixaTocada: true }))} />
+              </div>
+            )}
             <div className="sm:col-span-2"><Label>Descrição *</Label><Input value={form.description || ""} onChange={e => setForm({...form, description: e.target.value})} /></div>
             <div><Label>Valor {parseInt(form.parcelas) > 1 ? "TOTAL " : ""}*</Label><Input type="number" step="0.01" value={form.amount || ""} onChange={e => setForm({...form, amount: parseFloat(e.target.value) || 0})} /></div>
             <div><Label>{parseInt(form.parcelas) > 1 ? "1º Vencimento" : "Vencimento"}</Label><Input type="date" value={form.due_date || ""} onChange={e => setForm({...form, due_date: e.target.value})} /></div>
@@ -572,6 +570,11 @@ export default function Financial() {
                   : <select value={c.dre_grupo || "nao"} onChange={e => setDreGrupo(c, e.target.value)} className={`h-6 text-[11px] rounded border border-border bg-background px-1 ${c.dre_grupo ? (c.dre_grupo === "informativo" ? "text-warning" : "") : "text-destructive"}`}>
                       {DRE_OPCOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>}
+                {!DRE_FIXAS[c.slug] && c.dre_grupo && !["informativo", "receita_financeira"].includes(c.dre_grupo) && (
+                  <label className="flex items-center gap-1 text-[10px] text-muted-foreground ml-auto cursor-pointer" title="Padrão dos lançamentos desta categoria (inclusive os criados pelo extrato). Muda também os lançamentos que seguem o padrão; os mudados à mão ficam como estão.">
+                    <input type="checkbox" checked={!!c.fixa_padrao} onChange={e => setFixaPadrao(c, e.target.checked)} /> Despesa fixa
+                  </label>
+                )}
                </div>
               </div>
             ))}

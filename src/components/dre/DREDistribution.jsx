@@ -13,7 +13,7 @@ export default function DREDistribution({ dre }) {
       <div className="bg-card rounded-xl border border-border p-4">
         <h3 className="font-heading font-semibold text-sm mb-2">Despesas Fixas</h3>
         <div className="space-y-1 text-sm">
-          <div className="flex justify-between"><span className="text-muted-foreground">Despesas Mensais</span><span className="font-medium">{fmtBRL(despesas_fixas_mensais)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Despesas fixas por mês (média real, Financeiro)</span><span className="font-medium">{fmtBRL(despesas_fixas_mensais)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">× {meses_venda} meses</span><span className="font-medium">{fmtBRL(despesas_fixas_total)}</span></div>
           <div className="flex justify-between border-t border-border pt-1"><span className="text-muted-foreground">Lucro Distribuível (base)</span><span className="font-medium">{fmtBRL(lucro_distribuivel)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">− Despesas Fixas</span><span className="font-medium text-destructive">−{fmtBRL(despesas_fixas_total)}</span></div>

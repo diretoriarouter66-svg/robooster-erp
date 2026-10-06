@@ -809,14 +809,7 @@ export const CONFIG_DEFAULTS = {
   irrf_piso_residente: 50000,
 };
 
-export const DESPESAS_FIXAS_PADRAO = [
-  { nome: 'Galpão / Aluguel', valor: 5000 },
-  { nome: 'Utilidades (água, luz, internet)', valor: 1500 },
-  { nome: 'Contador', valor: 2000 },
-  { nome: 'Marketing', valor: 3000 },
-  { nome: 'Folha de pagamento', valor: 8000 },
-  { nome: 'Outros', valor: 1000 },
-];
+// 06/10/2026: DESPESAS_FIXAS_PADRAO removida — a despesa fixa vem do Financeiro (lib/despesasFixas.js).
 
 /**
  * Converte a entidade ConfigTributaria (valores em %) para o formato do motor (decimais).

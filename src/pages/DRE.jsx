@@ -11,9 +11,10 @@ import DREResults from "@/components/dre/DREResults";
 import DREDistribution from "@/components/dre/DREDistribution";
 import DREPlanilha from "@/components/dre/DREPlanilha";
 import {
-  montarDRE, calcularDistribuicao, sugerirMesesIrrf, configParaMotor, DESPESAS_FIXAS_PADRAO
+  montarDRE, calcularDistribuicao, sugerirMesesIrrf, configParaMotor
 } from "@/lib/simportEngine";
 import { simplesEfetivaPct } from "@/lib/taxEngine";
+import { useBaseFixas } from "@/lib/despesasFixas";
 
 const fmtBRL = (v) => v != null ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v) : "—";
 const fmtPct = (v) => v != null ? `${(v).toFixed(2)}%` : "—";
@@ -28,6 +29,7 @@ export default function DRE() {
   const [view, setView] = useState("list");
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
+  const baseFixas = useBaseFixas(); // 06/10/2026: despesa fixa mensal = média real das despesas marcadas como fixas no Financeiro
   const [saving, setSaving] = useState(false);
   const [compareIds, setCompareIds] = useState([]);
 
@@ -173,8 +175,7 @@ export default function DRE() {
 
     const dreBase = montarDRE(importacao, vendas, configMotor, socios, saldoCredorTotal, form.comissao || 0, mixGeografico);
 
-    const despesasFixas = config.despesas_fixas?.length ? config.despesas_fixas : DESPESAS_FIXAS_PADRAO;
-    const despesasFixasMensais = despesasFixas.reduce((s, d) => s + (d.valor || 0), 0);
+    const despesasFixasMensais = baseFixas?.media_fixas || 0;
     const despesasFixasTotal = despesasFixasMensais * meses;
     const lucroDistribuivelAjustado = dreBase.lucro_distribuivel - despesasFixasTotal;
 

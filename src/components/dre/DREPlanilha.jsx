@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { configParaMotor } from "@/lib/simportEngine";
 import { simplesEfetivaPct } from "@/lib/taxEngine";
+import { useBaseFixas, fmtPctFixo } from "@/lib/despesasFixas";
 
 /**
  * DRE REALIZADA no modelo da planilha da empresa (Drive → Financeiro → DRE): o ano em 12 colunas + total,
@@ -15,7 +16,9 @@ import { simplesEfetivaPct } from "@/lib/taxEngine";
  *  - vendas, custo e comissões: pedidos faturados do ERP e vendas pagas do Mercado Livre (lidas da conta);
  *  - Simples Nacional: carimbo fiscal do pedido; sem carimbo, alíquota efetiva da Configuração;
  *  - despesas: lançamentos PAGOS do Financeiro (o extrato do banco lança sozinho), pela categoria e seu grupo
- *    (financial_categories.dre_grupo). Mês sem extrato usa a lista fixa da Configuração como estimativa.
+ *    (financial_categories.dre_grupo). 06/10/2026: as despesas operacionais se dividem em VARIÁVEIS (acima da margem de
+ *    contribuição) e FIXAS (marcação "Despesa fixa" de cada lançamento, padrão da categoria). Mês já corrido sem
+ *    extrato usa a média real das despesas fixas (base_despesas_fixas) como estimativa.
  */
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const GRUPOS_DESPESA = [
@@ -25,6 +28,8 @@ const GRUPOS_DESPESA = [
   ["comercial", "Despesas comerciais"],
   ["outras", "Outras despesas (categoria ainda sem grupo)"],
 ];
+// grupos que se dividem em variável × fixa (financeira, impostos e receita financeira ficam como estão)
+const OPERACIONAIS = new Set(GRUPOS_DESPESA.map(([g]) => g));
 const num = (v) => parseFloat(v) || 0;
 const fmt = (v) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 const mesSP = (d) => (d ? new Date(d).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7) : "");
@@ -37,6 +42,7 @@ export default function DREPlanilha({ config, onVoltar }) {
   const [mesSel, setMesSel] = useState(parseInt(hoje.slice(5, 7), 10) - 1);
   const [contaML, setContaML] = useState("todas");
   const [dados, setDados] = useState(null);
+  const baseFixas = useBaseFixas();
 
   useEffect(() => {
     Promise.all([
@@ -72,7 +78,9 @@ export default function DREPlanilha({ config, onVoltar }) {
     const aliqSemCarimbo = simples ? efetiva / 100
       : (motor.pis_venda + motor.cofins_venda + motor.presuncao_irpj * motor.aliq_irpj + motor.presuncao_csll * motor.aliq_csll);
     const pctVendedorPadrao = num(config?.comissao_vendedor_padrao);
-    const despesasConfig = (config?.despesas_fixas || []).reduce((s, d) => s + (d.valor || 0), 0);
+    const mediaFixas = num(baseFixas?.media_fixas);
+    // chave da linha: operacional vai para "var:" ou "fix:" pela marcação do lançamento; o resto fica "cat:"
+    const chaveDe = (c, e) => (OPERACIONAIS.has(c.dre_grupo) ? `${e.fixa ? "fix" : "var"}:${c.slug}` : `cat:${c.slug}`);
 
     const L = {}; // chave → 12 valores
     const add = (k, i, v) => { if (!v) return; (L[k] = L[k] || zeros())[i] += v; };
@@ -144,41 +152,42 @@ export default function DREPlanilha({ config, onVoltar }) {
         if (e.reference_type === "extrato" && (e.reference_id || "").startsWith("fatura:")) {
           if (mesAnterior((e.due_date || "").slice(0, 7)) !== mes) continue;
           const c = cat[e.category];
-          if (c?.dre_grupo) { add(`cat:${c.slug}`, i, e.type === "payable" ? num(e.amount) : -num(e.amount)); temCartao[i] = true; }
+          if (c?.dre_grupo) { add(chaveDe(c, e), i, e.type === "payable" ? num(e.amount) : -num(e.amount)); temCartao[i] = true; }
           continue;
         }
         const quando = e.payment_date || e.due_date || "";
         if (!quando.startsWith(mes)) continue;
         if (e.category === "servicos_os" && e.type === "receivable") { add("servicos", i, num(e.amount)); semCarimbo += simples ? num(e.amount) : 0; continue; }
         // despesa de viagem de OS conta pelo vencimento/pagamento, mesmo ainda não paga (regra que a DRE já tinha)
-        if (e.category === "despesas_viagem_os" && e.type === "payable") { add("cat:despesas_viagem_os", i, num(e.amount)); continue; }
+        if (e.category === "despesas_viagem_os" && e.type === "payable") { add(`${e.fixa ? "fix" : "var"}:despesas_viagem_os`, i, num(e.amount)); continue; }
         if (e.status !== "paid" || !(e.payment_date || "").startsWith(mes)) continue;
         if (e.reference_type === "extrato") temExtrato[i] = true;
         const c = cat[e.category];
         if (!c?.dre_grupo) continue;
-        if (c.dre_grupo === "receita_financeira" ? e.type === "receivable" : e.type === "payable") add(`cat:${c.slug}`, i, num(e.amount));
+        if (c.dre_grupo === "receita_financeira" ? e.type === "receivable" : e.type === "payable") add(chaveDe(c, e), i, num(e.amount));
       }
 
       add("das", i, semCarimbo * aliqSemCarimbo);
-      // mês já corrido e sem extrato lançado: despesas pela lista fixa da Configuração (estimativa)
+      // mês já corrido e sem extrato lançado: despesas fixas pela MÉDIA REAL (marcadas no Financeiro) como estimativa
       // (só em mês que teve venda no sistema; mês sem movimento nenhum fica em branco)
       const teveVenda = (L.venda_pedidos?.[i] || 0) + (L.venda_ml?.[i] || 0) + (L.servicos?.[i] || 0) > 0;
-      if (!temExtrato[i] && teveVenda && mes <= hoje && despesasConfig > 0) add("fixas_config", i, despesasConfig);
+      if (!temExtrato[i] && teveVenda && mes <= hoje && mediaFixas > 0) add("fixas_media", i, mediaFixas);
     }
 
     const v = (k) => L[k] || zeros();
     const soma = (...ks) => zeros().map((_, i) => ks.reduce((s, k) => s + (Array.isArray(k) ? k[i] : v(k)[i]), 0));
     const menos = (a, b) => a.map((x, i) => x - b[i]);
-    const catsDoGrupo = (g) => categorias.filter((c) => c.dre_grupo === g && (L[`cat:${c.slug}`] || []).some((x) => Math.abs(x) >= 0.005)).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-    const linhasCat = (g) => catsDoGrupo(g).map((c) => ({ label: c.nome, vals: v(`cat:${c.slug}`) }));
+    const catsDoGrupo = (g, pre = "cat") => categorias.filter((c) => c.dre_grupo === g && (L[`${pre}:${c.slug}`] || []).some((x) => Math.abs(x) >= 0.005)).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    const linhasCat = (g, pre = "cat") => catsDoGrupo(g, pre).map((c) => ({ label: c.nome, vals: v(`${pre}:${c.slug}`) }));
     const somaGrupo = (g) => soma(...catsDoGrupo(g).map((c) => `cat:${c.slug}`));
 
     const receitaBruta = menos(soma("venda_pedidos", "venda_ml", "servicos"), v("devolucoes"));
     const receitaLiquida = menos(receitaBruta, v("das"));
     const resultadoBruto = menos(receitaLiquida, v("cmv"));
 
-    const grupos = GRUPOS_DESPESA.map(([g, titulo]) => {
-      const linhas = linhasCat(g);
+    // VARIÁVEIS: as categorias operacionais com lançamentos não marcados como fixos + comissões e frete das vendas
+    const gruposVar = GRUPOS_DESPESA.map(([g, titulo]) => {
+      const linhas = linhasCat(g, "var");
       if (g === "comercial") {
         for (const [k, label] of [["comissao_ml", "Comissão Mercado Livre"], ["frete_ml", "Frete Mercado Livre"], ["comissao_canal", "Comissões de canal"], ["comissao_vendedor", "Comissões de vendedor / representante"]]) {
           if (L[k]) linhas.push({ label, vals: v(k) });
@@ -186,11 +195,18 @@ export default function DREPlanilha({ config, onVoltar }) {
       }
       return { titulo, linhas, total: soma(...linhas.map((l) => l.vals)) };
     }).filter((g) => g.linhas.length);
-    if (L.fixas_config) grupos.push({ titulo: "Despesas fixas (lista da Configuração — mês sem extrato)", linhas: [], total: v("fixas_config") });
-    const despesasOp = soma(...grupos.map((g) => g.total));
+    // FIXAS: lançamentos marcados como "Despesa fixa" (padrão da categoria; muda caso a caso no Financeiro)
+    const gruposFix = GRUPOS_DESPESA.map(([g, titulo]) => {
+      const linhas = linhasCat(g, "fix");
+      return { titulo, linhas, total: soma(...linhas.map((l) => l.vals)) };
+    }).filter((g) => g.linhas.length);
+    if (L.fixas_media) gruposFix.push({ titulo: "Despesas fixas — média real (mês sem extrato)", linhas: [], total: v("fixas_media") });
+    const despVar = soma(...gruposVar.map((g) => g.total));
+    const despFix = soma(...gruposFix.map((g) => g.total));
 
     const recFin = somaGrupo("receita_financeira"), despFin = somaGrupo("financeira"), impostos = somaGrupo("imposto");
-    const antesImpostos = menos(soma(resultadoBruto, recFin), soma(despesasOp, despFin));
+    const margemContrib = menos(resultadoBruto, despVar);
+    const antesImpostos = menos(soma(margemContrib, recFin), soma(despFix, despFin));
     const liquido = menos(antesImpostos, impostos);
 
     const R = [];
@@ -205,8 +221,14 @@ export default function DREPlanilha({ config, onVoltar }) {
     push("resultado", "(=) Receita Operacional Líquida", receitaLiquida, 0);
     push("total", "(−) Custos das Mercadorias", v("cmv"), -1);
     push("resultado", "(=) Resultado Operacional Bruto", resultadoBruto, 0);
-    push("total", "(−) Despesas Operacionais", despesasOp, -1);
-    for (const g of grupos) {
+    push("total", "(−) Despesas variáveis", despVar, -1);
+    for (const g of gruposVar) {
+      push("grupo", g.titulo, g.total, -1);
+      for (const l of g.linhas) push("linha", l.label, l.vals, -1);
+    }
+    push("resultado", "(=) Margem de contribuição", margemContrib, 0);
+    push("total", "(−) Despesas fixas", despFix, -1);
+    for (const g of gruposFix) {
       push("grupo", g.titulo, g.total, -1);
       for (const l of g.linhas) push("linha", l.label, l.vals, -1);
     }
@@ -220,8 +242,8 @@ export default function DREPlanilha({ config, onVoltar }) {
     push("resultado final", "(=) Resultado Líquido", liquido, 0);
 
     const informativo = linhasCat("informativo");
-    return { linhas: R, informativo, itensSemCusto, temExtrato, temCartao, usaConfig: !!L.fixas_config };
-  }, [dados, ano, contaML, config]); // eslint-disable-line react-hooks/exhaustive-deps
+    return { linhas: R, informativo, itensSemCusto, temExtrato, temCartao, usaMedia: !!L.fixas_media };
+  }, [dados, ano, contaML, config, baseFixas]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!dre) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
@@ -301,7 +323,7 @@ export default function DREPlanilha({ config, onVoltar }) {
       </div>
 
       <div className="mt-3 space-y-1 text-[11px] text-muted-foreground max-w-4xl">
-        <p>• Mês com ponto (•) no cabeçalho: despesas pagas de verdade, lançadas pelo extrato do banco. {dre.usaConfig && "Mês já corrido sem extrato usa a lista de despesas fixas da Configuração como estimativa."}</p>
+        <p>• Mês com ponto (•) no cabeçalho: despesas pagas de verdade, lançadas pelo extrato do banco. {dre.usaMedia && "Mês já corrido sem extrato usa a média real das despesas fixas como estimativa."} Despesa fixa é a marcada no Financeiro (o padrão vem da categoria){baseFixas?.meses_usados ? ` — hoje ${fmtPctFixo(baseFixas.pct)} do faturamento` : ""}.</p>
         <p>• Cartão de crédito: a fatura entra no mês anterior ao vencimento (a que vence em outubro são as compras de setembro), por categoria, já descontados os estornos. Mês sem fatura lançada fica sem as despesas do cartão.</p>
         <p>• Vendas do Mercado Livre são as pagas na conta; devolvida inteira sai da receita, da comissão e do custo.</p>
         {dre.itensSemCusto > 0 && <p className="text-warning">⚠️ {dre.itensSemCusto} item(ns) vendidos sem custo cadastrado no ano — o custo real é maior e o resultado, menor.</p>}
