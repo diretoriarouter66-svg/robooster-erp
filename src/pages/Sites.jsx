@@ -382,24 +382,23 @@ export default function Sites() {
           {ads.lista.length > 0 && (
             <Card className="mb-4"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Megaphone className="w-4 h-4" /> Campanhas do Google Ads (custo via Analytics) · {periodo} dias contra os {periodo} anteriores</CardTitle></CardHeader>
               <CardContent className="text-sm">
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
                   <Num label="Custo (via Analytics)" valor={ads.a.custo} anterior={custoComparavel(ads.a, ads.b) ? ads.b.custo : null} formato={() => custoMoeda(ads.a)} />
                   <Num label="Cliques" valor={ads.a.cliques} anterior={ads.b.cliques} />
                   <Num label="Impressões" valor={ads.a.imp} anterior={ads.b.imp} />
                   <Num label="Taxa de clique" valor={ads.a.imp ? (ads.a.cliques / ads.a.imp) * 100 : null} anterior={ads.b.imp ? (ads.b.cliques / ads.b.imp) * 100 : null} sufixo="%" />
                   <Num label="Sessões trazidas" valor={ads.lista.reduce((s, c) => s + c.a.sessoes, 0)} anterior={ads.lista.reduce((s, c) => s + c.b.sessoes, 0)} />
-                  <Num label="Visitas (page_view)" valor={ads.a.conv} anterior={ads.b.conv} />
                 </div>
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="overflow-x-auto"><table className="w-full"><thead><tr className="text-xs text-muted-foreground"><th className="text-left font-normal">Campanha</th><th className="text-right font-normal">Custo</th><th className="text-right font-normal">Impressões</th><th className="text-right font-normal">Cliques</th><th className="text-right font-normal">Sessões</th><th className="text-right font-normal">Visitas (page_view)</th></tr></thead><tbody>
-                    {ads.lista.map((c) => (<tr key={c.nome} className="border-b last:border-0"><td className="py-1 pr-2 max-w-[260px] truncate" title={c.nome}>{c.nome}</td><td className="py-1 text-right tabular-nums">{custoMoeda(c.a)} {custoComparavel(c.a, c.b) && <Delta atual={c.a.custo} anterior={c.b.custo} />}</td><td className="py-1 text-right tabular-nums">{fmt(c.a.imp)} <Delta atual={c.a.imp} anterior={c.b.imp} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.cliques)} <Delta atual={c.a.cliques} anterior={c.b.cliques} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.sessoes)}</td><td className="py-1 text-right tabular-nums">{fmt(c.a.conv)} <Delta atual={c.a.conv} anterior={c.b.conv} /></td></tr>))}
+                  <div className="overflow-x-auto"><table className="w-full"><thead><tr className="text-xs text-muted-foreground"><th className="text-left font-normal">Campanha</th><th className="text-right font-normal">Custo</th><th className="text-right font-normal">Impressões</th><th className="text-right font-normal">Cliques</th><th className="text-right font-normal">Sessões</th></tr></thead><tbody>
+                    {ads.lista.map((c) => (<tr key={c.nome} className="border-b last:border-0"><td className="py-1 pr-2 max-w-[260px] truncate" title={c.nome}>{c.nome}</td><td className="py-1 text-right tabular-nums">{custoMoeda(c.a)} {custoComparavel(c.a, c.b) && <Delta atual={c.a.custo} anterior={c.b.custo} />}</td><td className="py-1 text-right tabular-nums">{fmt(c.a.imp)} <Delta atual={c.a.imp} anterior={c.b.imp} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.cliques)} <Delta atual={c.a.cliques} anterior={c.b.cliques} /></td><td className="py-1 text-right tabular-nums">{fmt(c.a.sessoes)}</td></tr>))}
                   </tbody></table></div>
                   <div className="h-44"><ResponsiveContainer width="100%" height="100%"><BarChart data={adsSerie} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <XAxis dataKey="dia" tick={{ fontSize: 10 }} interval="preserveStartEnd" /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend />
-                    <Bar dataKey="cliques" name="Cliques por dia" fill="#f59e0b" radius={[3, 3, 0, 0]} /><Bar dataKey="conversoes" name="Visitas (page_view)" fill="#6b7280" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="cliques" name="Cliques por dia" fill="#f59e0b" radius={[3, 3, 0, 0]} />
                   </BarChart></ResponsiveContainer></div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">Custo importado do Analytics, em reais. Confere com o Google Ads com diferença de centavos (19/08 a 17/09: R$ 1.645 aqui, R$ 1.647 na tela do Ads). 'Visitas' aqui são visualizações de página, não leads; os leads reais são a conversão 'WhatsApp Empilhadeira' no Google Ads.</p>
+                <p className="text-xs text-muted-foreground mt-2">Custo importado do Analytics, em reais. Confere com o Google Ads com diferença de centavos (19/08 a 17/09: R$ 1.645 aqui, R$ 1.647 na tela do Ads). Conversões não aparecem aqui: desde 30/09 a conversão 'WhatsApp Empilhadeira' é medida direto no Google Ads e não passa pelo Analytics (o número que vinha do Analytics era visualização de página, não lead, e zerou em 01/10). Leads do Ads: ver na tela do Google Ads.</p>
               </CardContent></Card>
           )}
 

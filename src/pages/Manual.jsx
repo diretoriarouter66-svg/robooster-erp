@@ -516,7 +516,7 @@ const GRUPOS = [
         corpo: (
           <>
             <p>Só leitura, alimentada por coletas automáticas às 07:30/07:35. Período 7/28/90 dias. <strong>Pontos de atenção</strong> no topo (queda ≥ 25%, índice &lt; 80%, nota de velocidade &lt; 60, LCP &gt; 4 s, 1ª resposta no WhatsApp &gt; 60 min, sem resposta +24 h, zero pagantes, fábrica de fichas parada…). Por site: Google (GSC), Bing, usuários (GA4), sessões vindas de IA por assistente, Google Ads por campanha (custo pela moeda da conta — não soma BRL com USD), redes sociais, páginas mais vistas, atendimento WhatsApp e o painel do Mapa da Placa.</p>
-            <NaoFaz itens={["GSC e Bing têm atraso de 3 e 6 dias — a tela ancora no último dia com dado para não mostrar \"queda falsa\".", "\"Visitas\" do Ads são page_view, não leads."]} />
+            <NaoFaz itens={["GSC e Bing têm atraso de 3 e 6 dias — a tela ancora no último dia com dado para não mostrar \"queda falsa\".", "Conversões do Google Ads não aparecem: desde 30/09 a conversão (WhatsApp Empilhadeira) é medida direto no Google Ads, não no Analytics — ver os leads na tela do Ads."]} />
           </>
         ),
       },
