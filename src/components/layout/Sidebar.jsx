@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, Users, Truck, ShoppingCart, Factory, BookOpen,
   FileText, DollarSign, BarChart3, ChevronDown,
   ChevronRight, Settings, LogOut, Menu, X, Warehouse,
-  Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, Target, Container, KeyRound, Wrench, Coins, Gem,
+  Ship, Calculator, SlidersHorizontal, Store, Tag, Percent, KeyRound, Wrench, Coins, Gem,
   Globe, ShoppingBag, ListChecks, ClipboardCheck } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
@@ -29,8 +29,6 @@ const MODULO_DO_ITEM = {
   "/stock": "estoque",
   "/import-simulator": "importacao",
   "/dre": "financeiro",
-  "/breakeven": "financeiro",
-  "/container": "importacao",
   "/config-tributaria": "config",
   "/financial": "financeiro",
   "/conciliacao": "financeiro",
@@ -75,8 +73,6 @@ const menuGroups = [
   items: [
   { icon: Ship, label: "Simulador", path: "/import-simulator" },
   { icon: Calculator, label: "DRE", path: "/dre" },
-  { icon: Target, label: "Break-even", path: "/breakeven" },
-  { icon: Container, label: "Container", path: "/container" },
   { icon: SlidersHorizontal, label: "Config. Tributária", path: "/config-tributaria" }]
 
 },

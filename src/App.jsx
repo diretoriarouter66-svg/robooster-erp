@@ -30,8 +30,6 @@ import Settings from './pages/Settings';
 import ImportSimulator from './pages/ImportSimulator';
 import ImportFechamento from './pages/ImportFechamento'; // 01/10: fechamento com valores reais (DI + despesas)
 import DRE from './pages/DRE';
-import Breakeven from './pages/Breakeven';
-import ContainerPage from './pages/Container';
 import ConfigTributaria from './pages/ConfigTributaria';
 import ServiceOrders from './pages/ServiceOrders';
 import NotasFiscais from './pages/NotasFiscais';
@@ -103,8 +101,8 @@ const AuthenticatedApp = () => {
           <Route path="/dre" element={<RequireModulo modulo="financeiro"><DRE /></RequireModulo>} />
           <Route path="/sites" element={<RequireModulo modulo="comercial"><Sites /></RequireModulo>} />
           <Route path="/ml-pedidos" element={<RequireModulo modulo="comercial"><MLPedidos /></RequireModulo>} />
-          <Route path="/breakeven" element={<RequireModulo modulo="financeiro"><Breakeven /></RequireModulo>} />
-          <Route path="/container" element={<RequireModulo modulo="importacao"><ContainerPage /></RequireModulo>} />
+          <Route path="/breakeven" element={<Navigate to="/" replace />} /> {/* 06/10/2026: tela removida a pedido dele */}
+          <Route path="/container" element={<Navigate to="/import-simulator" replace />} /> {/* 06/10/2026: a cubagem está no Simulador */}
           <Route path="/config-tributaria" element={<RequireModulo modulo="config"><ConfigTributaria /></RequireModulo>} />
           <Route path="/settings" element={<RequireModulo modulo="config"><Settings /></RequireModulo>} />
         </Route>

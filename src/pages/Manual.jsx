@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BookOpen, Settings, Package, Ship, ShoppingCart, FileText, Factory, Wallet, ChevronDown, AlertTriangle, CheckCircle2, Wrench, ShieldCheck, LayoutDashboard, Users, Store, Tag, Percent, Warehouse, Coins, ClipboardList, Container, Calculator, Target, Gem, BarChart3, Globe, KeyRound, Search } from "lucide-react";
+import { BookOpen, Settings, Package, Ship, ShoppingCart, FileText, Factory, Wallet, ChevronDown, AlertTriangle, CheckCircle2, Wrench, ShieldCheck, LayoutDashboard, Users, Store, Tag, Percent, Warehouse, Coins, ClipboardList, Calculator, Gem, BarChart3, Globe, KeyRound, Search } from "lucide-react";
 import PageHeader from "../components/shared/PageHeader";
 
 /**
@@ -367,20 +367,9 @@ const GRUPOS = [
         ),
       },
       {
-        id: "container",
-        icon: Container,
-        titulo: "17. Carga do Container — a cubagem salva",
-        resumo: "Volumes, peso, ocupação e capacidade teórica por produto",
-        corpo: (
-          <>
-            <p>Só leitura. Escolha a operação: volumes, peso estimado (avisa produto sem peso), ocupação (cabe/não cabe) e a <strong>capacidade teórica</strong> de cada produto por tipo de container. Usa a cubagem salva pelo Simulador; se não houver e todos os itens tiverem medidas, recalcula ao vivo — sem a caixa de peças consolidada (pode diferir um pouco do Simulador).</p>
-          </>
-        ),
-      },
-      {
         id: "dre",
         icon: Calculator,
-        titulo: "18. DRE — cenário por operação e o mês realizado",
+        titulo: "17. DRE — cenário por operação e o mês realizado",
         resumo: "Cenários salvos e comparáveis; DRE Realizada em 1 clique",
         corpo: (
           <>
@@ -393,20 +382,9 @@ const GRUPOS = [
         ),
       },
       {
-        id: "breakeven",
-        icon: Target,
-        titulo: "19. Break-even — quanto vender para pagar o mês",
-        resumo: "Por produto e pelo mix; progresso digitado à mão; conversor marketplace",
-        corpo: (
-          <>
-            <p>Para a operação escolhida: unidades/mês de cada produto que pagam as despesas fixas, e quantas vezes o mix completo. "Progresso do mês" é digitado (não lê pedidos). Cards: custo de 1 mês parado e de 1 ponto de desconto; conversor preço de marketplace → líquido.</p>
-          </>
-        ),
-      },
-      {
         id: "config",
         icon: Settings,
-        titulo: "20. Configuração Tributária — o coração dos números",
+        titulo: "18. Configuração Tributária — o coração dos números",
         resumo: "Regime, RBT12, taxas por operadora, despesas fixas, sócios",
         corpo: (
           <>
@@ -415,7 +393,7 @@ const GRUPOS = [
               <li><strong>Regime:</strong> Simples Nacional (atual) ou Lucro Presumido. Trocar vira o sistema inteiro daqui para frente; o histórico não é reescrito;</li>
               <li><strong>RBT12</strong> (receita dos últimos 12 meses, do PGDAS): define a alíquota efetiva do DAS; o painel mostra a faixa do Anexo I e avisa sublimite de ICMS (R$ 3,6 mi), teto (R$ 4,8 mi) e troca de faixa. <strong>Atualize todo mês</strong>;</li>
               <li><strong>Taxas de recebimento por operadora</strong> (PagBank, PayPal…): débito e crédito de 1× a 18×. É daqui que o pedido tira a despesa de "Taxa de Cartão" quando o pagamento é antecipado — vazio = o pedido não lança a taxa;</li>
-              <li><strong>Despesas fixas mensais:</strong> alimentam Break-even, DRE e "Gerar Contas do Mês" do Financeiro. Gravam só com "Salvar Configuração";</li>
+              <li><strong>Despesas fixas mensais:</strong> alimentam a DRE e "Gerar Contas do Mês" do Financeiro. Gravam só com "Salvar Configuração";</li>
               <li><strong>Sócios:</strong> participação e residência fiscal — gravam campo a campo, sem precisar do botão;</li>
               <li>Parâmetros do Presumido, câmbio USD padrão de nova operação, comissão padrão do vendedor e índice de custo fixo.</li>
             </ul>
@@ -431,7 +409,7 @@ const GRUPOS = [
       {
         id: "financeiro",
         icon: Wallet,
-        titulo: "21. Financeiro — contas, caixas, extrato e fluxo",
+        titulo: "19. Financeiro — contas, caixas, extrato e fluxo",
         resumo: "O que é automático, caixas e bancos, transferências, contas do mês, categorias",
         corpo: (
           <>
@@ -457,7 +435,7 @@ const GRUPOS = [
       {
         id: "nfe",
         icon: FileText,
-        titulo: "22. Notas Fiscais — a nota no clique e as avulsas",
+        titulo: "20. Notas Fiscais — a nota no clique e as avulsas",
         resumo: "NF-e do pedido, checklist, NF avulsa (importação, devolução, conserto), cadastro de CFOP, homologação",
         corpo: (
           <>
@@ -478,7 +456,7 @@ const GRUPOS = [
       {
         id: "patrimonio",
         icon: Gem,
-        titulo: "23. Patrimônio & Valor da Empresa — quanto isso tudo vale",
+        titulo: "21. Patrimônio & Valor da Empresa — quanto isso tudo vale",
         resumo: "Bens com depreciação, avaliação patrimonial e por múltiplo de lucro",
         corpo: (
           <>
@@ -494,7 +472,7 @@ const GRUPOS = [
       {
         id: "relatorios",
         icon: BarChart3,
-        titulo: "24. Relatórios",
+        titulo: "22. Relatórios",
         resumo: "Vendas, recebido, pago, estoque, por canal e top produtos",
         corpo: (
           <>
@@ -511,7 +489,7 @@ const GRUPOS = [
       {
         id: "sites",
         icon: Globe,
-        titulo: "25. Central de Análise — os 4 sites num painel",
+        titulo: "23. Central de Análise — os 4 sites num painel",
         resumo: "Google, Bing, GA4, IA, velocidade, indexação, Meta, Ads, WhatsApp, Mapa da Placa",
         corpo: (
           <>
@@ -523,7 +501,7 @@ const GRUPOS = [
       {
         id: "cofre",
         icon: KeyRound,
-        titulo: "26. Controle de Acessos — o Cofre",
+        titulo: "24. Controle de Acessos — o Cofre",
         resumo: "Credenciais cifradas, master × colaboradores, empresas",
         corpo: (
           <>
@@ -535,11 +513,11 @@ const GRUPOS = [
       {
         id: "configuracoes",
         icon: Settings,
-        titulo: "27. Configurações",
+        titulo: "25. Configurações",
         resumo: "Dados do usuário e versão — o resto mora na Configuração Tributária",
         corpo: (
           <>
-            <p>Tela informativa: seu nome, e-mail, perfil e a versão do sistema. Taxas de recebimento, despesas fixas e sócios ficam na <strong>Configuração Tributária</strong> (cap. 20); transportadoras se cadastram pelo pedido de venda ou em Contatos (tipo Transportador).</p>
+            <p>Tela informativa: seu nome, e-mail, perfil e a versão do sistema. Taxas de recebimento, despesas fixas e sócios ficam na <strong>Configuração Tributária</strong> (cap. 18); transportadoras se cadastram pelo pedido de venda ou em Contatos (tipo Transportador).</p>
           </>
         ),
       },
