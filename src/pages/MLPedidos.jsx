@@ -11,6 +11,9 @@ import MLContas from "../components/pricing/MLContas";
 // A rotina erp-ml-pedidos.py lê as duas contas e grava em ml_pedidos; esta tela só mostra.
 // Nada aqui vira pedido de venda, movimento de estoque ou nota fiscal.
 const CONTAS = { router: "ROUTER 66", saber: "SABERDAELETRÔNICA" };
+const CONTAS_CURTO = { router: "Router 66", saber: "Saber" }; // na tabela: nome curto para não quebrar no meio da palavra
+// valores das colunas sem "R$" (o título da coluna diz a moeda) — cabe venda de 5 dígitos sem estourar a coluna
+const fmtValor = (v) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(parseFloat(v) || 0);
 const fmtDia = (d) => (d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—");
 const num = (v) => parseFloat(v) || 0;
 const formatCurrency = (v) => (parseFloat(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -151,71 +154,84 @@ export default function MLPedidos() {
             </div>
           )}
 
+          {/* 06/10/2026: tabela cabe inteira na janela (sem barra de rolagem lateral): largura fixa por coluna, data e conta
+              na mesma célula, espaçamento menor e texto que quebra linha. */}
           <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-border bg-muted/30">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Data</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Conta</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Itens (código do anúncio → produto no ERP)</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Produtos</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Taxa</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Frete</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Líquido</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Recebimento</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Bling</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nota de teste</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Situação no ERP</th>
-                </tr></thead>
-                <tbody>
-                  {vendas.length === 0 && <tr><td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">Nenhuma venda nesta visão.</td></tr>}
-                  {vendas.map((v) => (
-                    <tr key={v.chave} className={`border-b border-border last:border-0 align-top ${v.status === "cancelled" ? "opacity-60" : ""}`}>
-                      <td className="px-4 py-3 whitespace-nowrap">{fmtDia(v.data)}</td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">{CONTAS[v.conta] || v.conta}</td>
-                      <td className="px-4 py-3">
-                        {v.itens.map((i, k) => (
-                          <div key={k} className="text-xs leading-5">
-                            <span className="font-mono">{i.qtd}× {i.sku_anuncio || "sem código"}</span>
-                            {i.product_sku ? <span className="text-success"> → {i.product_sku}</span> : i.kit ? <span className="text-primary"> → kit ({(i.componentes || []).map((c) => `${c.quantidade}× ${c.sku}`).join(", ")})</span> : <span className="text-destructive"> → sem cadastro</span>}
-                            <span className="text-muted-foreground"> · {String(i.titulo || "").slice(0, 46)}</span>
-                          </div>
-                        ))}
-                      </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatCurrency(v.total)}</td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap text-destructive">{formatCurrency(v.taxa)}</td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap text-destructive">{v.logistica ? formatCurrency(v.freteVend) : "—"}</td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap font-medium">{formatCurrency(v.liquido)}</td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        {!v.mpTem ? <span className="text-muted-foreground">—</span>
-                          : v.status === "cancelled" || v.mpEstornado >= v.total ? <span className="text-muted-foreground">devolvido ao comprador</span>
-                          : v.mpLiberado ? <span className="text-success">liberado em {fmtDia(v.mpQuando)}</span>
-                          : <span>libera em {fmtDia(v.mpQuando)}</span>}
-                        {v.mpAlerta.filter((a) => !a.includes("devolvido")).map((a, k) => <div key={k} className="text-destructive whitespace-normal max-w-[150px]">{a}</div>)}
-                      </td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        {v.bling ? <>pedido {v.bling}<br />{v.nf ? `nota ${v.nf}` : <span className="text-muted-foreground">sem nota</span>}</> : <span className="text-destructive">não achei</span>}
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        {v.teste === "autorizado" ? (
-                          <>
-                            <span className="text-success">autorizada{v.testeNumero ? ` nº ${v.testeNumero}` : ""}</span><br />
-                            {v.comp?.iguais ? <span className="text-muted-foreground">igual à do Bling</span>
-                              : v.comp?.diferencas?.length ? <span className="text-warning" title={v.comp.diferencas.join("\n")}>{v.comp.diferencas.length} diferença{v.comp.diferencas.length === 1 ? "" : "s"} do Bling</span>
-                              : <span className="text-muted-foreground">sem nota do Bling para comparar</span>}
-                          </>
-                        ) : v.teste ? <span className="text-muted-foreground">{v.teste === "nao_enviada" ? "não enviada" : v.teste}</span> : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        {v.status === "cancelled" ? <span className="text-muted-foreground">Cancelada no Mercado Livre</span>
-                          : v.pend.length === 0 ? <span className="text-success inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Pronta</span>
-                          : v.pend.map((p, k) => <div key={k} className="text-destructive">{p}</div>)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <table className="w-full table-fixed text-xs">
+              <colgroup>
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "23%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "9%" }} />
+                <col style={{ width: "9.5%" }} />
+                <col style={{ width: "9.5%" }} />
+                <col style={{ width: "11%" }} />
+              </colgroup>
+              <thead><tr className="border-b border-border bg-muted/30 text-[11px]">
+                <th className="text-left px-2 py-2 font-medium text-muted-foreground">Venda</th>
+                <th className="text-left px-2 py-2 font-medium text-muted-foreground">Itens (anúncio → produto no ERP)</th>
+                <th className="text-right px-2 py-2 font-medium text-muted-foreground">Produtos (R$)</th>
+                <th className="text-right px-2 py-2 font-medium text-muted-foreground">Taxa (R$)</th>
+                <th className="text-right px-2 py-2 font-medium text-muted-foreground">Frete (R$)</th>
+                <th className="text-right px-2 py-2 font-medium text-muted-foreground">Líquido (R$)</th>
+                <th className="text-left px-2 py-2 font-medium text-muted-foreground">Recebimento</th>
+                <th className="text-left px-2 py-2 font-medium text-muted-foreground">Bling</th>
+                <th className="text-left px-2 py-2 font-medium text-muted-foreground">Nota de teste</th>
+                <th className="text-left px-2 py-2 font-medium text-muted-foreground">Situação no ERP</th>
+              </tr></thead>
+              <tbody>
+                {vendas.length === 0 && <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">Nenhuma venda nesta visão.</td></tr>}
+                {vendas.map((v) => (
+                  <tr key={v.chave} className={`border-b border-border last:border-0 align-top ${v.status === "cancelled" ? "opacity-60" : ""}`}>
+                    <td className="px-2 py-2 [overflow-wrap:anywhere]">
+                      <div className="text-sm">{fmtDia(v.data)}</div>
+                      <div className="text-[10px] text-muted-foreground leading-tight">{CONTAS_CURTO[v.conta] || CONTAS[v.conta] || v.conta}</div>
+                    </td>
+                    <td className="px-2 py-2 [overflow-wrap:anywhere]">
+                      {v.itens.map((i, k) => (
+                        <div key={k} className="leading-4 mb-0.5">
+                          <span className="font-mono">{i.qtd}× {i.sku_anuncio || "sem código"}</span>
+                          {i.product_sku ? <span className="text-success"> → {i.product_sku}</span> : i.kit ? <span className="text-primary"> → kit ({(i.componentes || []).map((c) => `${c.quantidade}× ${c.sku}`).join(", ")})</span> : <span className="text-destructive"> → sem cadastro</span>}
+                          <span className="text-muted-foreground"> · {String(i.titulo || "").slice(0, 46)}</span>
+                        </div>
+                      ))}
+                    </td>
+                    <td className="px-1.5 py-2 text-right whitespace-nowrap tabular-nums">{fmtValor(v.total)}</td>
+                    <td className="px-1.5 py-2 text-right whitespace-nowrap tabular-nums text-destructive">{fmtValor(v.taxa)}</td>
+                    <td className="px-1.5 py-2 text-right whitespace-nowrap tabular-nums text-destructive">{v.logistica ? fmtValor(v.freteVend) : "—"}</td>
+                    <td className="px-1.5 py-2 text-right whitespace-nowrap tabular-nums font-medium">{fmtValor(v.liquido)}</td>
+                    <td className="px-2 py-2 [overflow-wrap:anywhere]">
+                      {!v.mpTem ? <span className="text-muted-foreground">—</span>
+                        : v.status === "cancelled" || v.mpEstornado >= v.total ? <span className="text-muted-foreground">devolvido ao comprador</span>
+                        : v.mpLiberado ? <span className="text-success">liberado em {fmtDia(v.mpQuando)}</span>
+                        : <span>libera em {fmtDia(v.mpQuando)}</span>}
+                      {v.mpAlerta.filter((a) => !a.includes("devolvido")).map((a, k) => <div key={k} className="text-destructive">{a}</div>)}
+                    </td>
+                    <td className="px-2 py-2 [overflow-wrap:anywhere]">
+                      {v.bling ? <>pedido {v.bling}<br />{v.nf ? `nota ${v.nf}` : <span className="text-muted-foreground">sem nota</span>}</> : <span className="text-destructive">não achei</span>}
+                    </td>
+                    <td className="px-2 py-2 [overflow-wrap:anywhere]">
+                      {v.teste === "autorizado" ? (
+                        <>
+                          <span className="text-success">autorizada{v.testeNumero ? ` nº ${v.testeNumero}` : ""}</span><br />
+                          {v.comp?.iguais ? <span className="text-muted-foreground">igual à do Bling</span>
+                            : v.comp?.diferencas?.length ? <span className="text-warning" title={v.comp.diferencas.join("\n")}>{v.comp.diferencas.length} diferença{v.comp.diferencas.length === 1 ? "" : "s"} do Bling</span>
+                            : <span className="text-muted-foreground">sem nota do Bling para comparar</span>}
+                        </>
+                      ) : v.teste ? <span className="text-muted-foreground">{v.teste === "nao_enviada" ? "não enviada" : v.teste}</span> : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-2 py-2 [overflow-wrap:anywhere]">
+                      {v.status === "cancelled" ? <span className="text-muted-foreground">Cancelada no Mercado Livre</span>
+                        : v.pend.length === 0 ? <span className="text-success inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Pronta</span>
+                        : v.pend.map((p, k) => <div key={k} className="text-destructive">{p}</div>)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}

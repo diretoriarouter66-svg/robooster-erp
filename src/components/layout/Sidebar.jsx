@@ -246,7 +246,7 @@ export default function Sidebar() {
       }
 
       <aside
-        className={`hidden lg:flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-200 ${
+        className={`relative hidden lg:flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-200 ${
         collapsed ? "w-16" : "w-60"}`
         }>
         
