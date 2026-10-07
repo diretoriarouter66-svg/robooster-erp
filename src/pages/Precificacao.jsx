@@ -122,7 +122,8 @@ export default function Precificacao() {
         : isDecoupled
           ? decoupled[ch.id]
           : calcChannelPrice(margemBrutaAlvo, ch, custo, impCh.total, sellerCommRs, freteEff);
-      const breakdown = calcChannelBreakdown(price, ch, custo, impCh.total, sellerCommRs, frete, clientePagaFrete, pctFixo);
+      // custo fixo sobre o preço Master: o mesmo R$ em todo canal (07/10/2026)
+      const breakdown = calcChannelBreakdown(price, ch, custo, impCh.total, sellerCommRs, frete, clientePagaFrete, pctFixo, calculatedMasterPrice);
       return { channel: ch, isMaster, isDecoupled, price, breakdown, impostosPct: impCh.total, icmsPct: impCh.icms };
     });
   }, [masterBreakdown, channels, masterChannel, calculatedMasterPrice, decoupled, custo, impostos, sellerCommRs, frete, clientePagaFrete, pctFixo]);

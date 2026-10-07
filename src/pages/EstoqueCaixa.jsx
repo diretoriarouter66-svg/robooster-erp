@@ -85,7 +85,8 @@ export default function EstoqueCaixa() {
         const temPrecoMaster = (masterPricing?.price || 0) > 0;
         const impMaster = masterCh ? calcImpostosPct(config, p, masterCh) : imp;
         const scRs = calcSellerCommissionRs(temPrecoMaster ? masterPricing.price : pricing.price, (temPrecoMaster ? impMaster : imp).total, scPct);
-        const bd = calcChannelBreakdown(pricing.price, ch, custo, imp.total, scRs, freteProd, clientePaga, pctFixo);
+        // custo fixo sobre o preço do canal Master: o mesmo R$ em todo canal, para o caixa não depender do canal
+        const bd = calcChannelBreakdown(pricing.price, ch, custo, imp.total, scRs, freteProd, clientePaga, pctFixo, temPrecoMaster ? masterPricing.price : pricing.price);
         receita += qty * pricing.price;
         lucroBruto += qty * bd.margemBruta;
         lucroLiquido += qty * bd.margemLiquida;
@@ -116,7 +117,7 @@ export default function EstoqueCaixa() {
     <div>
       <PageHeader title="Estoque & Caixa" description="Quanto vale o estoque a custo — e quanto entra no caixa vendendo tudo, canal por canal" />
       <p className={`text-xs -mt-3 mb-4 ${baseFixas?.erro ? "text-destructive" : "text-muted-foreground"}`}>
-        Custo fixo = <strong>{fmtPctFixo(pctFixo)}</strong> da receita de cada canal — {origemBaseFixas(baseFixas)}.
+        Custo fixo = <strong>{fmtPctFixo(pctFixo)}</strong> do preço à vista (canal Master), o mesmo valor em todos os canais — {origemBaseFixas(baseFixas)}.
       </p>
 
       {/* HERO: custo do estoque + receita por canal */}

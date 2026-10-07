@@ -79,7 +79,7 @@ export function calcChannelPrice(margemBrutaAlvo, channel, custo, impostosPctTot
   return (margemBrutaAlvo + custo + (channel.fixed_fee || 0) + frete + sellerCommissionRs) / denom;
 }
 
-export function calcChannelBreakdown(price, channel, custo, impostosPctTotal, sellerCommissionRs, frete, clientePagaFrete, pctCustoFixo) {
+export function calcChannelBreakdown(price, channel, custo, impostosPctTotal, sellerCommissionRs, frete, clientePagaFrete, pctCustoFixo, precoBaseCustoFixo) {
   const freteEff = clientePagaFrete ? 0 : (frete || 0);
   const impostos = price * impostosPctTotal / 100;
   // Tarifa fixa do canal entra na comissão — as fórmulas de preço já a incluem
@@ -87,8 +87,11 @@ export function calcChannelBreakdown(price, channel, custo, impostosPctTotal, se
   const comissaoCanal = price * (channel.commission_percent || 0) / 100 + (channel.fixed_fee || 0);
   const margemBruta = price - custo - impostos - comissaoCanal - sellerCommissionRs - freteEff;
   const margemBrutaPct = price > 0 ? (margemBruta / price) * 100 : 0;
-  // 06/10/2026: custo fixo alocado = % do preço (despesas fixas marcadas no Financeiro ÷ faturamento das notas).
-  const custoFixoAlocado = price * (pctCustoFixo || 0);
+  // Custo fixo alocado = % (despesas fixas marcadas no Financeiro ÷ faturamento das notas) sobre o preço do canal MASTER
+  // (à vista), o mesmo R$ em todos os canais — como a comissão do vendedor. Sobre o preço de cada canal, o canal mais caro
+  // pagava mais custo fixo e o caixa deixava de ser igual em todo canal (erro de 06/10, corrigido em 07/10/2026).
+  const baseCustoFixo = precoBaseCustoFixo > 0 ? precoBaseCustoFixo : price;
+  const custoFixoAlocado = baseCustoFixo * (pctCustoFixo || 0);
   const margemLiquida = margemBruta - custoFixoAlocado;
   const margemLiquidaPct = price > 0 ? (margemLiquida / price) * 100 : 0;
   const markup = custo > 0 ? ((price - custo) / custo) * 100 : 0;

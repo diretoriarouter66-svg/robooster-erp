@@ -281,7 +281,7 @@ const GRUPOS = [
             <ul className="list-disc pl-5 mt-2 space-y-1.5">
               <li><strong>Custo vigente</strong> = custo landed da importação, senão o custo manual. Impostos pelo regime (Simples = DAS pela alíquota efetiva do RBT12);</li>
               <li><strong>Modo Preço</strong> (digita o Master) ou <strong>Modo Markup s/ custo</strong> (calcula o Master). A tabela mostra, por canal: preço, custo, impostos, comissão do canal, comissão do vendedor, frete, margem bruta, custo fixo alocado, margem líquida e markup. <strong>Cadeado</strong> = desacoplar um canal e digitar preço manual;</li>
-              <li><strong>Custo fixo alocado</strong> (desde 06/10/2026) = um percentual do preço: as despesas marcadas como fixas no Financeiro ÷ o faturamento das notas, média dos últimos 3 meses fechados (o número aparece na Configuração Tributária). Não muda o preço calculado pelo markup — só mostra a margem líquida de verdade;</li>
+              <li><strong>Custo fixo alocado</strong> (desde 06/10/2026) = um percentual do preço <strong>do canal Master (à vista)</strong>: as despesas marcadas como fixas no Financeiro ÷ o faturamento das notas, média dos últimos 3 meses fechados (o número aparece na Configuração Tributária). É o mesmo valor em todos os canais, como a comissão do vendedor — por isso o que sobra para a empresa é igual em qualquer canal. Não muda o preço calculado pelo markup — só mostra a margem líquida de verdade;</li>
               <li><strong>Frete</strong> e "cliente paga o frete" ficam salvos junto com o preço;</li>
               <li><strong>Precificar Tudo</strong> (topo): aplica um markup s/ custo a todos os produtos com custo e a todos os canais — <strong>sobrescreve</strong> preços existentes (pede confirmação). <strong>Recalcular Todos</strong>: só produtos que já têm Master; refaz os canais derivados (não cria canal faltante);</li>
               <li><strong>Análise de concorrência</strong> por produto: preço, praça, onde anuncia, idêntico/similar; cards menor/média × seu preço;</li>
@@ -315,7 +315,7 @@ const GRUPOS = [
         resumo: "Valor do estoque a custo e quanto entra no caixa vendendo tudo por canal",
         corpo: (
           <>
-            <p>Só leitura. Estoque a custo (todos os produtos × custo vigente); por canal, só produtos <strong>com estoque e com preço salvo</strong> naquele canal: receita − impostos − comissões − frete − custo fixo = lucro; <strong>"Entra em caixa" = lucro + custo recuperado</strong>. O custo fixo é o mesmo percentual da Precificação aplicado à receita de cada canal (despesas fixas ÷ faturamento; a tela mostra o percentual e de que meses ele saiu). Tabela por produto ordenada por valor com % do estoque.</p>
+            <p>Só leitura. Estoque a custo (todos os produtos × custo vigente); por canal, só produtos <strong>com estoque e com preço salvo</strong> naquele canal: receita − impostos − comissões − frete − custo fixo = lucro; <strong>"Entra em caixa" = lucro + custo recuperado</strong>. O custo fixo é o mesmo percentual da Precificação aplicado ao preço à vista (canal Master), o mesmo valor em todos os canais (despesas fixas ÷ faturamento; a tela mostra o percentual e de que meses ele saiu). Com os preços formados pela Precificação, o "Entra em caixa" sai igual em todos os canais. Tabela por produto ordenada por valor com % do estoque.</p>
           </>
         ),
       },
