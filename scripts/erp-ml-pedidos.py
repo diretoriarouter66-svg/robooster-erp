@@ -6,7 +6,7 @@ taxa e frete reais, dados fiscais do comprador, casamento de cada item com o pro
 (products.codigos_origem) e, para conferência, o pedido e a nota que o Bling emitiu para a mesma venda.
 NÃO cria pedido de venda, NÃO move estoque, NÃO emite nota, NÃO escreve no Mercado Livre nem no Bling.
 
-Uso: erp-ml-pedidos.py [--desde AAAA-MM-DD] [--kits]     (padrão: últimos 20 dias; nunca antes da DATA DE CORTE)
+Uso: erp-ml-pedidos.py [--desde AAAA-MM-DD] [--kits]     (padrão: últimos 20 dias)
 """
 import sys, json, time, datetime, subprocess
 sys.path.insert(0, "/root/rotinas"); sys.path.insert(0, "/root/precificador-unificado/scripts")
@@ -33,10 +33,6 @@ def lit(v):
 
 args = sys.argv[1:]
 desde = args[args.index("--desde") + 1] if "--desde" in args else (datetime.date.today() - datetime.timedelta(days=20)).isoformat()
-# DATA DE CORTE (06/10/2026, "PODE LIMPAR" do Mauricio): o ERP guarda só vendas de 01/10/2026 em diante.
-# Nada anterior volta, nem com --desde. Não remover sem ordem dele.
-CORTE = "2026-10-01"
-desde = max(desde, CORTE)
 CONTAS = ("router", "saber")
 
 def garantir_bling(emp):
