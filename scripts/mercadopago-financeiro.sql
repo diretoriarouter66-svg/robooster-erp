@@ -16,7 +16,7 @@ begin
   for m in
     select e.*, (e.data at time zone 'America/Sao_Paulo')::date as dia
       from extrato_movimentos e
-     where e.fonte = 'mercadopago' and e.valor <> 0 and e.tipo <> 'venda'
+     where e.fonte = 'mercadopago' and e.conta = 'Mercado Pago ROUTER 66' and e.valor <> 0 and e.tipo <> 'venda'   -- só o CNPJ da Router
      order by e.data
   loop
     v_id := 'extm' || left(md5(m.id), 20);

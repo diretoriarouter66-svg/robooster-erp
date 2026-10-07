@@ -23,7 +23,9 @@ sys.path.insert(0, "/root/rotinas"); import ml_ro
 
 LOG = "/root/rotinas/logs/erp-extrato-mercadopago.log"
 DIR = "/root/financeiro-extratos"
-CONTAS = {"router": "Mercado Pago ROUTER 66", "saber": "Mercado Pago SABER"}
+# A conta da SABER é de outro CNPJ: fica visível na Conciliação, mas com nome que NÃO casa com a conta "Mercado Pago" do Financeiro
+# (o Financeiro do ERP é só do CNPJ da Router até a virada de janeiro/2027).
+CONTAS = {"router": "Mercado Pago ROUTER 66", "saber": "Saber — Mercado Pago (outro CNPJ)"}
 def log(*a):
     s = datetime.datetime.now().strftime("%d/%m %H:%M ") + " ".join(str(x) for x in a); print(s, flush=True)
     try: open(LOG, "a").write(s + "\n")
