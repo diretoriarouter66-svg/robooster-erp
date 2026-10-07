@@ -54,5 +54,10 @@ SQL versionado em `scripts/`: `cofre-acessos.sql`, `cofre-criptografia{,-v2}.sql
 `permissoes.sql`, `permissoes-v2-antiescalada.sql`, `estoque-atomico.sql`.
 Backup pré-criptografia em `/root/backups-cofre/`.
 
+## Limpeza de dados: feita em 06/10/2026 e DESFEITA em 07/10/2026
+A limpeza com data de corte 01/10 (`scripts/limpeza-corte-20261006.sql`) foi desfeita a pedido do dono
+(`scripts/restauro-limpeza-20261007.sql`): todos os dados voltaram e não existe data de corte nas rotinas.
+Apagar dados em lote só com prévia das telas como vão ficar, não só com a tabela de contagens.
+
 ## Pendência conhecida
 `git push` nunca foi feito — publicar o código no GitHub está na fila.
