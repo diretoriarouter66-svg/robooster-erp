@@ -64,6 +64,13 @@ def importar(arq):
         if tipo == "venda" and r.get("PAYMENT_METHOD"): desc += f" · {r['PAYMENT_METHOD']}"
         if tipo == "venda" and r.get("TRANSACTION_APPROVAL_DATE"): desc += f" · pago em {r['TRANSACTION_APPROVAL_DATE'][:10]}"
         cat = {"venda": "Venda no Mercado Livre (liberação)", "taxa": "Frete do Mercado Envios", "saque": "Saque para o banco", "estorno": "Estorno de venda", "outro": "Valor retido pelo Mercado Pago"}[tipo]
+        # 07/10: coluna PAYOUT_BANK_ACCOUNT_NUMBER (ligada hoje) diz para onde foi o saque: 00997810 = Itaú 99781-0 da Router;
+        # 00085434 = conta Mercado Pago da SABER (conferido pelo dono). Outro destino → transferência, não saque para o banco.
+        dest = (r.get("PAYOUT_BANK_ACCOUNT_NUMBER") or "").strip()
+        if tipo == "saque" and dest:
+            if dest.endswith("997810"): desc += " · Itaú 99781-0"
+            elif dest.endswith("85434"): cat = "Transferência para a conta da Saber (Mercado Pago)"; desc = "Transferência para o Mercado Pago da SABER"; tipo = "transferencia"
+            else: cat = "Transferência para outra conta (Mercado Pago)"; desc = f"Transferência para a conta {dest}"; tipo = "transferencia"
         cols = dict(id=f"mercadopago:{emp}:{sid}:{d}:{r['DATE'][:19]}", fonte="mercadopago", conta=CONTA, data=r["DATE"], tipo=tipo, descricao=desc[:240],
                     valor=valor, bruto=bruto if tipo == "venda" else None, taxa=taxa if tipo == "venda" else None, moeda="BRL",
                     referencia=sid or None, contraparte="Mercado Livre" if tipo == "venda" else None, categoria=cat, categoria_confirmada=False,
