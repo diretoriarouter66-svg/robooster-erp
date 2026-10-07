@@ -29,3 +29,7 @@ dist-ssr
 
 .env
 .vite
+
+# backups locais e prévias (imagens) ficam fora do repo
+*.bak*
+previas/

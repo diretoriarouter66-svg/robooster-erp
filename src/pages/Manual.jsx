@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BookOpen, Settings, Package, Ship, ShoppingCart, FileText, Factory, Wallet, ChevronDown, AlertTriangle, CheckCircle2, Wrench, ShieldCheck, LayoutDashboard, Users, Store, Tag, Percent, Warehouse, Coins, ClipboardList, Calculator, Gem, BarChart3, Globe, KeyRound, Search } from "lucide-react";
+import { BookOpen, Settings, Package, Ship, ShoppingCart, FileText, Factory, Wallet, ChevronDown, AlertTriangle, CheckCircle2, Wrench, ShieldCheck, LayoutDashboard, Users, Store, Tag, Percent, Warehouse, Coins, ClipboardList, Calculator, Gem, BarChart3, Globe, KeyRound, Search, ShoppingBag, ListChecks, ClipboardCheck } from "lucide-react";
 import PageHeader from "../components/shared/PageHeader";
 
 /**
@@ -10,6 +10,10 @@ import PageHeader from "../components/shared/PageHeader";
  * Cada tela do menu virou um capítulo, na ordem do menu. O texto foi conferido tela a tela contra o código
  * (inventário de 01/10). Onde o sistema NÃO faz algo que parece que faria, está escrito em "O que ele não faz".
  * Convenção: "Faz sozinho" = efeito automático; "Você faz" = passo manual; "Armadilha" = onde dá para errar.
+ *
+ * 07/10/2026 — Mercado Livre (teste), Conciliação e Fechamento do mês ganharam capítulo próprio (10, 21 e 22), na ordem
+ * do menu; antes eram blocos dentro de Pedidos de Venda e Financeiro. Texto conferido contra MLPedidos.jsx, MLContas.jsx,
+ * Conciliacao.jsx e Fechamento.jsx. Capítulos seguintes renumerados.
  */
 
 const Aviso = ({ children }) => (
@@ -51,9 +55,9 @@ const GRUPOS = [
               <li><strong>Estimado × real.</strong> A prévia da importação serve para operar desde já; o Fechamento com valores reais corrige o custo depois — e guarda os dois para comparação.</li>
             </ol>
             <Bloco titulo="Rotina que funciona">
-              <p><strong>Toda segunda (10 min):</strong> Dashboard → Estoque (aba Saldos, situação "Repor já") → Base Instalada (frios) → Financeiro (vencidos). <strong>Todo fechamento de mês:</strong> DRE Realizada → atualizar o RBT12 na Configuração Tributária → conferir no Financeiro se as despesas do mês estão com a marcação "Despesa fixa" certa. <strong>Quando a DI chegar:</strong> Fechamento com valores reais da operação.</p>
+              <p><strong>Toda segunda (10 min):</strong> Dashboard → Estoque (aba Saldos, situação "Repor já") → Base Instalada (frios) → Financeiro (vencidos). <strong>Todo fechamento de mês:</strong> Conciliação (confirmar as categorias do extrato) → Fechamento do mês (vendas × notas, CSV para o contador) → DRE Realizada → atualizar o RBT12 na Configuração Tributária → conferir no Financeiro se as despesas do mês estão com a marcação "Despesa fixa" certa. <strong>Quando a DI chegar:</strong> Fechamento com valores reais da operação.</p>
             </Bloco>
-            <Aviso><strong>Antes de tudo:</strong> confira a Configuração Tributária (cap. 15). Com o RBT12 zerado, todos os cálculos usam a 1ª faixa do Simples (4%) — margens vão parecer melhores do que são.</Aviso>
+            <Aviso><strong>Antes de tudo:</strong> confira a Configuração Tributária (cap. 19). Com o RBT12 zerado, todos os cálculos usam a 1ª faixa do Simples (4%) — margens vão parecer melhores do que são.</Aviso>
           </>
         ),
       },
@@ -225,21 +229,47 @@ const GRUPOS = [
               <p>Data da devolução, motivo e quantidade por item. O sistema devolve ao estoque (movimento "Devolução Venda"), tira a máquina da Base Instalada, cria a conta a pagar do reembolso (se marcado) e, se o pedido tem NF autorizada, deixa pronta uma <strong>NF de devolução em rascunho</strong> na tela Notas Fiscais (você emite lá). A comissão a estornar é só informada — não vira lançamento.</p>
             </Bloco>
             <Aviso>Não troque o status para "Devolvido" ou "Cancelado" no dropdown de um pedido faturado para registrar devolução: o estoque até volta, mas sem reembolso, sem NF e sem rastro. Use o botão ↩. E lembre: reeditar um pedido faturado mudando valores recria as parcelas pendentes com vencimentos contados a partir de hoje — as pagas ficam.</Aviso>
-            <p className="mt-2 text-sm text-muted-foreground">Item sem custo cadastrado = aviso amarelo no painel ("a margem real é menor"). Resolva cadastrando o custo, não ignorando o aviso.</p>
-            <Bloco titulo="Mercado Livre em modo de teste (menu Comercial → Mercado Livre (teste))">
-              <p>Desde 02/10/2026 o ERP <strong>lê</strong> os pedidos das duas contas do Mercado Livre (ROUTER 66 e SABERDAELETRÔNICA) algumas vezes por dia e mostra, para cada venda: os itens e o produto do ERP correspondente, o valor dos produtos, a <strong>taxa real</strong> cobrada, o <strong>frete pago por nós</strong>, o líquido, e o pedido e a nota que o Bling emitiu para a mesma venda. Compra com vários itens (carrinho) aparece como uma venda só.</p>
-              <p className="mt-1">A coluna "Situação no ERP" diz se a venda já poderia virar pedido e nota aqui ("Pronta") ou o que falta: produto sem cadastro, produto sem NCM, comprador sem dados fiscais.</p>
-              <p className="mt-1">A coluna <strong>"Recebimento"</strong> vem do Mercado Pago: taxa, frete e líquido são os que ele realmente cobrou e creditou (não estimativa), com a data em que o dinheiro foi ou será liberado. O quadro vermelho <strong>"Para conferir no fechamento com a contabilidade"</strong> aparece quando uma venda foi devolvida ao comprador e a nota continua autorizada, ou quando há reclamação em mediação ou contestação de cartão.</p>
-              <p className="mt-1">A coluna <strong>"Nota de teste"</strong> mostra a nota que o ERP emitiu para a mesma venda no ambiente de testes da SEFAZ (homologação, <strong>sem valor fiscal</strong>) e se ela ficou igual à nota real do Bling em total, CFOP, NCM, origem, frete e natureza. Passe o mouse sobre "diferenças" para ver quais. As notas de teste saem sozinhas todo dia às 19h25, com as regras das vendas pelo Mercado Livre: natureza "Venda de mercadoria para consumidor final", CFOP 5102 em SP, 6108 para não contribuinte de outro estado e 6102 para contribuinte, frete por conta de terceiros e sem frete na nota.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Item sem custo cadastrado = aviso amarelo no painel ("a margem real é menor"). Resolva cadastrando o custo, não ignorando o aviso. As vendas do Mercado Livre ainda não entram aqui: até a virada de janeiro/2027 elas ficam na tela de conferência do capítulo 10.</p>
+          </>
+        ),
+      },
+      {
+        id: "ml",
+        icon: ShoppingBag,
+        titulo: "10. Mercado Livre (teste) — o que o ERP faria com cada venda",
+        resumo: "Vendas das duas contas com taxa, frete e recebimento reais; conferência com o Bling; nota de teste; conexão própria",
+        corpo: (
+          <>
+            <p><strong>Para que serve:</strong> até a virada de janeiro/2027 quem recebe o pedido do Mercado Livre e emite a nota é o Bling. Esta tela é o <strong>ensaio</strong>: o ERP lê as vendas das duas contas (ROUTER 66 e SABERDAELETRÔNICA) e mostra, venda por venda, o que faria com cada uma — e o que ainda falta de cadastro para fazer. Serve para chegar em janeiro com tudo testado, sem surpresa.</p>
+            <p className="mt-2"><strong>Faz sozinho:</strong> a leitura do Mercado Livre roda 4× ao dia (07h05, 11h05, 15h05 e 19h05); a nota de teste sai todo dia às 19h25. Nenhum botão dispara leitura — se a venda de agora não aparece, é porque a próxima leitura ainda não passou.</p>
+            <p className="mt-2"><strong>Como usar, de cima para baixo:</strong></p>
+            <ol className="list-decimal pl-5 mt-1 space-y-1.5">
+              <li><strong>Conexão do ERP com o Mercado Livre</strong> (bloco do topo): as duas contas esperadas aparecem com ✓ quando conectadas (as duas estão desde 02/10/2026). <em>Conectar uma conta:</em> primeiro entre no site do Mercado Livre com a conta que quer ligar, depois clique — abre a janela de autorização do próprio Mercado Livre e, ao terminar, o bloco atualiza sozinho. Para a segunda conta, saia do Mercado Livre, entre com a outra e clique de novo. <em>desconectar</em> (pede confirmação) tira a conta. Conta que não é uma das duas aparece em laranja como "conta não esperada". Se o aplicativo do ERP estiver sem a permissão de "vendas e envios" ou de "faturamento", a tela avisa em vermelho: sem ela o ERP não lê os dados do comprador nem envia nota. Enquanto uma conta não estiver conectada aqui, a leitura usa a conexão do Precificador;</li>
+              <li><strong>Filtros:</strong> mês, conta (as duas · ROUTER 66 · SABERDAELETRÔNICA) e situação (todas · com pendência · prontas);</li>
+              <li><strong>Cartões:</strong> vendas pagas (e quantas canceladas), valor dos produtos, taxa do Mercado Livre (com o % sobre os produtos), frete pago por nós e <strong>líquido</strong> (produtos − taxa − frete). Venda cancelada fica fora das somas;</li>
+              <li><strong>Linha de resumo:</strong> quantas vendas estão <em>prontas</em> para virar pedido e nota aqui; quantas têm nota emitida no Bling; quantas têm <em>valor diferente do Bling</em> (produtos + frete do comprador ≠ total do pedido no Bling — em vermelho se houver); quantas notas de teste a SEFAZ autorizou e quantas ficaram iguais à nota do Bling; e, do Mercado Pago, quanto já foi liberado e quanto ainda vai liberar;</li>
+              <li><strong>Quadro vermelho "Para conferir no fechamento com a contabilidade"</strong> (só aparece quando há caso): venda devolvida ao comprador cuja nota do Bling continua autorizada (falta cancelar a nota ou emitir a de devolução) e venda com reclamação em mediação ou contestação de cartão (o dinheiro pode voltar ao comprador);</li>
+              <li><strong>Tabela, coluna a coluna:</strong> <em>Venda</em> = dia e conta. <em>Itens</em> = quantidade × código do anúncio → produto do ERP (verde), kit com os componentes (azul) ou <span className="text-destructive">sem cadastro</span> (vermelho), mais o título do anúncio. <em>Produtos / Taxa / Frete / Líquido</em> em R$ — frete "—" quando a venda não foi pelo Mercado Envios. <em>Recebimento</em> = o que o Mercado Pago diz: "liberado em dd/mm", "libera em dd/mm" ou "devolvido ao comprador", com alertas em vermelho (mediação, contestação). <em>Bling</em> = o pedido e a nota que o Bling tem para a mesma venda ("sem nota" ou "não achei" quando o Bling não tem o pedido). <em>Nota de teste</em> (abaixo). <em>Situação no ERP</em> = "Pronta" (já poderia virar pedido e nota aqui) ou o que falta: produto sem cadastro, produto sem NCM, comprador sem dados fiscais; "Cancelada no Mercado Livre" para as canceladas.</li>
+            </ol>
+            <Bloco titulo="Carrinho e casamento de produto">
+              <p>Compra com vários itens (carrinho) chega do Mercado Livre como vários pedidos com um envio só — aqui vira <strong>uma venda</strong>, com o frete contado uma vez. O código do anúncio é casado com o código que o produto tem no Bling (cadastro de Produtos, cap. 4), sem diferenciar maiúsculas; kits do Bling viram os componentes. Produto que não existe no ERP (porque estava sem estoque quando o catálogo foi trazido) aparece como "sem cadastro" — por decisão de 02/10 e 06/10, o ERP <strong>não</strong> cria produto zerado sozinho; o acerto é no cadastro de Produtos.</p>
             </Bloco>
-            <Aviso>É tela de conferência: até a virada de janeiro/2027 quem recebe o pedido e emite a nota é o Bling. Nada dessa tela vira pedido de venda, mexe no estoque ou emite nota.</Aviso>
+            <Bloco titulo="Taxa, frete e líquido são os reais, não estimativa">
+              <p>A coluna <strong>Recebimento</strong> e os valores de taxa, frete e líquido vêm do Mercado Pago: taxa = tarifa de venda + processamento realmente cobrados; frete = o que o Mercado Livre descontou de nós; líquido = o que o Mercado Pago creditou (ou vai creditar), com a data em que o dinheiro foi ou será liberado.</p>
+            </Bloco>
+            <Bloco titulo="Nota de teste (homologação, sem valor fiscal)">
+              <p>Para cada venda paga e sem pendência o ERP emite, às 19h25, a nota que emitiria de verdade — mas no ambiente de testes da SEFAZ — e compara com o XML da nota real do Bling: total, CFOP, NCM, origem, CSOSN, frete e natureza. A coluna mostra "autorizada nº X" e, abaixo, <em>igual à do Bling</em>, <em>N diferenças do Bling</em> (passe o mouse para ver quais) ou <em>sem nota do Bling para comparar</em>; "não enviada" = algum produto da venda está sem NCM. As regras usadas são as das vendas pelo Mercado Livre: natureza "Venda de mercadoria para consumidor final", CFOP 5102 em SP, 6108 para não contribuinte de outro estado e 6102 para contribuinte, frete por conta de terceiros e sem frete na nota. É esta comparação que vai dizer, em janeiro, se o ERP pode assumir a emissão.</p>
+            </Bloco>
+            <p className="mt-2 text-sm text-muted-foreground">As vendas pagas desta tela já entram na DRE Realizada no modelo da planilha (cap. 20) e no Fechamento do mês (cap. 22) — é por isso que setembro bate com o que o Bling faturou.</p>
+            <Aviso>É tela de conferência: até a virada de janeiro/2027 quem recebe o pedido e emite a nota é o Bling. Nada dessa tela vira pedido de venda, mexe no estoque ou emite nota com valor fiscal.</Aviso>
+            <NaoFaz itens={["Não cria pedido de venda, não baixa estoque, não lança no Financeiro e não emite nota com valor fiscal — tudo isso continua no Bling até janeiro/2027.", "Não deixa editar nada da venda (produto, comprador, valores): quem corrige é o cadastro de Produtos (código do Bling, NCM) ou o próprio Mercado Livre.", "O único botão que grava algo é o de conectar/desconectar conta; o resto é só leitura.", "Mostra as últimas 1.000 linhas lidas; a leitura começou em 01/09/2026 — não há histórico anterior."]} />
           </>
         ),
       },
       {
         id: "os",
         icon: Wrench,
-        titulo: "10. Ordens de Serviço — serviço externo sem perder dinheiro",
+        titulo: "11. Ordens de Serviço — serviço externo sem perder dinheiro",
         resumo: "Hora técnica, peças (baixam estoque), despesas de viagem, lançamento ao concluir",
         corpo: (
           <>
@@ -257,7 +287,7 @@ const GRUPOS = [
       {
         id: "base",
         icon: Factory,
-        titulo: "11. Base Instalada — a máquina de vender peça",
+        titulo: "12. Base Instalada — a máquina de vender peça",
         resumo: "Quem tem qual máquina e quem esfriou",
         corpo: (
           <>
@@ -273,7 +303,7 @@ const GRUPOS = [
       {
         id: "precificacao",
         icon: Percent,
-        titulo: "12. Precificação — o cockpit de preço",
+        titulo: "13. Precificação — o cockpit de preço",
         resumo: "Master e canais derivados, Precificar Tudo, concorrência, Mercado Livre",
         corpo: (
           <>
@@ -294,7 +324,7 @@ const GRUPOS = [
       {
         id: "estoque",
         icon: Warehouse,
-        titulo: "13. Estoque — saldos, Kardex e movimentação manual",
+        titulo: "14. Estoque — saldos, Kardex e movimentação manual",
         resumo: "Atual × reservado × disponível, alerta de reposição, tipos de movimento",
         corpo: (
           <>
@@ -311,7 +341,7 @@ const GRUPOS = [
       {
         id: "estoquecaixa",
         icon: Coins,
-        titulo: "14. Estoque & Caixa — o raio-X do dinheiro parado",
+        titulo: "15. Estoque & Caixa — o raio-X do dinheiro parado",
         resumo: "Valor do estoque a custo e quanto entra no caixa vendendo tudo por canal",
         corpo: (
           <>
@@ -327,11 +357,11 @@ const GRUPOS = [
       {
         id: "importacao",
         icon: Ship,
-        titulo: "15. Simulador — onde o custo nasce (estimado)",
+        titulo: "16. Simulador — onde o custo nasce (estimado)",
         resumo: "Mix, declarado por item, remessas, câmbio da chegada, numerário, as 3 etapas",
         corpo: (
           <>
-            <p><strong>Para que serve:</strong> transformar uma compra da China no <em>custo landed por máquina</em> e preparar estoque, preço e financeiro antes mesmo de a carga chegar. O acerto fino com os documentos reais é o capítulo 16.</p>
+            <p><strong>Para que serve:</strong> transformar uma compra da China no <em>custo landed por máquina</em> e preparar estoque, preço e financeiro antes mesmo de a carga chegar. O acerto fino com os documentos reais é o capítulo 17.</p>
             <ol className="list-decimal pl-5 mt-2 space-y-1.5">
               <li><strong>Mix:</strong> por item, <strong>Qtd</strong>, <strong>Custo US$</strong> (o preço real DESTA compra — ao finalizar atualiza o cadastro) e <strong>Declarado US$</strong> (o valor da invoice que vai para a DI, item a item; não existe percentual global). Peça na caixa consolidada → 📦; item fora da invoice → 🚫 não declarado (sem impostos e sem rateios);</li>
               <li><strong>Custos:</strong> frete internacional e seguro (US$), despesas locais (R$), desconto do fornecedor (abate custo, nunca imposto), <strong>câmbio na chegada/DI</strong> (impostos e frete usam o dólar desse dia; vazio = câmbio das remessas);</li>
@@ -339,7 +369,7 @@ const GRUPOS = [
               <li><strong>Numerário do despachante:</strong> quanto adiantou; após Calcular, "A ressarcir" ou "Diferença a pagar".</li>
             </ol>
             <Bloco titulo="As etapas — decore">
-              <p><strong>Simulação</strong> (Calcular e Salvar não mexem em nada) → <strong>Finalizar Importação (prévia)</strong> = status Realizada: grava custo landed e FOB nos produtos, histórico de custo, <em>entrada no estoque</em> (uma vez), remessas e numerário/frete/seguro no Financeiro → <strong>Recalcular e Concluir</strong> = status Concluída: refaz com os valores que você ajustou e atualiza o custo dos movimentos sem duplicar estoque → <strong>Fechar (real)</strong> na lista = status <strong>Fechada</strong> (cap. 16).</p>
+              <p><strong>Simulação</strong> (Calcular e Salvar não mexem em nada) → <strong>Finalizar Importação (prévia)</strong> = status Realizada: grava custo landed e FOB nos produtos, histórico de custo, <em>entrada no estoque</em> (uma vez), remessas e numerário/frete/seguro no Financeiro → <strong>Recalcular e Concluir</strong> = status Concluída: refaz com os valores que você ajustou e atualiza o custo dos movimentos sem duplicar estoque → <strong>Fechar (real)</strong> na lista = status <strong>Fechada</strong> (cap. 17).</p>
               <p className="mt-1 text-warning">Trocar o status no dropdown para Realizada/Concluída não funciona de propósito — o sistema mantém o anterior e manda usar o botão (evita estoque órfão em dobro). Operação Fechada não volta para a prévia.</p>
             </Bloco>
             <p className="mt-2 text-sm text-muted-foreground">Regras do motor: dois câmbios (mercadoria nas remessas; impostos/frete na chegada); frete rateado por m³, despesas e seguro por FOB; ICMS por dentro (8,8% com 5.2.91); no Simples nada gera crédito — tudo é custo; ex-tarifário vigente zera o II. O card de comparativo mostra quanto custaria com declaração 100%. Cubagem: fileiras + leitura por área com fator 0,85.</p>
@@ -350,7 +380,7 @@ const GRUPOS = [
       {
         id: "fechamento",
         icon: Search,
-        titulo: "16. Fechamento com valores reais — onde o custo fica certo",
+        titulo: "17. Fechamento com valores reais — onde o custo fica certo",
         resumo: "XML da DI, casar itens, ICMS do Draft, despesas previsto × real, acerto do despachante",
         corpo: (
           <>
@@ -370,7 +400,7 @@ const GRUPOS = [
       {
         id: "dre",
         icon: Calculator,
-        titulo: "17. DRE — cenário por operação e o mês realizado",
+        titulo: "18. DRE — cenário por operação e o mês realizado",
         resumo: "Cenários salvos e comparáveis; DRE Realizada em 1 clique",
         corpo: (
           <>
@@ -385,7 +415,7 @@ const GRUPOS = [
       {
         id: "config",
         icon: Settings,
-        titulo: "18. Configuração Tributária — o coração dos números",
+        titulo: "19. Configuração Tributária — o coração dos números",
         resumo: "Regime, RBT12, taxas por operadora, sócios; despesas fixas calculadas",
         corpo: (
           <>
@@ -410,12 +440,12 @@ const GRUPOS = [
       {
         id: "financeiro",
         icon: Wallet,
-        titulo: "19. Financeiro — contas, caixas, extrato e fluxo",
-        resumo: "O que é automático, caixas e bancos, transferências, contas do mês, categorias",
+        titulo: "20. Financeiro — contas, caixas, extrato e fluxo",
+        resumo: "O que é automático, caixas e bancos, transferências, contas do mês, categorias, fatura do cartão, DRE da planilha",
         corpo: (
           <>
             <ul className="list-disc pl-5 mt-1 space-y-1.5">
-              <li><strong>Automático:</strong> contas a receber do pedido faturado (parcelas, misto, antecipação de cartão com a taxa, líquido de marketplace na data de liberação), sinal recebido na hora, remessas de importação pagas, numerário/frete/seguro e acerto do despachante, OS concluída (receita e despesas de viagem), devoluções (conta a pagar do reembolso). Lançamento manual só para o que não passa por essas telas;</li>
+              <li><strong>Automático:</strong> contas a receber do pedido faturado (parcelas, misto, antecipação de cartão com a taxa, líquido de marketplace na data de liberação), sinal recebido na hora, remessas de importação pagas, numerário/frete/seguro e acerto do despachante, OS concluída (receita e despesas de viagem), devoluções (conta a pagar do reembolso) e, desde 02/10/2026, os lançamentos <em>pagos</em> que nascem dos extratos confirmados na Conciliação (cap. 21). Lançamento manual só para o que não passa por essas telas;</li>
               <li><strong>Caixas e bancos:</strong> botão "Contas" — onde o dinheiro mora (Itaú, PayPal, Caixinha…), cada uma com saldo inicial e o <strong>mapa método → conta</strong> (Pix cai no Itaú, PayPal no PayPal…): todo lançamento novo já nasce na conta certa. Saldo vivo = inicial + recebidos − pagos (só o que está PAGO). O cartão "Sem conta definida" deve ficar zerado — aí o painel bate com o banco;</li>
               <li><strong>Extrato</strong> (clique no cartão da conta): período, saldo anterior/entradas/saídas/final, incluir lançamento já pago, <strong>transferir entre contas</strong> (gera os dois lados, categoria transferência) e <strong>exportar CSV</strong>;</li>
               <li><strong>Parcelas:</strong> ao criar lançamento, "Parcelas" divide o total em N mensais (resíduo na última);</li>
@@ -423,20 +453,86 @@ const GRUPOS = [
               <li><strong>Categorias:</strong> crie/renomeie/desative as suas; Venda, Importação e Outro são de sistema. Categoria com lançamento não exclui;</li>
               <li><strong>A lista de lançamentos</strong> tem dois seletores: o tipo (Todos · A Receber · A Pagar · Vencidos) e a situação (<strong>Em aberto</strong> · Pagos/Recebidos · Tudo). Abre sempre em "Em aberto", por ordem de vencimento, então em "A Pagar" só aparece o que ainda falta pagar; o que já foi pago fica em "Pagos". Ao lado da busca aparecem a quantidade e a soma do que está na tela;</li>
               <li><strong>Vencido</strong> é calculado pela data (pendente com vencimento passado) — não precisa marcar status.</li>
-              <li><strong>Conciliação</strong> (menu Financeiro → Conciliação, desde 02/10/2026): mostra o que entrou e saiu de cada conta <em>pelos extratos de fora</em>: banco (arquivo OFX), fatura do cartão (planilha do Itaú), PayPal (lido direto, todo dia) e, em breve, Mercado Pago. Escolha a conta e o período: os três quadros somam entradas, saídas e transferências entre contas por categoria (aplicação, resgate, pagamento da fatura e saque não são receita nem despesa). Na lista, cada lançamento tem uma categoria: em laranja é sugestão do sistema (o ✓ confirma), em vermelho está sem categoria. O lápis muda a categoria; com "Lembrar para os próximos" marcado, a regra fica gravada pelo CNPJ/CPF de quem recebeu e os próximos extratos já entram classificados. Saque do PayPal ou do Mercado Pago é casado sozinho com a entrada no banco (mesmo valor, até 5 dias depois): a linha mostra em verde "casado com…" nas duas contas. Em laranja aparece o que ficou sem par e o motivo (falta o extrato do banco daquele período, ou falta o extrato da conta de onde o dinheiro saiu); o filtro "Saques e transferências sem par" lista só esses. <strong>Do extrato para o Financeiro</strong> (02/10/2026): todo lançamento do banco com categoria confirmada vira sozinho um lançamento <em>pago</em> no Financeiro, na conta e na categoria certas, e a linha ganha a marca "no Financeiro". Transferências entre contas não viram lançamento. Se já existia um lançamento pago à mão com o mesmo valor (até 3 dias de diferença), o sistema liga os dois em vez de criar outro. Mudou a categoria na Conciliação, o lançamento acompanha. <strong>PayPal</strong> (02/10/2026): cada venda recebida vira um recebimento pago na conta PayPal pelo valor cheio, com a taxa do PayPal como saída paga (categoria "Taxa do PayPal"); o saque vira transferência saindo da conta PayPal e, quando o saque está casado com a linha do extrato do banco, a entrada no banco é criada na data em que o banco recebeu. Estorno entra como devolução de venda. A receita do site só entra na DRE quando as vendas do e-commerce virarem pedidos (última etapa).</li>
+              <li><strong>Lançamentos vindos do extrato</strong> (02/10/2026): o que você confirma na Conciliação (cap. 21) aparece aqui como lançamento <em>pago</em>, na conta e na categoria certas, e não se edita à mão — mudou a categoria lá, o lançamento acompanha. <strong>PayPal:</strong> cada venda recebida vira um recebimento pago na conta PayPal pelo valor cheio, com a taxa do PayPal como saída paga (categoria "Taxa do PayPal"); o saque vira transferência saindo da conta PayPal e, quando o saque está casado com a linha do extrato do banco, a entrada no banco é criada na data em que o banco recebeu. Estorno entra como devolução de venda. A receita do site só entra na DRE quando as vendas do e-commerce virarem pedidos (última etapa).</li>
               <li><strong>Fatura do cartão no Financeiro</strong> (02/10/2026): cada fatura vira um lançamento <em>a pagar</em> por categoria (compras menos estornos daquela categoria), com vencimento igual ao da fatura; a soma dos lançamentos é o total da fatura. Quando o extrato do banco traz o pagamento da fatura (mesmo valor, perto do vencimento), esses lançamentos passam a pagos sozinhos e a linha do banco mostra "pagamento da fatura do cartão". Trocar a categoria de uma compra na Conciliação refaz os valores. Na DRE a fatura conta no mês anterior ao vencimento: a que vence em outubro são as compras de setembro.</li>
               <li><strong>DRE Realizada no modelo da planilha</strong> (menu DRE → botão "DRE Realizada"): mostra o ano inteiro, um mês por coluna mais o total, nos mesmos blocos da planilha do Drive — Receita Operacional Bruta, Deduções (Simples), Receita Líquida, Custos das Mercadorias, Resultado Bruto, Despesas variáveis, Margem de contribuição, Despesas fixas (cada uma dividida em assistência técnica, administrativas, pessoal, comerciais), Receita e Despesa Financeira, Impostos e taxas, Resultado Líquido. Escolha o ano no seletor e clique no nome de um mês para destacar a coluna. De onde vem cada número: vendas, custo e comissões saem dos pedidos faturados e das vendas pagas do Mercado Livre; o Simples sai do carimbo fiscal do pedido (ou da alíquota efetiva); as despesas são os lançamentos pagos do Financeiro, cada um na linha da sua categoria. Mês com ponto (•) tem extrato do banco lançado; mês já corrido sem extrato usa a média real das despesas fixas como estimativa. Variável ou fixa vem da marcação "Despesa fixa" de cada lançamento. <strong>Quem decide o que entra na DRE é o cadastro de categorias</strong> (Financeiro → Categorias): cada categoria tem o campo "Na DRE" com o grupo em que entra (administrativas, pessoal, comerciais, assistência técnica, despesa financeira, impostos e taxas, receita financeira, outras) ou "NÃO entra" (mostrada abaixo do resultado, ou nem mostrada). Categoria nova já nasce entrando em "outras despesas"; o que não for entrar, desmarque lá. Venda, serviços de OS, devolução, transferência e custo de mercadoria são tratados pela própria estrutura da DRE e não têm escolha. As despesas do cartão entram pela fatura, no mês anterior ao vencimento.</li>
-              <li><strong>Fechamento do mês</strong> (menu Financeiro → Fechamento do mês, desde 03/10/2026): cruza as vendas do mês (pagas no Mercado Livre e pedidos faturados do ERP) com as notas fiscais de saída (hoje lidas do Bling das duas empresas, todo dia de manhã; na virada, as do próprio ERP) e lista o que não bate: venda paga sem nota, nota autorizada de venda cancelada ou devolvida, nota cancelada de venda paga, valor diferente, venda em disputa e nota sem venda no sistema. Cada linha diz o que fazer. O botão "Baixar para a contabilidade" gera a planilha com os pontos e todas as notas do mês. Mês sem pendência aparece como fechado.</li>
-              <li><strong>Devolução com nota de entrada automática</strong> (03/10/2026): quando uma venda do Mercado Livre é devolvida (o dinheiro voltou inteiro ao comprador) ou cancelada depois da nota de saída já autorizada, o sistema prepara sozinho, em Notas Fiscais, o rascunho da NF-e de devolução: nota de entrada, finalidade 4, CFOP 1202 (SP) ou 2202 (outro estado), referenciando a chave da nota original, com o destinatário da nota como contato e os mesmos itens. Nada é emitido sem alguém clicar em "Emitir" na tela de Notas Fiscais (hoje em homologação). Só vale para a empresa do ERP (ROUTER 66): venda da SABER fica marcada no Fechamento como "fazer no Bling". Devolução de pedido do ERP continua pelo botão Devolução do pedido, que já preparava a nota.</li>
-              <li><strong>Saldo da conta conferido com o banco</strong> (02/10/2026): o arquivo do extrato (OFX) traz o saldo da conta na data em que foi gerado. O ERP guarda esse número e a conta passa a partir dele: saldo de hoje = saldo informado pelo banco + lançamentos pagos depois daquela data (no cartão da conta aparece "conferido com o banco em DD/MM"). Antes, o saldo era "saldo inicial + recebidos − pagos" desde sempre, e nunca batia, porque aplicação, resgate e fatura do cartão não viram lançamento. Na Conciliação, a conta do banco mostra o saldo de abertura e de fechamento do período pelo próprio extrato e, ao lado, os lançamentos que o ERP diz ter pago por aquela conta no mês e que o extrato não mostra: cada um deles é conta errada, data errada ou pagamento que não aconteceu, e precisa ser acertado no Financeiro.</li>
+              <li><strong>Saldo da conta conferido com o banco</strong> (02/10/2026): o arquivo do extrato (OFX) traz o saldo da conta na data em que foi gerado. O ERP guarda esse número e a conta passa a partir dele: saldo de hoje = saldo informado pelo banco + lançamentos pagos depois daquela data (no cartão da conta aparece "conferido com o banco em DD/MM"). Antes, o saldo era "saldo inicial + recebidos − pagos" desde sempre, e nunca batia, porque aplicação, resgate e fatura do cartão não viram lançamento. Os lançamentos pagos à mão por uma conta que o extrato não mostra aparecem na Conciliação (cap. 21) — acertar é aqui no Financeiro.</li>
             </ul>
+            <p className="mt-2 text-sm text-muted-foreground">Conciliação dos extratos e Fechamento do mês com a contabilidade têm capítulo próprio: 21 e 22.</p>
+          </>
+        ),
+      },
+      {
+        id: "conciliacao",
+        icon: ListChecks,
+        titulo: "21. Conciliação — o extrato de fora, categoria por categoria",
+        resumo: "Banco (OFX), fatura do cartão e PayPal; confirmar ou ensinar a categoria; o que vira lançamento pago; saques casados; saldo pelo extrato",
+        corpo: (
+          <>
+            <p><strong>Para que serve:</strong> o Financeiro sabe o que o ERP lançou; o banco sabe o que aconteceu de verdade. Esta tela mostra o mês de cada conta <em>pelos extratos de fora</em>, com uma categoria em cada linha, e transforma o que você confirmar em lançamento <strong>pago</strong> no Financeiro — é daqui que a DRE Realizada tira as despesas reais do mês.</p>
+            <p className="mt-2"><strong>De onde vêm as linhas (faz sozinho):</strong> banco Itaú = arquivo OFX do extrato; fatura do cartão Itaú = planilha Excel da fatura — você deixa os dois na pasta <em>Financeiro</em> do Drive compartilhado "Robooster" e avisa (a leitura desses arquivos ainda não é automática); PayPal = lido direto da conta todo dia às 07h10; Mercado Pago ainda não entra (depende do relatório de liberações). Cada linha chega com uma <strong>categoria sugerida</strong> por regra (CPFL → Energia elétrica, SISPAG → Salários, Redecard → Recebimento de cartão…) ou pelas regras que você ensinou; o que não tem regra fica "sem categoria", para você classificar.</p>
+            <p className="mt-2"><strong>Como usar, de cima para baixo:</strong></p>
+            <ol className="list-decimal pl-5 mt-1 space-y-1.5">
+              <li><strong>Conta e período:</strong> abre na conta do banco, no período mais recente. Para o cartão o período é a <em>fatura</em> ("fatura que vence em dd/mm/aaaa"), não o mês da compra;</li>
+              <li><strong>Cartões do topo:</strong> Entradas (n) · Saídas (n) · Transferências entre contas (n) — aplicação, resgate, pagamento da fatura e saque não são receita nem despesa · <strong>"Para você olhar"</strong> = quantas linhas estão sem categoria + quantas têm categoria só sugerida (vermelho se há linha sem categoria, laranja se só faltam confirmações, verde se zerou). Na fatura do cartão os cartões mudam para Estornos e créditos · Compras e encargos · <strong>Total da fatura</strong> (compras e encargos menos estornos = o que sai do banco no vencimento);</li>
+              <li><strong>Só na conta do banco:</strong> <em>"Saldo no banco, pelo extrato"</em> — saldo de abertura e de fechamento do período, recontado linha a linha a partir do saldo que o próprio banco informou no arquivo; a conta no Financeiro parte desse número (cap. 20). E <em>"O ERP diz que pagou por esta conta, mas o extrato não mostra"</em> — lançamentos marcados como pagos à mão no Financeiro, por essa conta, naquele mês, que não estão no extrato: ou saíram de outra conta, ou a data está errada, ou o pagamento não aconteceu. A tela aponta; acertar é no Financeiro;</li>
+              <li><strong>Três quadros por categoria</strong> (entradas, saídas, transferências): quantidade e total de cada categoria; "a confirmar" marca categoria com sugestão ainda não confirmada;</li>
+              <li><strong>Lista:</strong> filtro (Todos · Sem categoria · Categoria sugerida, a confirmar · Entradas · Saídas · Transferências · Saques e transferências sem par), busca no histórico e, ao lado, quantidade e soma do que está na tela. Colunas: Data, Histórico, Tipo (Entrada, Saída, Estorno, Transferência), Categoria e Valor (verde entrada, vermelho saída, cinza transferência);</li>
+              <li><strong>A categoria de cada linha:</strong> <span className="inline-block px-1.5 rounded-full bg-muted">cinza</span> = confirmada; <span className="inline-block px-1.5 rounded-full bg-warning/10 text-warning">laranja</span> = sugerida pelo sistema — o <strong>✓</strong> confirma; <span className="inline-block px-1.5 rounded-full bg-destructive/10 text-destructive">vermelha</span> = sem categoria. O <strong>lápis</strong> abre a edição: digite a categoria ou escolha uma das já usadas; a caixa <em>"Lembrar para os próximos lançamentos com '…'"</em> (marcada por padrão) grava a regra pelo CNPJ/CPF de quem recebeu — ou, sem documento, pelo texto do histórico — e já aplica a mesma categoria às outras linhas iguais ainda não confirmadas; <strong>Gravar</strong>. "no Financeiro" ao lado da categoria = essa linha já virou lançamento pago.</li>
+            </ol>
+            <Bloco titulo="O que a tela grava (os dois únicos botões que mexem em algo)">
+              <p><strong>✓ e Gravar</strong> marcam a categoria como confirmada e, na mesma hora, chamam a rotina que leva o extrato ao Financeiro: toda linha do <em>banco</em> com categoria confirmada vira um lançamento <em>pago</em> na conta e na categoria certas (transferência entre contas não vira lançamento). Se já existia um lançamento pago à mão com o mesmo valor até 3 dias de diferença, o sistema liga os dois em vez de duplicar. Mudou a categoria aqui, o lançamento acompanha. Na <em>fatura do cartão</em>, as compras confirmadas viram lançamentos <em>a pagar</em> por categoria no Financeiro, com o vencimento da fatura (cap. 20) — trocar a categoria de uma compra refaz esses valores. A regra "lembrar" fica gravada para os próximos extratos.</p>
+            </Bloco>
+            <Bloco titulo="Pares: saques, transferências e pagamento da fatura">
+              <p>Saque do PayPal ou do Mercado Pago é casado sozinho com a entrada no banco de mesmo valor, do dia até 5 dias depois: a linha mostra em verde <em>"casado com &lt;conta&gt;, dd/mm (valor)"</em> nas duas contas. Em laranja aparece o que ficou sem par e o motivo: falta o extrato do banco daquele período; saque sem entrada correspondente; entrada "Transferência de conta própria" sem o extrato da conta de onde o dinheiro saiu (hoje, o Mercado Pago). O filtro "Saques e transferências sem par" lista só esses. Quando o extrato do banco traz o pagamento da fatura do cartão (mesmo valor, perto do vencimento), a linha mostra <em>"pagamento da fatura do cartão que venceu em dd/mm/aaaa"</em> e os lançamentos daquela fatura passam a pagos no Financeiro.</p>
+            </Bloco>
+            <Aviso><strong>Confirmar é o gatilho.</strong> Categoria errada confirmada = lançamento errado no Financeiro e despesa na linha errada da DRE. Não há botão de "desconfirmar": corrija pelo lápis, que o lançamento acompanha. E a categoria decide se e onde a despesa entra na DRE (Financeiro → Categorias → "Na DRE").</Aviso>
+            <NaoFaz itens={["Não recebe arquivo pela tela: OFX e planilha do cartão entram pela pasta Financeiro do Drive; PayPal entra sozinho; Mercado Pago ainda não entra.", "Não cria, não edita e não apaga lançamento à mão — isso é no Financeiro. Também não mostra os lançamentos manuais do Financeiro (só o que veio de extrato), exceto no quadro \"o ERP diz que pagou e o extrato não mostra\".", "Não concilia o Financeiro linha a linha com o banco: aponta o que o ERP diz ter pago e o banco não mostra; o resto do acerto é seu, no Financeiro.", "Transferência, aplicação, resgate e saque nunca viram receita nem despesa — por isso não aparecem na DRE."]} />
+          </>
+        ),
+      },
+      {
+        id: "fechamento-mes",
+        icon: ClipboardCheck,
+        titulo: "22. Fechamento do mês — vendas × notas, pronto para a contabilidade",
+        resumo: "Venda paga sem nota, nota de venda cancelada, valor diferente, nota sem venda; CSV para o contador; devolução com NF automática",
+        corpo: (
+          <>
+            <p><strong>Para que serve:</strong> fechar o mês com o contador sem conferir nota por nota. A tela cruza o que foi vendido no mês — vendas pagas do Mercado Livre das duas contas (cap. 10) e pedidos faturados do ERP (cap. 9) — com as notas fiscais de saída (hoje lidas do Bling das duas empresas, ROUTER 66 e SABER, todo dia às 07h20; na virada de janeiro/2027, as do próprio ERP) e lista <strong>só o que não bate</strong>, dizendo em cada linha o que fazer.</p>
+            <p className="mt-2"><strong>Como usar, de cima para baixo:</strong></p>
+            <ol className="list-decimal pl-5 mt-1 space-y-1.5">
+              <li><strong>Mês:</strong> abre no mês anterior; a lista traz os meses que têm nota ou venda;</li>
+              <li><strong>Cartões:</strong> Vendido no mês (Mercado Livre + pedidos do ERP, separados embaixo) · Notas autorizadas (quantidade, valor e o detalhe por empresa) · Notas canceladas · <strong>Pontos para resolver</strong> — zero = "mês fechado sem pendências";</li>
+              <li><strong>Chips por tipo</strong> de problema (só aparecem os que têm ocorrência) filtram a tabela;</li>
+              <li><strong>Tabela:</strong> O que não bate (com a observação do caso), Empresa, Venda (número e dia), Cliente, Valor da venda, Nota (número e situação; "ligação pelo valor" quando foi casada só pelo valor), Valor da nota e <strong>O que fazer</strong>;</li>
+              <li><strong>"Baixar para a contabilidade (CSV)":</strong> gera o arquivo <em>fechamento-AAAA-MM.csv</em> com os pontos para resolver e, abaixo, <strong>todas as notas do mês</strong> (empresa, número, série, emissão, situação, valor, cliente, documento, UF, pedido da loja e chave). Abre direto no Excel. É o que vai para o contador.</li>
+            </ol>
+            <Bloco titulo="Os 7 tipos de ponto e o que fazer em cada um">
+              <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Venda paga sem nota fiscal</strong> → emitir a nota (ou registrar o número, se já foi emitida fora do sistema);</li>
+                <li><strong>Nota autorizada de venda cancelada ou devolvida</strong> → cancelar a nota (dentro do prazo) ou emitir a nota de devolução; para venda do Mercado Livre da ROUTER 66 o rascunho já é preparado sozinho (abaixo);</li>
+                <li><strong>Nota cancelada, mas a venda continua paga</strong> → emitir nova nota;</li>
+                <li><strong>Valor da nota diferente do valor da venda</strong> → conferir frete/desconto; carta de correção não resolve valor: cancelar e reemitir;</li>
+                <li><strong>Nota em nome diferente do cliente do pedido</strong> → conferir se é a mesma venda; se for outro cliente, o pedido está sem nota e essa nota é de outra venda;</li>
+                <li><strong>Venda em disputa, estorno ou chargeback</strong> → acompanhar; se o dinheiro voltar ao comprador, tratar como devolução;</li>
+                <li><strong>Nota sem venda correspondente no sistema</strong> → venda feita fora do ERP (ou de outra empresa): registrar o pedido ou confirmar com a contabilidade. Não é erro fiscal.</li>
+              </ul>
+            </Bloco>
+            <Bloco titulo="Como a venda acha a nota (para entender um falso alarme)">
+              <p><strong>Mercado Livre:</strong> pelo número do pedido (ou do pacote) gravado na nota, na mesma empresa; se não achar, pelo número da nota que o Bling registrou no pedido. Carrinho = várias vendas numa nota só: compara a <em>soma</em>. Nota registrada no Bling mas emitida fora do período carregado (venda de 31/08 com nota de 01/09) vale como autorizada. "Devolvida" = o dinheiro voltou inteiro ao comprador; estorno parcial vira "disputa". <strong>Pedido do ERP:</strong> pelo número da nota registrado no pedido; na falta, por <em>valor igual</em> a uma nota sem pedido da loja emitida até 31 dias antes ou depois (a de data mais próxima), marcada "ligação pelo valor" — por isso vale olhar o nome. Pedido em rascunho não entra. A nota que não casou com venda nenhuma vira "Nota sem venda no sistema".</p>
+            </Bloco>
+            <Bloco titulo="Devolução com nota de entrada automática (03/10/2026)">
+              <p>Quando uma venda do Mercado Livre é devolvida (o dinheiro voltou inteiro ao comprador) ou cancelada depois da nota de saída já autorizada, o sistema prepara sozinho, em Notas Fiscais (cap. 23), o <strong>rascunho</strong> da NF-e de devolução: nota de entrada, finalidade 4, CFOP 1202 (SP) ou 2202 (outro estado), referenciando a chave da nota original, com o destinatário da nota como contato e os mesmos itens. A linha aqui avisa "rascunho da NF de devolução já preparado em Notas Fiscais: conferir e emitir". Nada é emitido sem alguém clicar em "Emitir" lá (hoje em homologação). Só vale para a empresa do ERP (ROUTER 66): venda da SABER fica marcada como "fazer no Bling". Devolução de pedido do ERP continua pelo botão ↩ do pedido (cap. 9), que já preparava a nota.</p>
+            </Bloco>
+            <Aviso>"Mês fechado sem pendências" quer dizer: cada venda paga tem nota autorizada e cada nota tem venda. Não confere imposto, DAS nem valores de custo — isso é a DRE Realizada (cap. 18 e 20) e o contador.</Aviso>
+            <NaoFaz itens={["Não emite, não cancela e não registra nota — isso é em Notas Fiscais (cap. 23) ou, até a virada, no Bling.", "Não marca ponto como resolvido nem grava \"mês fechado\": o ponto some sozinho quando a causa é corrigida e a próxima leitura passa (notas 07h20, Mercado Livre 4× ao dia). O único botão é o do CSV.", "Não mexe no Financeiro, no estoque nem nos pedidos.", "Nota do ERP em homologação (teste) não conta como nota — só as de produção; até a virada, as notas são as do Bling."]} />
           </>
         ),
       },
       {
         id: "nfe",
         icon: FileText,
-        titulo: "20. Notas Fiscais — a nota no clique e as avulsas",
+        titulo: "23. Notas Fiscais — a nota no clique e as avulsas",
         resumo: "NF-e do pedido, checklist, NF avulsa (importação, devolução, conserto), cadastro de CFOP, homologação",
         corpo: (
           <>
@@ -446,7 +542,7 @@ const GRUPOS = [
             <p className="mt-2"><strong>Tela Notas Fiscais:</strong> lista única (pedidos + avulsas), filtro entrada/saída e por origem, exportar CSV. <strong>Nova NF avulsa</strong> — escolha a operação e o resto se ajusta (tipo, CFOP intra/inter pela UF):</p>
             <ul className="list-disc pl-5 mt-1 space-y-1.5">
               <li><strong>Entrada de importação:</strong> "Puxar itens da operação" preenche o mix declarado com VA e II por item (operações realizadas, concluídas ou fechadas); complete nº da DI, datas, UF, AFRMM, via; o bloco "Calcular impostos da importação" rateia frete/seguro/despesas e calcula II/IPI/PIS/COFINS/ICMS; confira com a DI real;</li>
-              <li><strong>Devoluções</strong> de venda/compra e <strong>conserto</strong> (entrada, retorno, remessa): chave de 44 dígitos da nota original quando houver. A devolução feita pelo botão ↩ do pedido já deixa o rascunho pronto aqui;</li>
+              <li><strong>Devoluções</strong> de venda/compra e <strong>conserto</strong> (entrada, retorno, remessa): chave de 44 dígitos da nota original quando houver. A devolução feita pelo botão ↩ do pedido já deixa o rascunho pronto aqui — e a devolução de venda do Mercado Livre da ROUTER 66 também (preparada sozinha, cap. 22);</li>
               <li><strong>Outra operação:</strong> CFOP do <strong>cadastro de CFOP</strong> (botão "gerenciar CFOPs": código, natureza, CSOSN, finalidade, texto padrão) ou digitado; "+ texto padrão da natureza" preenche as informações adicionais;</li>
               <li>Cada item tem abas de impostos (ICMS, IPI, PIS/COFINS, Importação, Outros) para o que fugir do padrão.</li>
             </ul>
@@ -457,7 +553,7 @@ const GRUPOS = [
       {
         id: "patrimonio",
         icon: Gem,
-        titulo: "21. Patrimônio & Valor da Empresa — quanto isso tudo vale",
+        titulo: "24. Patrimônio & Valor da Empresa — quanto isso tudo vale",
         resumo: "Bens com depreciação, avaliação patrimonial e por múltiplo de lucro",
         corpo: (
           <>
@@ -473,7 +569,7 @@ const GRUPOS = [
       {
         id: "relatorios",
         icon: BarChart3,
-        titulo: "22. Relatórios",
+        titulo: "25. Relatórios",
         resumo: "Vendas, recebido, pago, estoque, por canal e top produtos",
         corpo: (
           <>
@@ -490,7 +586,7 @@ const GRUPOS = [
       {
         id: "sites",
         icon: Globe,
-        titulo: "23. Central de Análise — os 4 sites num painel",
+        titulo: "26. Central de Análise — os 4 sites num painel",
         resumo: "Google, Bing, GA4, IA, velocidade, indexação, Meta, Ads, WhatsApp, Mapa da Placa",
         corpo: (
           <>
@@ -502,7 +598,7 @@ const GRUPOS = [
       {
         id: "cofre",
         icon: KeyRound,
-        titulo: "24. Controle de Acessos — o Cofre",
+        titulo: "27. Controle de Acessos — o Cofre",
         resumo: "Credenciais cifradas, master × colaboradores, empresas",
         corpo: (
           <>
@@ -514,11 +610,11 @@ const GRUPOS = [
       {
         id: "configuracoes",
         icon: Settings,
-        titulo: "25. Configurações",
+        titulo: "28. Configurações",
         resumo: "Dados do usuário e versão — o resto mora na Configuração Tributária",
         corpo: (
           <>
-            <p>Tela informativa: seu nome, e-mail, perfil e a versão do sistema. Taxas de recebimento, despesas fixas e sócios ficam na <strong>Configuração Tributária</strong> (cap. 18); transportadoras se cadastram pelo pedido de venda ou em Contatos (tipo Transportador).</p>
+            <p>Tela informativa: seu nome, e-mail, perfil e a versão do sistema. Taxas de recebimento, despesas fixas e sócios ficam na <strong>Configuração Tributária</strong> (cap. 19); transportadoras se cadastram pelo pedido de venda ou em Contatos (tipo Transportador).</p>
           </>
         ),
       },
@@ -579,7 +675,7 @@ export default function Manual() {
         );
       })}
 
-      <p className="text-[11px] text-muted-foreground text-center mt-6">Manual vivo — {CAPITULOS.length} capítulos, um por tela, conferidos contra o sistema · Revisão completa em <strong>01/10/2026</strong>. Sentiu falta de algo? Avise o Mauricio, que avisa o Claude. 🔧</p>
+      <p className="text-[11px] text-muted-foreground text-center mt-6">Manual vivo — {CAPITULOS.length} capítulos, um por tela, conferidos contra o sistema · Revisão completa em <strong>01/10/2026</strong>; capítulos 10, 21 e 22 escritos em <strong>07/10/2026</strong>. Sentiu falta de algo? Avise o Mauricio, que avisa o Claude. 🔧</p>
     </div>
   );
 }
