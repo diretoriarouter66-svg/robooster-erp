@@ -41,7 +41,8 @@ begin
         n_saque := n_saque + 1;
       end if;
     -- (2) frete / retenção / estorno: só depois de confirmado na Conciliação
-    elsif m.tipo <> 'saque' and m.categoria is not null and m.categoria_confirmada and m.financeiro_id is null then
+    -- (2) frete / retenção / estorno, e saque SEM par (ex.: transferência para a conta MP da Saber): só depois de confirmado na Conciliação
+    elsif m.categoria is not null and m.categoria_confirmada and m.financeiro_id is null then
       v_slug := extrato_categoria_resolver(m.categoria, m.valor < 0);
       insert into financial_entries (id, type, description, category, reference_id, reference_type, amount, due_date, payment_date, status, payment_method, notes, created_date, updated_date, created_by, account_id)
       values (v_id, case when m.valor > 0 then 'receivable' else 'payable' end, left(coalesce(m.descricao, m.categoria), 200), v_slug, m.id, 'extrato',
