@@ -348,9 +348,28 @@ export default function DREPlanilha({ config, onVoltar }) {
       usaMedia: atual.usaMedia, temPart: linhasPart.length > 0, falta, saldo, planejada, inicio, temDist: !!distConfig };
   }, [dados, ano, anos, contaML, config, baseFixas, participacoes, distConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // sanfona (08/10): hook ANTES do return condicional — React #310 se vier depois
+  const [fechados, setFechados] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem("dre_fechados") || "[]")); } catch { return new Set(); } });
   if (!dre) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
   const total = (vals) => vals.reduce((s, x) => s + x, 0);
+  // sanfona: índices das linhas recolhidas (bloco "total" ou subgrupo "grupo"); lembrado no navegador
+  const alternar = (n) => setFechados((prev) => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); try { localStorage.setItem("dre_fechados", JSON.stringify([...s])); } catch {} return s; });
+  const paiDe = (n) => { // índices do bloco (total) e do subgrupo (grupo) que contêm a linha n
+    const out = []; const t = dre.linhas[n].tipo;
+    if (t === "linha" || t === "grupo") {
+      for (let i = n - 1; i >= 0; i--) {
+        const ti = dre.linhas[i].tipo;
+        if (t === "linha" && ti === "grupo" && !out.length) { out.push(i); continue; }
+        if (ti === "total") { out.push(i); break; }
+        if (ti === "resultado" || ti === "resultado final") break;
+      }
+    }
+    return out;
+  };
+  const blocos = dre.linhas.map((l, n) => n).filter((n) => { const l = dre.linhas[n]; return (l.tipo === "total" || l.tipo === "grupo") && n + 1 < dre.linhas.length && ["grupo", "linha"].includes(dre.linhas[n + 1].tipo); });
+  const recolherTudo = () => { const s = new Set(blocos); setFechados(s); try { localStorage.setItem("dre_fechados", JSON.stringify([...s])); } catch {} };
+  const abrirTudo = () => { setFechados(new Set()); try { localStorage.setItem("dre_fechados", "[]"); } catch {} };
   const Celula = ({ valor, sinal, forte, sel }) => {
     const zero = Math.abs(valor) < 0.005;
     const cor = zero ? "text-muted-foreground/50" : sinal === 0 ? (valor < 0 ? "text-destructive" : "text-success") : sinal < 0 ? "text-destructive" : "";
@@ -383,7 +402,8 @@ export default function DREPlanilha({ config, onVoltar }) {
           <SelectContent>{anos.map((a) => <SelectItem key={a} value={a}>Ano {a}</SelectItem>)}</SelectContent>
         </Select>
       </div>
-      <p className="text-xs text-muted-foreground mb-3">Números reais do sistema, mês a mês. Clique no nome de um mês para destacar a coluna.</p>
+      <p className="text-xs text-muted-foreground mb-3">Números reais do sistema, mês a mês. Clique no nome de um mês para destacar a coluna. Clique num bloco (▾) para esconder o detalhe e ver só o total.
+        <button type="button" onClick={recolherTudo} className="ml-2 underline hover:text-foreground">Recolher tudo</button> · <button type="button" onClick={abrirTudo} className="underline hover:text-foreground">Abrir tudo</button></p>
 
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
@@ -401,13 +421,23 @@ export default function DREPlanilha({ config, onVoltar }) {
               </tr>
             </thead>
             <tbody>
-              {dre.linhas.map((l, n) => (
-                <tr key={n} className={`border-b border-border/40 ${estilo[l.tipo]}`}>
-                  <td className={`px-3 py-1.5 sticky left-0 ${l.tipo === "linha" || l.tipo === "grupo" ? "bg-card" : l.tipo === "total" ? "bg-muted" : "bg-muted"} ${recuo[l.tipo]}`}>{l.label}</td>
+              {dre.linhas.map((l, n) => {
+                // 08/10/2026 (pedido dele): sanfona — clicar num bloco (total) ou subgrupo esconde as linhas de detalhe até o próximo
+                // bloco; "(=)" nunca se recolhe. paiFechado() olha o bloco e o subgrupo acima da linha.
+                const pai = paiDe(n);
+                if (pai.some((i) => fechados.has(i))) return null;
+                const temFilhos = blocos.includes(n);
+                const fechado = fechados.has(n);
+                return (
+                <tr key={n} className={`border-b border-border/40 ${estilo[l.tipo]} ${temFilhos ? "cursor-pointer hover:bg-muted/60" : ""}`} onClick={temFilhos ? () => alternar(n) : undefined} title={temFilhos ? (fechado ? "Clique para abrir" : "Clique para recolher") : undefined}>
+                  <td className={`px-3 py-1.5 sticky left-0 ${l.tipo === "linha" || l.tipo === "grupo" ? "bg-card" : l.tipo === "total" ? "bg-muted" : "bg-muted"} ${recuo[l.tipo]}`}>
+                    {temFilhos && <span className="inline-block w-3 mr-1 text-muted-foreground select-none">{fechado ? "▸" : "▾"}</span>}{l.label}
+                  </td>
                   {l.vals.map((x, i) => <Celula key={i} valor={x} sinal={l.sinal} forte={l.tipo !== "linha"} sel={i === mesSel} />)}
                   <Celula valor={l.totalValor ?? total(l.vals)} sinal={l.sinal} forte />
                 </tr>
-              ))}
+                );
+              })}
               {dre.informativo.length > 0 && (
                 <>
                   <tr><td colSpan={14} className="px-3 pt-5 pb-1.5 text-[11px] font-medium text-foreground sticky left-0">Saíram do banco e não entram no resultado</td></tr>
