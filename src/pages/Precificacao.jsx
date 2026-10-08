@@ -14,7 +14,6 @@ import {
 } from "@/lib/pricingCalc";
 import { useBaseFixas, fmtPctFixo, origemBaseFixas } from "@/lib/despesasFixas";
 import CompetitorSection from "@/components/pricing/CompetitorSection";
-import { precoParcelado, tabelaAcrescimo } from "@/lib/parcelamento";
 import MLIntegration from "@/components/pricing/MLIntegration";
 
 export default function Precificacao() {
@@ -307,7 +306,7 @@ export default function Precificacao() {
                         <td className="px-4 py-3 text-right hidden lg:table-cell">
                           <span className={`text-xs ${isLanded ? "text-primary" : "text-muted-foreground"}`}>{isLanded ? "Importação" : "Manual"}</span>
                         </td>
-                        <td className="px-4 py-3 text-right font-medium">{formatBRL(masterPriceMap[p.id])}{(() => { const pp = precoParcelado(config, masterPriceMap[p.id]); return pp && pp.n > 1 ? <span className="block text-[10px] font-normal text-muted-foreground" title="Pela tabela Acréscimo ao cliente por parcelas (Configuração → Taxas de recebimento), sem entrada">{pp.n}x de {formatBRL(pp.parcela)}</span> : null; })()}</td>
+                        <td className="px-4 py-3 text-right font-medium">{formatBRL(masterPriceMap[p.id])}</td>
                         <td className="px-4 py-3 text-right">
                           <Button size="sm" onClick={() => openCockpit(p)}><Calculator className="w-3.5 h-3.5 mr-1" /> Precificar</Button>
                         </td>
@@ -508,20 +507,6 @@ export default function Precificacao() {
               </table>
             </div>
           </div>
-
-          {/* PARCELADO AO CLIENTE (08/10/2026): mesma tabela do simulador do pedido, sem entrada */}
-          {(() => {
-            const pp = precoParcelado(config, calculatedMasterPrice);
-            if (!pp || pp.n <= 1) return null;
-            const { inicial } = tabelaAcrescimo(config);
-            return (
-              <div className="mt-4 bg-card rounded-xl border border-border p-4 text-sm flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-muted-foreground">Cliente parcelando (sobre o preço Master à vista, sem entrada)</span>
-                <span><strong className="text-primary">{pp.n}x de {formatBRL(pp.parcela)}</strong> <span className="text-xs text-muted-foreground">· total {formatBRL(pp.totalCliente)} (+{pp.pct.toFixed(2).replace(".", ",")}%)</span></span>
-                <p className="w-full text-[10px] text-muted-foreground">Tabela "Acréscimo ao cliente por parcelas" em Configuração → Taxas de recebimento{inicial ? " (valores iniciais, ainda não salvos)" : ""}. Com entrada, o cálculo é no pedido de venda ("Como o cliente vai pagar").</p>
-              </div>
-            );
-          })()}
 
           {/* CONCORRÊNCIA — espelho do precificador unificado, por produto */}
           <CompetitorSection productId={selectedProduct?.id} precoProprio={calculatedMasterPrice} />

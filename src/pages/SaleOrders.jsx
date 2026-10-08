@@ -13,7 +13,7 @@ import EmptyState from "../components/shared/EmptyState";
 import { reconciliarPedidoVenda, registrarMovimento } from "@/lib/stockService";
 import { getCustoVigente, calcImpostosPct } from "@/lib/pricingCalc";
 import { usePermissoes } from "@/hooks/usePermissoes";
-import { acrescimoPct, tabelaAcrescimo, simularParcelamento, textoProposta, acrescimoMinimo, PARCELAS_MAX } from "@/lib/parcelamento";
+import { taxaOperadora, simularParcelamento, textoProposta, PARCELAS_MAX } from "@/lib/parcelamento";
 
 const CHANNEL_TYPE_MAP = {
   direct: "venda_direta",
@@ -68,16 +68,16 @@ export default function SaleOrders() {
   const [devDialog, setDevDialog] = useState(null);
   const [devSaving, setDevSaving] = useState(false);
   const hojeIso = () => new Date().toISOString().slice(0, 10);
-  // SIMULADOR "Como o cliente vai pagar" (Mauricio, 08/10/2026): entrada + saldo financiado em N×, com o
-  // acréscimo da tabela "Acréscimo ao cliente por parcelas" SÓ sobre o financiado. Estado local do diálogo;
+  // SIMULADOR "Como o cliente vai pagar" (Mauricio, 08/10/2026): entrada + saldo em N×; o juro é a TAXA DA
+  // OPERADORA × Nº DE PARCELAS (Configuração → Taxas de recebimento) aplicada SÓ sobre o saldo. Estado local do diálogo;
   // "Aplicar ao pedido" grava no pedido (pagamentos + acrescimo_parcelamento + simulacao_pagamento).
-  const SIM_VAZIO = { entrada: "", entrada_metodo: "pix", entrada_data: "", entrada_pago: false, n: 12, metodo: "credit_card", operadora: "", pct: "" };
+  const SIM_VAZIO = { entrada: "", entrada_metodo: "pix", entrada_data: "", entrada_pago: false, n: 12, metodo: "credit_card", operadora: "" };
   const [sim, setSim] = useState(SIM_VAZIO);
   const [simCopiado, setSimCopiado] = useState(false);
   const simDoPedido = (o) => {
     const s = o?.simulacao_pagamento;
     if (!s || typeof s !== "object") return { ...SIM_VAZIO, entrada_data: hojeIso(), entrada: (parseFloat(o?.sinal_brl) || 0) > 0 ? String(o.sinal_brl) : "" };
-    return { ...SIM_VAZIO, entrada: s.entrada != null ? String(s.entrada) : "", entrada_metodo: s.entrada_metodo || "pix", entrada_data: s.entrada_data || "", entrada_pago: !!s.entrada_pago, n: s.n || 12, metodo: s.metodo || "credit_card", operadora: s.operadora || "", pct: s.pct_digitado ?? "" };
+    return { ...SIM_VAZIO, entrada: s.entrada != null ? String(s.entrada) : "", entrada_metodo: s.entrada_metodo || "pix", entrada_data: s.entrada_data || "", entrada_pago: !!s.entrada_pago, n: s.n || 12, metodo: s.metodo || "credit_card", operadora: s.operadora || "" };
   };
 
   // Chama a edge function emitir-nfe com o login do usuário (tokens ficam no servidor)
@@ -248,7 +248,7 @@ ${acrPdf ? `<tr><td colspan="3" class="dir">Acréscimo de parcelamento${simPdf?.
 <tr class="tot"><td colspan="3" class="dir">TOTAL</td><td class="dir">${fmt(total)}</td></tr>
 </tfoot></table></div>
 ${(o.pagamentos || []).length ? `<div class="bloco"><h2>Pagamento</h2>${o.pagamentos.map(p => `${{ pix: "Pix", credit_card: "Cartão de Crédito", debit_card: "Cartão de Débito", boleto: "Boleto", paypal: "PayPal", transfer: "Transferência", cash: "Dinheiro" }[p.metodo] || p.metodo}: ${fmt(parseFloat(p.valor) || 0)}${(p.parcelas || 1) > 1 ? ` em ${p.parcelas}×` : ""}`).join(" · ")}</div>` : ""}
-${simPdf && simPdf.financiado > 0 && acrPdf ? `<div class="bloco"><h2>Condição</h2>${simPdf.entrada > 0 ? `Entrada de ${fmt(simPdf.entrada)} + ` : ""}${simPdf.n}× de ${fmt(simPdf.parcela)} — total ${fmt(total)} (à vista: ${fmt(simPdf.avista)})</div>` : ""}
+${simPdf && simPdf.financiado > 0 && acrPdf ? `<div class="bloco"><h2>Condição</h2>${simPdf.entrada > 0 ? `Entrada de ${fmt(simPdf.entrada)} + ` : ""}${simPdf.n}× de ${fmt(simPdf.parcela)} — total ${fmt(total)} (valor sem o acréscimo: ${fmt(simPdf.avista)})</div>` : ""}
 ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_brl)} — restante: ${fmt(Math.max(0, total - o.sinal_brl))}</div>` : ""}
 <p class="muted" style="margin-top:20px">Documento de conferência do pedido — não é documento fiscal. A nota fiscal é emitida no faturamento.</p>
 <div class="noprint" style="margin-top:16px"><button onclick="window.print()" style="padding:10px 24px;background:#e65c00;color:#fff;border:0;border-radius:8px;font-size:14px;cursor:pointer">🖨 Imprimir / Salvar PDF</button></div>
@@ -1191,30 +1191,26 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
             <div><Label className="text-xs">Total</Label><Input readOnly className="bg-muted font-bold" value={formatCurrency(calcTotal())} /></div>
           </div>
 
-          {/* COMO O CLIENTE VAI PAGAR — simulador de entrada + parcelas (Mauricio, 08/10/2026): o acréscimo
-              incide SÓ sobre o saldo financiado, pela % da tabela "Acréscimo ao cliente por parcelas". */}
+          {/* COMO O CLIENTE VAI PAGAR — simulador de entrada + parcelas (Mauricio, 08/10/2026): saldo = total − entrada;
+              acréscimo = saldo × taxa da operadora para N× (Configuração → Taxas de recebimento); parcela = (saldo + acréscimo) ÷ N. */}
           {(() => {
             const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
             const base = Math.max(0, r2(calcTotalAvista()));
             const sinal = Math.max(0, parseFloat(form.sinal_brl) || 0);
             const entradaVal = sinal > 0 ? sinal : (parseFloat(sim.entrada) || 0);
             const n = Math.max(1, parseInt(sim.n) || 1);
-            const pctTab = acrescimoPct(configTrib, n);
-            const pctDigitado = !(sim.pct === "" || sim.pct == null);
-            const pctUsado = pctDigitado ? (parseFloat(sim.pct) || 0) : pctTab;
-            const r = simularParcelamento({ base, entrada: entradaVal, n, pct: pctUsado ?? 0 });
-            const { tabela, inicial } = tabelaAcrescimo(configTrib);
             const opSim = operadoras.find(o => o.nome === sim.operadora) || null;
             const cartao = ["credit_card", "paypal"].includes(sim.metodo);
-            const tFin = cartao && opSim ? parseFloat((opSim.parcelas || {})[String(n)]) : NaN;
-            const taxaFinPct = isNaN(tFin) ? 0 : tFin;
-            const taxaFinRs = r2(r.totalFinanciado * taxaFinPct / 100);
+            // Juro do cliente = taxa da operadora para N× (boleto: sem operadora, sem juro)
+            const taxaTab = cartao ? taxaOperadora(opSim, n) : 0;
+            const r = simularParcelamento({ base, entrada: entradaVal, n, pct: taxaTab ?? 0 });
+            const taxaFinPct = cartao ? (taxaTab ?? 0) : 0;
+            const taxaFinRs = r2(r.totalFinanciado * taxaFinPct / 100); // a operadora cobra sobre saldo + acréscimo
             const tEnt = sim.entrada_metodo === "debit_card" && sinal <= 0 && opSim ? parseFloat(opSim.debito) : NaN;
             const taxaEntPct = isNaN(tEnt) ? 0 : tEnt;
             const taxaEntRs = r2(r.entrada * taxaEntPct / 100);
             const liquido = r2(r.entrada - taxaEntRs + r.totalFinanciado - taxaFinRs);
             const difAvista = r2(liquido - r.avista);
-            const minimo = acrescimoMinimo(taxaFinPct);
             const aplicado = form.simulacao_pagamento || null;
             const pedidoMudou = !!aplicado && Math.abs((parseFloat(aplicado.avista) || 0) - base) >= 0.01;
             const difereDoAplicado = !aplicado || aplicado.n !== r.n || Math.abs((parseFloat(aplicado.acrescimo) || 0) - r.acrescimo) >= 0.01 || Math.abs((parseFloat(aplicado.entrada) || 0) - r.entrada) >= 0.01 || (aplicado.metodo || "") !== sim.metodo || (aplicado.operadora || "") !== (opSim?.nome || "");
@@ -1223,8 +1219,8 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
             const ROT = { pix: "Pix", cash: "Dinheiro", debit_card: "Cartão de Débito", transfer: "Transferência", credit_card: "Cartão de Crédito", paypal: "PayPal", boleto: "Boleto" };
             const aplicar = () => {
               if (base <= 0) { alert("Adicione os itens do pedido antes: o simulador parte do total à vista."); return; }
-              if (r.financiado > 0 && pctUsado == null) { alert(`Não há acréscimo cadastrado para ${n}× (Configuração → Taxas de recebimento). Digite a % deste pedido ou escolha outro nº de parcelas.`); return; }
-              if (cartao && r.financiado > 0 && !opSim && !confirm("Nenhuma operadora escolhida: o pedido não vai lançar a despesa da taxa do cartão. Aplicar assim mesmo?")) return;
+              if (cartao && r.financiado > 0 && !opSim) { alert("Escolha a operadora: o juro do parcelamento é a taxa dela para o nº de parcelas."); return; }
+              if (cartao && r.financiado > 0 && taxaTab == null) { alert(`A ${opSim.nome} não tem taxa cadastrada para ${n}× (Configuração Tributária → Taxas de recebimento). Cadastre lá ou escolha outro nº de parcelas.`); return; }
               const linhasAntes = (form.pagamentos || []).filter(l => (parseFloat(l.valor) || 0) > 0);
               if (linhasAntes.some(l => l.origem !== "simulador") && !confirm("O pedido já tem linhas no Pagamento misto. Aplicar a simulação SUBSTITUI essas linhas. Continuar?")) return;
               const linhas = [];
@@ -1239,7 +1235,7 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
                 ...prev, pagamentos: linhas, acrescimo_parcelamento: r.acrescimo,
                 simulacao_pagamento: {
                   avista: r.avista, entrada: r.entrada, entrada_metodo: sinal > 0 ? "sinal" : sim.entrada_metodo, entrada_data: sim.entrada_data || "", entrada_pago: !!sim.entrada_pago,
-                  financiado: r.financiado, n: r.n, metodo: sim.metodo, operadora: opSim?.nome || "", pct: r.pct, pct_tabela: pctTab, pct_digitado: pctDigitado ? String(sim.pct) : "",
+                  financiado: r.financiado, n: r.n, metodo: sim.metodo, operadora: opSim?.nome || "", pct: r.pct,
                   acrescimo: r.acrescimo, parcela: r.parcela, total_financiado: r.totalFinanciado, total_cliente: r.totalCliente, taxa_operadora_pct: taxaFinPct, aplicado_em: new Date().toISOString(),
                 },
               }));
@@ -1257,9 +1253,9 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
             return (
               <div className="mt-3 rounded-lg border-2 border-primary/30 bg-primary/5 p-3" data-bloco="simulador-pagamento">
                 <div className="flex items-center gap-2"><Calculator className="w-4 h-4 text-primary" /><Label className="font-semibold">Como o cliente vai pagar — entrada + parcelas</Label></div>
-                <p className="text-[10px] text-muted-foreground mt-1">O acréscimo incide <b>só sobre o saldo financiado</b> (à vista − entrada), pela % do nº de parcelas na tabela <i>Acréscimo ao cliente por parcelas</i> (Configuração → Taxas de recebimento){inicial ? " — ainda com os valores iniciais (regra do site), não salvos" : ""}. "Aplicar ao pedido" cria as linhas do Pagamento misto (acima) e põe o acréscimo no total.</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Saldo = total do pedido − entrada. O juro é a <b>taxa da operadora para o nº de parcelas</b> (Configuração Tributária → Taxas de recebimento), aplicado <b>só sobre o saldo</b>: acréscimo = saldo × taxa; parcela = (saldo + acréscimo) ÷ nº. "Aplicar ao pedido" cria as linhas do Pagamento misto (acima) e põe o acréscimo no total.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 mt-2 items-end">
-                  <div className="sm:col-span-3"><Label className="text-xs">Preço à vista</Label><Input readOnly className="bg-muted font-semibold" value={formatCurrency(base)} title="Total do pedido sem o acréscimo (itens − desconto + frete)" /></div>
+                  <div className="sm:col-span-3"><Label className="text-xs">Valor do pedido</Label><Input readOnly className="bg-muted font-semibold" value={formatCurrency(base)} title="Itens − desconto + frete, sem o acréscimo de parcelamento" /></div>
                   <div className="sm:col-span-3"><Label className="text-xs">Entrada (R$)</Label><Input type="number" step="0.01" min="0" value={sinal > 0 ? String(sinal) : sim.entrada} disabled={sinal > 0} title={sinal > 0 ? "O sinal recebido é a entrada" : ""} onChange={e => setS({ entrada: e.target.value })} placeholder="0,00" /></div>
                   <div className="sm:col-span-2"><Label className="text-xs">Entrada em</Label>
                     <Select value={sinal > 0 ? "sinal" : sim.entrada_metodo} onValueChange={v => setS({ entrada_metodo: v })} disabled={sinal > 0}>
@@ -1272,17 +1268,12 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
                   <div className="sm:col-span-3"><Label className="text-xs">Data da entrada</Label><Input type="date" value={sim.entrada_data || ""} disabled={sinal > 0} onChange={e => setS({ entrada_data: e.target.value })} /></div>
                   <div className="sm:col-span-1 flex flex-col items-center"><Label className="text-xs">Paga</Label><input type="checkbox" className="h-5 w-5 mt-2 accent-primary" checked={!!sim.entrada_pago} disabled={sinal > 0 || !sim.entrada_data} title="Entrada já recebida nesta data" onChange={e => setS({ entrada_pago: e.target.checked })} /></div>
 
-                  <div className="sm:col-span-3"><Label className="text-xs">Parcelas do saldo</Label>
-                    <Select value={String(n)} onValueChange={v => setS({ n: parseInt(v), pct: "" })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{Array.from({ length: PARCELAS_MAX }, (_, k) => k + 1).map(k => { const p = tabela[String(k)]; const tem = !(p === "" || p == null || isNaN(parseFloat(p))); return <SelectItem key={k} value={String(k)}>{k}× {tem ? `(+${String(parseFloat(p)).replace(".", ",")}%)` : "— sem tabela"}</SelectItem>; })}</SelectContent>
-                    </Select></div>
-                  <div className="sm:col-span-3"><Label className="text-xs">Saldo em</Label>
-                    <Select value={sim.metodo} onValueChange={v => setS({ metodo: v })}>
+                  <div className="sm:col-span-4"><Label className="text-xs">Saldo em</Label>
+                    <Select value={sim.metodo} onValueChange={v => setS({ metodo: v, ...(v === "paypal" && !sim.operadora ? { operadora: (operadoras.find(o => /paypal/i.test(o.nome || "")) || {}).nome || "" } : {}) })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>{[["credit_card", "Cartão"], ["paypal", "PayPal"], ["boleto", "Boleto"]].map(([m, l]) => <SelectItem key={m} value={m}>{l}</SelectItem>)}</SelectContent>
                     </Select></div>
-                  <div className="sm:col-span-3"><Label className="text-xs">Operadora</Label>
+                  <div className="sm:col-span-4"><Label className="text-xs">Operadora</Label>
                     <Select value={opSim?.nome || "__none"} onValueChange={v => setS({ operadora: v === "__none" ? "" : v })} disabled={!cartao && sim.entrada_metodo !== "debit_card"}>
                       <SelectTrigger><SelectValue placeholder="PagBank, Rede…" /></SelectTrigger>
                       <SelectContent>
@@ -1290,20 +1281,24 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
                         {operadoras.map(o => <SelectItem key={o.nome} value={o.nome}>{o.nome}</SelectItem>)}
                       </SelectContent>
                     </Select></div>
-                  <div className="sm:col-span-3"><Label className="text-xs">Acréscimo (%)</Label><Input type="number" step="0.01" min="0" value={sim.pct ?? ""} onChange={e => setS({ pct: e.target.value })} placeholder={pctTab != null ? `${String(pctTab).replace(".", ",")} (tabela)` : "sem tabela p/ este nº"} title="Vazio = a % da tabela para este nº de parcelas. Digite só se for negociar uma % diferente neste pedido." /></div>
+                  <div className="sm:col-span-4"><Label className="text-xs">Parcelas do saldo</Label>
+                    <Select value={String(n)} onValueChange={v => setS({ n: parseInt(v) })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{Array.from({ length: PARCELAS_MAX }, (_, k) => k + 1).map(k => { const t = cartao ? taxaOperadora(opSim, k) : 0; return <SelectItem key={k} value={String(k)}>{k}× {!cartao ? "" : !opSim ? "" : t == null ? "— sem taxa" : `(${String(t).replace(".", ",")}%)`}</SelectItem>; })}</SelectContent>
+                    </Select></div>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
                   <div className="rounded bg-background p-2"><p className="text-muted-foreground">Saldo financiado</p><p className="font-semibold">{formatCurrency(r.financiado)}</p></div>
-                  <div className="rounded bg-background p-2"><p className="text-muted-foreground">Acréscimo{pctUsado != null ? ` (${r.pct.toFixed(2).replace(".", ",")}%)` : ""}</p><p className="font-semibold">{formatCurrency(r.acrescimo)}</p>{pctDigitado && pctTab != null && Math.abs((parseFloat(sim.pct) || 0) - pctTab) > 0.001 && <p className="text-[10px] text-warning">tabela: {String(pctTab).replace(".", ",")}%</p>}</div>
+                  <div className="rounded bg-background p-2"><p className="text-muted-foreground">Juro aplicado</p><p className="font-semibold" data-campo="acrescimo">{cartao ? (opSim ? (taxaTab == null ? "sem taxa p/ este nº" : `${String(taxaTab).replace(".", ",")}% = ${formatCurrency(r.acrescimo)}`) : "escolha a operadora") : "boleto: sem juro"}</p>{cartao && opSim && taxaTab != null && <p className="text-[10px] text-muted-foreground">{opSim.nome} {r.n}× (Configuração)</p>}</div>
                   <div className="rounded bg-background p-2"><p className="text-muted-foreground">Parcelas</p><p className="font-bold text-sm text-primary" data-campo="parcela">{r.financiado > 0 ? `${r.n}× de ${formatCurrency(r.parcela)}` : "—"}</p></div>
                   <div className="rounded bg-background p-2"><p className="text-muted-foreground">Total que o cliente paga</p><p className="font-bold text-sm" data-campo="total-cliente">{formatCurrency(r.totalCliente)}</p></div>
                 </div>
                 {verCustos && r.financiado > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2 text-xs">
-                    <div className="rounded border border-border p-2"><p className="text-muted-foreground">Operadora cobra{opSim ? ` (${opSim.nome}${cartao ? ` ${r.n}×` : ""})` : ""}</p><p className="font-semibold text-destructive">{cartao ? (opSim ? (isNaN(tFin) ? "sem taxa p/ este nº" : `−${formatCurrency(taxaFinRs)} (${String(taxaFinPct).replace(".", ",")}%)`) : "escolha a operadora") : "boleto: sem taxa de operadora"}{taxaEntRs > 0 ? ` · débito −${formatCurrency(taxaEntRs)}` : ""}</p></div>
+                    <div className="rounded border border-border p-2"><p className="text-muted-foreground">Operadora cobra{opSim && cartao ? ` (${opSim.nome} ${r.n}× sobre ${formatCurrency(r.totalFinanciado)})` : ""}</p><p className="font-semibold text-destructive">{cartao ? (opSim ? (taxaTab == null ? "sem taxa p/ este nº" : `−${formatCurrency(taxaFinRs)} (${String(taxaFinPct).replace(".", ",")}%)`) : "escolha a operadora") : "boleto: sem taxa de operadora"}{taxaEntRs > 0 ? ` · débito −${formatCurrency(taxaEntRs)}` : ""}</p></div>
                     <div className="rounded border border-border p-2"><p className="text-muted-foreground">Líquido que entra</p><p className="font-semibold">{formatCurrency(liquido)}</p></div>
-                    <div className="rounded border border-border p-2"><p className="text-muted-foreground">Comparado ao à vista</p><p className={`font-semibold ${difAvista < 0 ? "text-destructive" : "text-success"}`}>{difAvista >= 0 ? "+" : "−"}{formatCurrency(Math.abs(difAvista))}</p>{minimo > 0 && r.pct + 0.005 < minimo && <p className="text-[10px] text-destructive">acréscimo abaixo do mínimo ({minimo.toFixed(1).replace(".", ",")}%) para cobrir a taxa</p>}</div>
+                    <div className="rounded border border-border p-2"><p className="text-muted-foreground">Comparado ao total do pedido</p><p className={`font-semibold ${difAvista < 0 ? "text-destructive" : "text-success"}`}>{difAvista >= 0 ? "+" : "−"}{formatCurrency(Math.abs(difAvista))}</p></div>
                   </div>
                 )}
                 <div className="mt-3">
@@ -1318,7 +1313,7 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
                 {aplicado && (
                   <p className={`text-[11px] mt-2 ${pedidoMudou || difereDoAplicado ? "text-warning" : "text-success"}`}>
                     {pedidoMudou
-                      ? `⚠ Os itens/valores do pedido mudaram depois da simulação aplicada (à vista era ${formatCurrency(aplicado.avista)}). Clique em "Aplicar ao pedido" de novo.`
+                      ? `⚠ Os itens/valores do pedido mudaram depois da simulação aplicada (o total era ${formatCurrency(aplicado.avista)}). Clique em "Aplicar ao pedido" de novo.`
                       : difereDoAplicado
                         ? "A simulação na tela é diferente da que está aplicada no pedido — clique em \"Aplicar ao pedido\" para valer."
                         : `✓ Aplicado: ${aplicado.entrada > 0 ? `entrada ${formatCurrency(aplicado.entrada)} (${ROT[aplicado.entrada_metodo] || "sinal"}) + ` : ""}${aplicado.n}× de ${formatCurrency(aplicado.parcela)} em ${ROT[aplicado.metodo] || aplicado.metodo}${aplicado.operadora ? ` (${aplicado.operadora})` : ""} · acréscimo ${formatCurrency(aplicado.acrescimo)} no total do pedido e na NF-e (outras despesas).`}
