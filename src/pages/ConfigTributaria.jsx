@@ -8,6 +8,7 @@ import { Plus, Trash2, Save, Users, SlidersHorizontal, Loader2, Landmark, AlertT
 import PageHeader from "@/components/shared/PageHeader";
 import { SIMPLES_ANEXO_I, simplesFaixa, simplesEfetivaPct, simplesAlertas } from "@/lib/taxEngine";
 import { useBaseFixas, fmtPctFixo, nomeMes } from "@/lib/despesasFixas";
+import { tabelaAcrescimo, acrescimoMinimo, simularParcelamento, PARCELAS_MAX } from "@/lib/parcelamento";
 
 const DEFAULT_CONFIG = {
   nome: "Padrão",
@@ -68,6 +69,8 @@ export default function ConfigTributaria() {
   const addOperadora = () => setConfig(prev => ({ ...prev, taxas_operadoras: [...(prev.taxas_operadoras || []), { nome: "", debito: "", parcelas: {} }] }));
   const updateOperadora = (i, patch) => setConfig(prev => ({ ...prev, taxas_operadoras: (prev.taxas_operadoras || []).map((o, idx) => idx === i ? { ...o, ...patch } : o) }));
   const removeOperadora = (i) => setConfig(prev => ({ ...prev, taxas_operadoras: (prev.taxas_operadoras || []).filter((_, idx) => idx !== i) }));
+  // 08/10/2026: acréscimo ao CLIENTE por nº de parcelas (jsonb `acrescimo_parcelas`) — o simulador do pedido usa
+  const updateAcrescimo = (n, v) => setConfig(prev => ({ ...prev, acrescimo_parcelas: { ...tabelaAcrescimo(prev).tabela, [String(n)]: v } }));
 
   const addSocio = async () => {
     const created = await base44.entities.Socio.create({ nome: "Novo Sócio", percentual_participacao: 0, residente_fiscal_brasil: true });
@@ -201,6 +204,42 @@ export default function ConfigTributaria() {
             ))}
           </div>
         </Card>
+
+        {(() => {
+          // Acréscimo ao CLIENTE (o que ele paga a mais por parcelar) — diferente da tabela acima (o que NÓS pagamos à operadora)
+          const { tabela, inicial } = tabelaAcrescimo(config);
+          const ops = (config.taxas_operadoras || []).filter(o => (o.nome || "").trim());
+          const maiorTaxa = (n) => ops.reduce((m, o) => { const v = parseFloat((o.parcelas || {})[String(n)]); return isNaN(v) ? m : Math.max(m, v); }, 0);
+          const pct12 = parseFloat(tabela["12"]);
+          const ex = !isNaN(pct12) ? simularParcelamento({ base: 20000, entrada: 5000, n: 12, pct: pct12 }) : null;
+          return (
+            <Card className="p-4">
+              <h3 className="font-heading font-semibold text-sm">Acréscimo ao cliente por nº de parcelas</h3>
+              <p className="text-[11px] text-muted-foreground mt-1">Quanto o <strong>cliente</strong> paga a mais por parcelar — incide <strong>só sobre o saldo financiado</strong> (preço à vista − entrada), pela % do nº de parcelas. É o que o <strong>simulador do pedido de venda</strong> usa ("Como o cliente vai pagar") e o "12x de" da Precificação. Não confundir com a tabela das operadoras ao lado, que é o que <em>nós</em> pagamos. Em branco = não oferecemos esse nº de parcelas.</p>
+              {inicial && (
+                <p className="text-[11px] mt-2 px-2 py-1.5 rounded bg-warning/10 text-warning">
+                  Valores <strong>iniciais, ainda não salvos</strong> — copiados da regra que o site já anuncia: "12x sem juros" no preço do site, que é o preço Pix ÷ 0,9 (Pix = 10% de desconto) → +11,11% de 2x a 12x; 1x = à vista. Ajuste e clique em <strong>Salvar Configuração</strong>.
+                </p>
+              )}
+              <div className="grid grid-cols-6 sm:grid-cols-9 gap-1.5 mt-2">
+                {Array.from({ length: PARCELAS_MAX }, (_, k) => k + 1).map(n => {
+                  const v = tabela[String(n)] ?? "";
+                  const minimo = acrescimoMinimo(maiorTaxa(n));
+                  const abaixo = v !== "" && !isNaN(parseFloat(v)) && n > 1 && parseFloat(v) + 0.005 < minimo;
+                  return (
+                    <div key={n}>
+                      <span className="text-[10px] text-muted-foreground">{n}×</span>
+                      <Input type="number" step="0.01" min="0" className={`h-8 text-xs px-1.5 ${abaixo ? "border-destructive text-destructive" : ""}`} value={v} onChange={e => updateAcrescimo(n, e.target.value)} title={minimo > 0 ? `Para a maior taxa de operadora em ${n}× (${maiorTaxa(n)}%) não comer a venda, o acréscimo precisa ser de pelo menos ${minimo.toFixed(2).replace(".", ",")}%` : ""} />
+                      {minimo > 0 && <span className={`text-[9px] ${abaixo ? "text-destructive" : "text-muted-foreground"}`}>mín. {minimo.toFixed(1).replace(".", ",")}%</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">"mín." = acréscimo que só empata com a maior taxa de operadora cadastrada para aquele nº de parcelas (taxa ÷ (1 − taxa)); abaixo dele, parcelar no cartão rende menos que o à vista. Fica em vermelho.</p>
+              {ex && <p className="text-[11px] mt-1">Exemplo com a tabela: à vista {brl(20000)}, entrada {brl(5000)} → financia {brl(ex.financiado)} + {String(pct12).replace(".", ",")}% = <strong>12x de {brl(ex.parcela)}</strong> (total {brl(ex.totalCliente)}).</p>}
+            </Card>
+          );
+        })()}
 
         <Card className="p-4">
           <h3 className="font-heading font-semibold text-sm">Despesas fixas — calculado</h3>

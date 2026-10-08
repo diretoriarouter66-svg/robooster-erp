@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44, supabase } from "@/api/base44Client";
-import { Plus, Search, ShoppingCart, Edit, Trash2, Eye, FileText, Loader2, Printer, RotateCcw } from "lucide-react";
+import { Plus, Search, ShoppingCart, Edit, Trash2, Eye, FileText, Loader2, Printer, RotateCcw, Copy, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +13,7 @@ import EmptyState from "../components/shared/EmptyState";
 import { reconciliarPedidoVenda, registrarMovimento } from "@/lib/stockService";
 import { getCustoVigente, calcImpostosPct } from "@/lib/pricingCalc";
 import { usePermissoes } from "@/hooks/usePermissoes";
+import { acrescimoPct, tabelaAcrescimo, simularParcelamento, textoProposta, acrescimoMinimo, PARCELAS_MAX } from "@/lib/parcelamento";
 
 const CHANNEL_TYPE_MAP = {
   direct: "venda_direta",
@@ -67,6 +68,17 @@ export default function SaleOrders() {
   const [devDialog, setDevDialog] = useState(null);
   const [devSaving, setDevSaving] = useState(false);
   const hojeIso = () => new Date().toISOString().slice(0, 10);
+  // SIMULADOR "Como o cliente vai pagar" (Mauricio, 08/10/2026): entrada + saldo financiado em N×, com o
+  // acréscimo da tabela "Acréscimo ao cliente por parcelas" SÓ sobre o financiado. Estado local do diálogo;
+  // "Aplicar ao pedido" grava no pedido (pagamentos + acrescimo_parcelamento + simulacao_pagamento).
+  const SIM_VAZIO = { entrada: "", entrada_metodo: "pix", entrada_data: "", entrada_pago: false, n: 12, metodo: "credit_card", operadora: "", pct: "" };
+  const [sim, setSim] = useState(SIM_VAZIO);
+  const [simCopiado, setSimCopiado] = useState(false);
+  const simDoPedido = (o) => {
+    const s = o?.simulacao_pagamento;
+    if (!s || typeof s !== "object") return { ...SIM_VAZIO, entrada_data: hojeIso(), entrada: (parseFloat(o?.sinal_brl) || 0) > 0 ? String(o.sinal_brl) : "" };
+    return { ...SIM_VAZIO, entrada: s.entrada != null ? String(s.entrada) : "", entrada_metodo: s.entrada_metodo || "pix", entrada_data: s.entrada_data || "", entrada_pago: !!s.entrada_pago, n: s.n || 12, metodo: s.metodo || "credit_card", operadora: s.operadora || "", pct: s.pct_digitado ?? "" };
+  };
 
   // Chama a edge function emitir-nfe com o login do usuário (tokens ficam no servidor)
   const chamarNfe = async (acao, orderId) => {
@@ -140,6 +152,7 @@ export default function SaleOrders() {
     setEditing(null);
     setForm({ status: "pending", channel: "direct", payment_method: "pix", payment_status: "pending", discount: 0, shipping_cost: 0, installments: 1, installment_interval_days: 30, first_due_days: 0, order_date: hojeIso() });
     setOrderItems([{ product_id: "", name: "", quantity: 1, unit_price: 0 }]);
+    setSim(simDoPedido(null)); setSimCopiado(false);
     setLogAuto(true);
     setDevolucoes([]);
     setDialogOpen(true);
@@ -150,6 +163,7 @@ export default function SaleOrders() {
     setEditing(o);
     setForm({ ...o });
     setOrderItems(o.items || [{ product_id: "", name: "", quantity: 1, unit_price: 0 }]);
+    setSim(simDoPedido(o)); setSimCopiado(false);
     setLancamentos([]);
     setLogAuto(false); // pedido existente: volumes/peso já foram conferidos — não recalcular por cima
     base44.entities.FinancialEntry.filter({ reference_id: o.id, reference_type: "sale_order" }, "-created_date", 50)
@@ -175,7 +189,9 @@ export default function SaleOrders() {
     const cliente = customers.find(c => c.id === o.customer_id) || {};
     const itens = o.items || [];
     const subtotal = itens.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
-    const total = subtotal - (o.discount || 0) + (o.shipping_cost || 0);
+    const acrPdf = parseFloat(o.acrescimo_parcelamento) || 0;
+    const total = subtotal - (o.discount || 0) + (o.shipping_cost || 0) + acrPdf;
+    const simPdf = o.simulacao_pagamento || null;
     const fmt = v => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
     const fpc = { 0: "CIF — por conta do remetente", 1: "FOB — por conta do destinatário", 2: "Por conta de terceiros", 3: "Transporte próprio (remetente)", 4: "Transporte próprio (destinatário)", 9: "Sem transporte" }[o.frete_por_conta] || "";
     const end = (c) => [c.address && `${c.address}${c.address_number ? `, ${c.address_number}` : ""}`, c.address_complement, c.neighborhood, c.city && `${c.city}/${c.state || ""}`, c.zip_code && `CEP ${c.zip_code}`].filter(Boolean).join(" — ");
@@ -228,9 +244,11 @@ ${itens.map(i => `<tr><td>${i.name || ""}</td><td class="dir">${i.quantity || 0}
 <tr><td colspan="3" class="dir">Subtotal</td><td class="dir">${fmt(subtotal)}</td></tr>
 ${o.discount ? `<tr><td colspan="3" class="dir">Desconto</td><td class="dir">−${fmt(o.discount)}</td></tr>` : ""}
 ${o.shipping_cost ? `<tr><td colspan="3" class="dir">Frete</td><td class="dir">${fmt(o.shipping_cost)}</td></tr>` : ""}
+${acrPdf ? `<tr><td colspan="3" class="dir">Acréscimo de parcelamento${simPdf?.n ? ` (${simPdf.n}×)` : ""}</td><td class="dir">${fmt(acrPdf)}</td></tr>` : ""}
 <tr class="tot"><td colspan="3" class="dir">TOTAL</td><td class="dir">${fmt(total)}</td></tr>
 </tfoot></table></div>
 ${(o.pagamentos || []).length ? `<div class="bloco"><h2>Pagamento</h2>${o.pagamentos.map(p => `${{ pix: "Pix", credit_card: "Cartão de Crédito", debit_card: "Cartão de Débito", boleto: "Boleto", paypal: "PayPal", transfer: "Transferência", cash: "Dinheiro" }[p.metodo] || p.metodo}: ${fmt(parseFloat(p.valor) || 0)}${(p.parcelas || 1) > 1 ? ` em ${p.parcelas}×` : ""}`).join(" · ")}</div>` : ""}
+${simPdf && simPdf.financiado > 0 && acrPdf ? `<div class="bloco"><h2>Condição</h2>${simPdf.entrada > 0 ? `Entrada de ${fmt(simPdf.entrada)} + ` : ""}${simPdf.n}× de ${fmt(simPdf.parcela)} — total ${fmt(total)} (à vista: ${fmt(simPdf.avista)})</div>` : ""}
 ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_brl)} — restante: ${fmt(Math.max(0, total - o.sinal_brl))}</div>` : ""}
 <p class="muted" style="margin-top:20px">Documento de conferência do pedido — não é documento fiscal. A nota fiscal é emitida no faturamento.</p>
 <div class="noprint" style="margin-top:16px"><button onclick="window.print()" style="padding:10px 24px;background:#e65c00;color:#fff;border:0;border-radius:8px;font-size:14px;cursor:pointer">🖨 Imprimir / Salvar PDF</button></div>
@@ -279,7 +297,10 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
     const primeiro = products.find(p => p.id === (o.items || []).find(i => i.product_id)?.product_id) || null;
     const impPct = (o.imposto_aliquota != null && o.imposto_regime) ? (parseFloat(o.imposto_aliquota) || 0) : calcImpostosPct(configTrib, primeiro, ch).total;
     const rep = o.vendido_por === "representante";
-    let valor = 0, comissao = 0, cmv = 0, qtdTotal = 0, tudo = true;
+    // Acréscimo de parcelamento (08/10/2026): devolve junto, proporcional ao valor dos itens devolvidos
+    const baseItens = subtotal * fatorDesc;
+    const fatorAcr = baseItens > 0 ? Math.max(0, parseFloat(o.acrescimo_parcelamento) || 0) / baseItens : 0;
+    let valor = 0, comissao = 0, cmv = 0, qtdTotal = 0, tudo = true, acrescimo = 0;
     for (const it of d.itens || []) {
       const q = parseFloat(it.qty_dev) || 0; const vendida = parseFloat(it.quantity) || 0;
       if (q + (it.ja_devolvido || 0) < vendida) tudo = false;
@@ -287,13 +308,14 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
       qtdTotal += q;
       const rec = q * (parseFloat(it.unit_price) || 0) * fatorDesc;
       valor += rec;
+      acrescimo += rec * fatorAcr;
       const prod = products.find(pr => pr.id === it.product_id) || null;
       const pct = rep ? (parseFloat(prod?.seller_commission_percent) || 0) : (parseFloat(configTrib?.comissao_vendedor_padrao) || 0);
       comissao += rec * (1 - impPct / 100) * (pct / 100);
       cmv += (prod ? getCustoVigente(prod) : 0) * q;
     }
     const r2 = v => Math.round(v * 100) / 100;
-    return { valor: r2(valor), comissao: r2(comissao), cmv: r2(cmv), fatorDesc, total: tudo && qtdTotal > 0, qtdTotal };
+    return { valor: r2(valor + acrescimo), acrescimo: r2(acrescimo), comissao: r2(comissao), cmv: r2(cmv), fatorDesc, total: tudo && qtdTotal > 0, qtdTotal };
   };
   const confirmarDevolucao = async () => {
     if (!devDialog || devSaving) return;
@@ -347,6 +369,7 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
             data: devDialog.data, tipo: "entrada", preset: "devolucao_venda", natureza_operacao: "Devolucao de venda", finalidade: 4,
             cfop: uf === "SP" ? "1202" : "2202", csosn: "102", contato_id: o.customer_id || "", chave_referenciada: o.nfe_chave,
             items: itens.map(i => { const pr = products.find(x => x.id === i.product_id); return { product_id: i.product_id || "", sku: i.sku || pr?.sku || "", name: i.name || pr?.name || "Item", ncm: pr?.ncm || "", unit: pr?.unit || "UN", quantity: parseFloat(i.qty_dev) || 0, unit_price: parseFloat(i.unit_price) || 0 }; }),
+            ...(c.acrescimo > 0 ? { outras_despesas: c.acrescimo } : {}), // acréscimo de parcelamento devolvido = outras despesas, como na nota de venda
             informacoes_adicionais: `Devolucao referente a NF-e ${o.nfe_numero || ""} do pedido ${o.order_number}. ${devDialog.motivo || ""}`.trim(),
           });
           await base44.entities.SaleReturn.update(ret.id, { nfe_avulsa_id: nf.id }).catch(() => {});
@@ -424,10 +447,13 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
     }));
   };
 
-  const calcTotal = () => {
+  // Acréscimo de parcelamento (simulador, 08/10/2026) entra no total do pedido — e na NF como "outras despesas".
+  const acrescimoForm = () => Math.max(0, parseFloat(form.acrescimo_parcelamento) || 0);
+  const calcTotalAvista = () => {
     const sub = orderItems.reduce((s, i) => s + ((i.quantity || 0) * (i.unit_price || 0)), 0);
     return sub - (parseFloat(form.discount) || 0) + (parseFloat(form.shipping_cost) || 0);
   };
+  const calcTotal = () => Math.round((calcTotalAvista() + acrescimoForm()) * 100) / 100;
 
   // Status que baixam estoque e geram conta a receber
   const STATUS_BAIXA = ["invoiced", "shipped", "delivered"];
@@ -1158,11 +1184,149 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
             ))}
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mt-3">
+          <div className={`grid ${acrescimoForm() > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-3 mt-3`}>
             <div><Label className="text-xs">Desconto</Label><Input type="number" step="0.01" value={form.discount || ""} onChange={e => setForm({...form, discount: parseFloat(e.target.value) || 0})} /></div>
             <div><Label className="text-xs">Frete</Label><Input type="number" step="0.01" value={form.shipping_cost || ""} onChange={e => setForm({...form, shipping_cost: parseFloat(e.target.value) || 0})} /></div>
+            {acrescimoForm() > 0 && <div><Label className="text-xs">Acréscimo de parcelamento{form.simulacao_pagamento?.n ? ` (${form.simulacao_pagamento.n}×)` : ""}</Label><Input readOnly className="bg-muted" value={formatCurrency(acrescimoForm())} title="Vem do simulador abaixo. Para mudar: ajuste e Aplique de novo, ou Remova o acréscimo." /></div>}
             <div><Label className="text-xs">Total</Label><Input readOnly className="bg-muted font-bold" value={formatCurrency(calcTotal())} /></div>
           </div>
+
+          {/* COMO O CLIENTE VAI PAGAR — simulador de entrada + parcelas (Mauricio, 08/10/2026): o acréscimo
+              incide SÓ sobre o saldo financiado, pela % da tabela "Acréscimo ao cliente por parcelas". */}
+          {(() => {
+            const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
+            const base = Math.max(0, r2(calcTotalAvista()));
+            const sinal = Math.max(0, parseFloat(form.sinal_brl) || 0);
+            const entradaVal = sinal > 0 ? sinal : (parseFloat(sim.entrada) || 0);
+            const n = Math.max(1, parseInt(sim.n) || 1);
+            const pctTab = acrescimoPct(configTrib, n);
+            const pctDigitado = !(sim.pct === "" || sim.pct == null);
+            const pctUsado = pctDigitado ? (parseFloat(sim.pct) || 0) : pctTab;
+            const r = simularParcelamento({ base, entrada: entradaVal, n, pct: pctUsado ?? 0 });
+            const { tabela, inicial } = tabelaAcrescimo(configTrib);
+            const opSim = operadoras.find(o => o.nome === sim.operadora) || null;
+            const cartao = ["credit_card", "paypal"].includes(sim.metodo);
+            const tFin = cartao && opSim ? parseFloat((opSim.parcelas || {})[String(n)]) : NaN;
+            const taxaFinPct = isNaN(tFin) ? 0 : tFin;
+            const taxaFinRs = r2(r.totalFinanciado * taxaFinPct / 100);
+            const tEnt = sim.entrada_metodo === "debit_card" && sinal <= 0 && opSim ? parseFloat(opSim.debito) : NaN;
+            const taxaEntPct = isNaN(tEnt) ? 0 : tEnt;
+            const taxaEntRs = r2(r.entrada * taxaEntPct / 100);
+            const liquido = r2(r.entrada - taxaEntRs + r.totalFinanciado - taxaFinRs);
+            const difAvista = r2(liquido - r.avista);
+            const minimo = acrescimoMinimo(taxaFinPct);
+            const aplicado = form.simulacao_pagamento || null;
+            const pedidoMudou = !!aplicado && Math.abs((parseFloat(aplicado.avista) || 0) - base) >= 0.01;
+            const difereDoAplicado = !aplicado || aplicado.n !== r.n || Math.abs((parseFloat(aplicado.acrescimo) || 0) - r.acrescimo) >= 0.01 || Math.abs((parseFloat(aplicado.entrada) || 0) - r.entrada) >= 0.01 || (aplicado.metodo || "") !== sim.metodo || (aplicado.operadora || "") !== (opSim?.nome || "");
+            const proposta = textoProposta(r);
+            const setS = (patch) => setSim(prev => ({ ...prev, ...patch }));
+            const ROT = { pix: "Pix", cash: "Dinheiro", debit_card: "Cartão de Débito", transfer: "Transferência", credit_card: "Cartão de Crédito", paypal: "PayPal", boleto: "Boleto" };
+            const aplicar = () => {
+              if (base <= 0) { alert("Adicione os itens do pedido antes: o simulador parte do total à vista."); return; }
+              if (r.financiado > 0 && pctUsado == null) { alert(`Não há acréscimo cadastrado para ${n}× (Configuração → Taxas de recebimento). Digite a % deste pedido ou escolha outro nº de parcelas.`); return; }
+              if (cartao && r.financiado > 0 && !opSim && !confirm("Nenhuma operadora escolhida: o pedido não vai lançar a despesa da taxa do cartão. Aplicar assim mesmo?")) return;
+              const linhasAntes = (form.pagamentos || []).filter(l => (parseFloat(l.valor) || 0) > 0);
+              if (linhasAntes.some(l => l.origem !== "simulador") && !confirm("O pedido já tem linhas no Pagamento misto. Aplicar a simulação SUBSTITUI essas linhas. Continuar?")) return;
+              const linhas = [];
+              if (r.entrada > 0 && sinal <= 0) linhas.push({ metodo: sim.entrada_metodo, valor: String(r.entrada), parcelas: 1, data: sim.entrada_data || "", pago: !!(sim.entrada_pago && sim.entrada_data), ...(sim.entrada_metodo === "debit_card" && opSim ? { operadora: opSim.nome } : {}), origem: "simulador" });
+              if (r.financiado > 0) {
+                const l = { metodo: sim.metodo, valor: String(r.totalFinanciado), parcelas: n, data: "", pago: false, origem: "simulador" };
+                if (cartao && opSim) l.operadora = opSim.nome;
+                if (sim.metodo === "boleto") { const d = new Date(); d.setDate(d.getDate() + 30); l.data = d.toISOString().slice(0, 10); }
+                linhas.push(l);
+              }
+              setForm(prev => ({
+                ...prev, pagamentos: linhas, acrescimo_parcelamento: r.acrescimo,
+                simulacao_pagamento: {
+                  avista: r.avista, entrada: r.entrada, entrada_metodo: sinal > 0 ? "sinal" : sim.entrada_metodo, entrada_data: sim.entrada_data || "", entrada_pago: !!sim.entrada_pago,
+                  financiado: r.financiado, n: r.n, metodo: sim.metodo, operadora: opSim?.nome || "", pct: r.pct, pct_tabela: pctTab, pct_digitado: pctDigitado ? String(sim.pct) : "",
+                  acrescimo: r.acrescimo, parcela: r.parcela, total_financiado: r.totalFinanciado, total_cliente: r.totalCliente, taxa_operadora_pct: taxaFinPct, aplicado_em: new Date().toISOString(),
+                },
+              }));
+            };
+            const remover = () => {
+              if (!confirm("Tirar o acréscimo de parcelamento do pedido e as linhas de pagamento que a simulação gerou?")) return;
+              setForm(prev => ({ ...prev, acrescimo_parcelamento: 0, simulacao_pagamento: null, pagamentos: (prev.pagamentos || []).filter(l => l.origem !== "simulador") }));
+            };
+            const copiar = async () => {
+              if (!proposta) return;
+              try { await navigator.clipboard.writeText(proposta); }
+              catch { const ta = document.createElement("textarea"); ta.value = proposta; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch { /* segue: o texto está na caixa para copiar à mão */ } ta.remove(); }
+              setSimCopiado(true); setTimeout(() => setSimCopiado(false), 2500);
+            };
+            return (
+              <div className="mt-3 rounded-lg border-2 border-primary/30 bg-primary/5 p-3" data-bloco="simulador-pagamento">
+                <div className="flex items-center gap-2"><Calculator className="w-4 h-4 text-primary" /><Label className="font-semibold">Como o cliente vai pagar — entrada + parcelas</Label></div>
+                <p className="text-[10px] text-muted-foreground mt-1">O acréscimo incide <b>só sobre o saldo financiado</b> (à vista − entrada), pela % do nº de parcelas na tabela <i>Acréscimo ao cliente por parcelas</i> (Configuração → Taxas de recebimento){inicial ? " — ainda com os valores iniciais (regra do site), não salvos" : ""}. "Aplicar ao pedido" cria as linhas do Pagamento misto (acima) e põe o acréscimo no total.</p>
+                <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 mt-2 items-end">
+                  <div className="sm:col-span-3"><Label className="text-xs">Preço à vista</Label><Input readOnly className="bg-muted font-semibold" value={formatCurrency(base)} title="Total do pedido sem o acréscimo (itens − desconto + frete)" /></div>
+                  <div className="sm:col-span-3"><Label className="text-xs">Entrada (R$)</Label><Input type="number" step="0.01" min="0" value={sinal > 0 ? String(sinal) : sim.entrada} disabled={sinal > 0} title={sinal > 0 ? "O sinal recebido é a entrada" : ""} onChange={e => setS({ entrada: e.target.value })} placeholder="0,00" /></div>
+                  <div className="sm:col-span-2"><Label className="text-xs">Entrada em</Label>
+                    <Select value={sinal > 0 ? "sinal" : sim.entrada_metodo} onValueChange={v => setS({ entrada_metodo: v })} disabled={sinal > 0}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {sinal > 0 && <SelectItem value="sinal">Sinal já lançado</SelectItem>}
+                        {[["pix", "Pix"], ["cash", "Dinheiro"], ["debit_card", "Débito"], ["transfer", "Transferência"]].map(([m, l]) => <SelectItem key={m} value={m}>{l}</SelectItem>)}
+                      </SelectContent>
+                    </Select></div>
+                  <div className="sm:col-span-3"><Label className="text-xs">Data da entrada</Label><Input type="date" value={sim.entrada_data || ""} disabled={sinal > 0} onChange={e => setS({ entrada_data: e.target.value })} /></div>
+                  <div className="sm:col-span-1 flex flex-col items-center"><Label className="text-xs">Paga</Label><input type="checkbox" className="h-5 w-5 mt-2 accent-primary" checked={!!sim.entrada_pago} disabled={sinal > 0 || !sim.entrada_data} title="Entrada já recebida nesta data" onChange={e => setS({ entrada_pago: e.target.checked })} /></div>
+
+                  <div className="sm:col-span-3"><Label className="text-xs">Parcelas do saldo</Label>
+                    <Select value={String(n)} onValueChange={v => setS({ n: parseInt(v), pct: "" })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{Array.from({ length: PARCELAS_MAX }, (_, k) => k + 1).map(k => { const p = tabela[String(k)]; const tem = !(p === "" || p == null || isNaN(parseFloat(p))); return <SelectItem key={k} value={String(k)}>{k}× {tem ? `(+${String(parseFloat(p)).replace(".", ",")}%)` : "— sem tabela"}</SelectItem>; })}</SelectContent>
+                    </Select></div>
+                  <div className="sm:col-span-3"><Label className="text-xs">Saldo em</Label>
+                    <Select value={sim.metodo} onValueChange={v => setS({ metodo: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{[["credit_card", "Cartão"], ["paypal", "PayPal"], ["boleto", "Boleto"]].map(([m, l]) => <SelectItem key={m} value={m}>{l}</SelectItem>)}</SelectContent>
+                    </Select></div>
+                  <div className="sm:col-span-3"><Label className="text-xs">Operadora</Label>
+                    <Select value={opSim?.nome || "__none"} onValueChange={v => setS({ operadora: v === "__none" ? "" : v })} disabled={!cartao && sim.entrada_metodo !== "debit_card"}>
+                      <SelectTrigger><SelectValue placeholder="PagBank, Rede…" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— escolher —</SelectItem>
+                        {operadoras.map(o => <SelectItem key={o.nome} value={o.nome}>{o.nome}</SelectItem>)}
+                      </SelectContent>
+                    </Select></div>
+                  <div className="sm:col-span-3"><Label className="text-xs">Acréscimo (%)</Label><Input type="number" step="0.01" min="0" value={sim.pct ?? ""} onChange={e => setS({ pct: e.target.value })} placeholder={pctTab != null ? `${String(pctTab).replace(".", ",")} (tabela)` : "sem tabela p/ este nº"} title="Vazio = a % da tabela para este nº de parcelas. Digite só se for negociar uma % diferente neste pedido." /></div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
+                  <div className="rounded bg-background p-2"><p className="text-muted-foreground">Saldo financiado</p><p className="font-semibold">{formatCurrency(r.financiado)}</p></div>
+                  <div className="rounded bg-background p-2"><p className="text-muted-foreground">Acréscimo{pctUsado != null ? ` (${r.pct.toFixed(2).replace(".", ",")}%)` : ""}</p><p className="font-semibold">{formatCurrency(r.acrescimo)}</p>{pctDigitado && pctTab != null && Math.abs((parseFloat(sim.pct) || 0) - pctTab) > 0.001 && <p className="text-[10px] text-warning">tabela: {String(pctTab).replace(".", ",")}%</p>}</div>
+                  <div className="rounded bg-background p-2"><p className="text-muted-foreground">Parcelas</p><p className="font-bold text-sm text-primary" data-campo="parcela">{r.financiado > 0 ? `${r.n}× de ${formatCurrency(r.parcela)}` : "—"}</p></div>
+                  <div className="rounded bg-background p-2"><p className="text-muted-foreground">Total que o cliente paga</p><p className="font-bold text-sm" data-campo="total-cliente">{formatCurrency(r.totalCliente)}</p></div>
+                </div>
+                {verCustos && r.financiado > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2 text-xs">
+                    <div className="rounded border border-border p-2"><p className="text-muted-foreground">Operadora cobra{opSim ? ` (${opSim.nome}${cartao ? ` ${r.n}×` : ""})` : ""}</p><p className="font-semibold text-destructive">{cartao ? (opSim ? (isNaN(tFin) ? "sem taxa p/ este nº" : `−${formatCurrency(taxaFinRs)} (${String(taxaFinPct).replace(".", ",")}%)`) : "escolha a operadora") : "boleto: sem taxa de operadora"}{taxaEntRs > 0 ? ` · débito −${formatCurrency(taxaEntRs)}` : ""}</p></div>
+                    <div className="rounded border border-border p-2"><p className="text-muted-foreground">Líquido que entra</p><p className="font-semibold">{formatCurrency(liquido)}</p></div>
+                    <div className="rounded border border-border p-2"><p className="text-muted-foreground">Comparado ao à vista</p><p className={`font-semibold ${difAvista < 0 ? "text-destructive" : "text-success"}`}>{difAvista >= 0 ? "+" : "−"}{formatCurrency(Math.abs(difAvista))}</p>{minimo > 0 && r.pct + 0.005 < minimo && <p className="text-[10px] text-destructive">acréscimo abaixo do mínimo ({minimo.toFixed(1).replace(".", ",")}%) para cobrir a taxa</p>}</div>
+                  </div>
+                )}
+                <div className="mt-3">
+                  <Label className="text-xs">Proposta para o cliente (WhatsApp)</Label>
+                  <div className="flex flex-col sm:flex-row gap-2 mt-1">
+                    <Input readOnly value={proposta} className="text-xs bg-background flex-1" onFocus={e => e.target.select()} data-campo="proposta" />
+                    <Button type="button" variant="outline" size="sm" className="h-10" onClick={copiar} disabled={!proposta}><Copy className="w-3.5 h-3.5 mr-1" />{simCopiado ? "Copiado ✓" : "Copiar proposta"}</Button>
+                    <Button type="button" size="sm" className="h-10" onClick={aplicar} disabled={base <= 0}>Aplicar ao pedido</Button>
+                    {aplicado && <Button type="button" variant="ghost" size="sm" className="h-10 text-destructive" onClick={remover}>Remover acréscimo</Button>}
+                  </div>
+                </div>
+                {aplicado && (
+                  <p className={`text-[11px] mt-2 ${pedidoMudou || difereDoAplicado ? "text-warning" : "text-success"}`}>
+                    {pedidoMudou
+                      ? `⚠ Os itens/valores do pedido mudaram depois da simulação aplicada (à vista era ${formatCurrency(aplicado.avista)}). Clique em "Aplicar ao pedido" de novo.`
+                      : difereDoAplicado
+                        ? "A simulação na tela é diferente da que está aplicada no pedido — clique em \"Aplicar ao pedido\" para valer."
+                        : `✓ Aplicado: ${aplicado.entrada > 0 ? `entrada ${formatCurrency(aplicado.entrada)} (${ROT[aplicado.entrada_metodo] || "sinal"}) + ` : ""}${aplicado.n}× de ${formatCurrency(aplicado.parcela)} em ${ROT[aplicado.metodo] || aplicado.metodo}${aplicado.operadora ? ` (${aplicado.operadora})` : ""} · acréscimo ${formatCurrency(aplicado.acrescimo)} no total do pedido e na NF-e (outras despesas).`}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* TRANSPORTADORA E ENTREGA (pedido da Larissa, 20/08/2026) */}
           <div className="mt-3 rounded-lg border border-border p-3">
@@ -1378,6 +1542,7 @@ ${o.sinal_brl ? `<div class="bloco"><h2>Sinal</h2>Sinal recebido: ${fmt(o.sinal_
                   </table>
                 </div>
                 {c.fatorDesc < 1 && <p className="text-[10px] text-muted-foreground mt-1">O desconto do pedido ({formatCurrency(o.discount)}) é rateado proporcionalmente nos valores devolvidos.</p>}
+                {c.acrescimo > 0 && <p className="text-[10px] text-muted-foreground mt-1">O valor devolvido inclui {formatCurrency(c.acrescimo)} do acréscimo de parcelamento ({formatCurrency(o.acrescimo_parcelamento)} no pedido), proporcional aos itens devolvidos — vai na NF de devolução como "outras despesas".</p>}
                 <div className="mt-3 space-y-1.5 text-sm">
                   <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={!!devDialog.reembolsar} onChange={e => setDev({ reembolsar: e.target.checked })} /> Lançar reembolso ao cliente como conta a pagar ({formatCurrency(c.valor)}, vencendo na data da devolução)</label>
                   <label className={`flex items-center gap-2 ${o.nfe_chave ? "cursor-pointer" : "opacity-60"}`}><input type="checkbox" checked={!!devDialog.gerarNfe} disabled={!o.nfe_chave} onChange={e => setDev({ gerarNfe: e.target.checked })} /> Preparar NF-e de devolução (entrada, finalidade 4, referenciando a nota {o.nfe_numero || "original"}){!o.nfe_chave && <span className="text-[10px]">— pedido sem NF-e autorizada no ERP</span>}</label>

@@ -1,0 +1,17 @@
+--- emitir-nfe/index.ts
++++ emitir-nfe/index.ts
+@@ -537,6 +537,14 @@
+   }
+   ratear(order.shipping_cost, 'valor_frete')
+   ratear(order.discount, 'valor_desconto')
++  // 08/10/2026 (simulador do pedido): acréscimo de parcelamento = "outras despesas acessórias" (vOutro), rateado
++  // por item como o frete — não é mercadoria, então não vira item da nota. vNF continua = total do pedido.
++  const acrescimoParc = Math.round((parseFloat(order.acrescimo_parcelamento) || 0) * 100) / 100
++  if (acrescimoParc > 0) {
++    ratear(acrescimoParc, 'valor_outras_despesas')
++    const nParc = order.simulacao_pagamento?.n
++    payload.informacoes_adicionais_contribuinte = `Outras despesas acessorias: acrescimo financeiro de parcelamento${nParc ? ` em ${nParc}x` : ''} de R$ ${acrescimoParc.toFixed(2).replace('.', ',')}.`
++  }
+   if (isPJ) {
+     payload.cnpj_destinatario = doc
+     if (naoContribuinte) {
