@@ -28,6 +28,9 @@ export default function Financial() {
   const [categories, setCategories] = useState([]);
   const [catOpen, setCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState("");
+  // 08/10/2026: participação nos lucros na DRE (tabela dre_participacoes); null = erro ao ler (aviso na tela)
+  const [participacoes, setParticipacoes] = useState([]);
+  const [novaPart, setNovaPart] = useState({ nome: "", percentual: "" });
   const [contas, setContas] = useState([]);
   const [contasOpen, setContasOpen] = useState(false);
   // Caixas e Bancos (Larissa 17/09): extrato por conta com saldo corrido + transferência entre contas
@@ -79,7 +82,28 @@ export default function Financial() {
       console.error("Falha ao carregar contas/caixas:", err);
       setContas([]);
     }
+    try {
+      setParticipacoes((await base44.entities.DreParticipacao.list("ordem", 100)) || []);
+    } catch (err) {
+      console.error("Falha ao carregar a participação nos lucros:", err);
+      setParticipacoes(null);
+    }
     setLoading(false);
+  };
+
+  // ==== Participação nos lucros (08/10/2026, decisão do dono): linhas abaixo do Resultado Líquido da DRE Realizada,
+  // % do lucro líquido positivo do mês. Ligar = passa a descontar a partir do mês "desde" (vazio = todos os meses).
+  const salvarPart = async (p, campos) => {
+    await base44.entities.DreParticipacao.update(p.id, campos);
+    loadData();
+  };
+  const ligarPart = (p, ativo) => salvarPart(p, ativo && !p.desde ? { ativo, desde: new Date().toISOString().slice(0, 7) + "-01" } : { ativo });
+  const addPart = async () => {
+    const nome = novaPart.nome.trim(); const pct = parseFloat(String(novaPart.percentual).replace(",", "."));
+    if (!nome || !(pct > 0 && pct <= 100)) { alert("Informe o nome e um percentual entre 0 e 100."); return; }
+    await base44.entities.DreParticipacao.create({ nome, percentual: pct, ativo: false, ordem: (participacoes || []).length + 1 });
+    setNovaPart({ nome: "", percentual: "" });
+    loadData();
   };
 
   // ==== Cadastro de categorias (as de "sistema" são usadas pelos lançamentos
@@ -352,7 +376,7 @@ export default function Financial() {
               );
             })}
             {(() => {
-              const semConta = entries.filter(e => !e.account_id && e.status === "paid").length;
+              const semConta = entries.filter(e => !e.account_id && e.status === "paid" && e.reference_type !== "prolabore").length; // 08/10/2026: pró-labore de teste não passa por banco
               return semConta > 0 ? (
                 <div className="rounded-lg border border-dashed border-border p-3">
                   <p className="text-xs text-muted-foreground">Sem conta definida</p>
@@ -540,14 +564,14 @@ export default function Financial() {
 
       {/* ==== Cadastro de Categorias do Financeiro ==== */}
       <Dialog open={catOpen} onOpenChange={setCatOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Categorias do Financeiro</DialogTitle></DialogHeader>
           <p className="text-[11px] text-muted-foreground -mt-2">Cada categoria diz onde entra na DRE Realizada. Categoria nova já nasce entrando ("outras despesas"); se não for entrar, é só mudar aqui.</p>
           <div className="flex gap-2 mb-3">
             <Input placeholder="Nova categoria (ex.: Marketing)" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => e.key === "Enter" && addCategory()} />
             <Button onClick={addCategory} disabled={!newCatName.trim()}><Plus className="w-4 h-4" /></Button>
           </div>
-          <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+          <div className="space-y-1 max-h-[45vh] overflow-y-auto">
             {categories.map(c => (
               <div key={c.id} className={`border border-border rounded-lg px-2 py-1.5 ${c.ativo === false ? "opacity-50" : ""}`}>
                <div className="flex items-center gap-2">
@@ -580,6 +604,32 @@ export default function Financial() {
             ))}
           </div>
           <p className="text-[10px] text-muted-foreground mt-2">Renomear: clique no nome, edite e saia do campo. Desativar tira do seletor de novos lançamentos sem mexer no histórico. Categorias de sistema (Venda, Importação, Outro) são geradas automaticamente por pedidos e importações.</p>
+
+          {/* 08/10/2026: participação nos lucros (DRE Realizada, abaixo do Resultado Líquido) */}
+          <div className="border-t border-border pt-3 mt-1">
+            <h4 className="text-sm font-semibold">Participação nos lucros</h4>
+            <p className="text-[11px] text-muted-foreground mb-2">Aparece na DRE Realizada abaixo do Resultado Líquido: percentual do lucro líquido do mês, só quando há lucro (prejuízo = 0), e a linha "Lucro após participações". Ligada, vale a partir do mês "desde".</p>
+            {participacoes === null
+              ? <p className="text-[11px] text-destructive">Não foi possível ler as participações (erro no banco). A DRE avisa o mesmo.</p>
+              : <div className="space-y-1">
+                  {participacoes.map(p => (
+                    <div key={p.id} className={`flex items-center gap-2 border border-border rounded-lg px-2 py-1.5 ${p.ativo ? "" : "opacity-70"}`}>
+                      <span className="text-sm flex-1">{p.nome}</span>
+                      <Input type="number" min="0" max="100" step="0.5" defaultValue={p.percentual} onBlur={e => { const v = parseFloat(e.target.value); if (v >= 0 && v <= 100 && v !== parseFloat(p.percentual)) salvarPart(p, { percentual: v }); }} className="h-7 w-16 text-sm text-right" />
+                      <span className="text-[11px] text-muted-foreground">%</span>
+                      <span className="text-[10px] text-muted-foreground ml-1">desde</span>
+                      <input type="month" defaultValue={(p.desde || "").slice(0, 7)} onBlur={e => { const v = e.target.value ? e.target.value + "-01" : null; if (v !== (p.desde || null)) salvarPart(p, { desde: v }); }} className="h-7 text-[11px] rounded border border-border bg-background px-1 w-32" />
+                      <Switch checked={!!p.ativo} onCheckedChange={v => ligarPart(p, v)} />
+                      <span className={`text-[10px] w-14 ${p.ativo ? "text-success font-medium" : "text-muted-foreground"}`}>{p.ativo ? "ligada" : "desligada"}</span>
+                    </div>
+                  ))}
+                  <div className="flex gap-2 pt-1">
+                    <Input placeholder="Nova participação (nome)" value={novaPart.nome} onChange={e => setNovaPart(n => ({ ...n, nome: e.target.value }))} className="h-8 text-sm" />
+                    <Input placeholder="%" value={novaPart.percentual} onChange={e => setNovaPart(n => ({ ...n, percentual: e.target.value }))} className="h-8 w-16 text-sm" />
+                    <Button size="sm" onClick={addPart} disabled={!novaPart.nome.trim()}><Plus className="w-4 h-4" /></Button>
+                  </div>
+                </div>}
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -18,7 +18,10 @@ import { useBaseFixas, fmtPctFixo } from "@/lib/despesasFixas";
  *  - despesas: lançamentos PAGOS do Financeiro (o extrato do banco lança sozinho), pela categoria e seu grupo
  *    (financial_categories.dre_grupo). 06/10/2026: as despesas operacionais se dividem em VARIÁVEIS (acima da margem de
  *    contribuição) e FIXAS (marcação "Despesa fixa" de cada lançamento, padrão da categoria). Mês já corrido sem
- *    extrato usa a média real das despesas fixas (base_despesas_fixas) como estimativa.
+ *    extrato usa a média real das despesas fixas (base_despesas_fixas) como estimativa — 08/10/2026: só a parte que falta
+ *    (média − fixas já lançadas no mês, ex.: o pró-labore), para não contar duas vezes.
+ *  - 08/10/2026: PARTICIPAÇÃO NOS LUCROS (tabela dre_participacoes, liga/desliga em Financeiro → Categorias): % do
+ *    Resultado Líquido POSITIVO do mês (prejuízo = 0), a partir do mês "desde"; abaixo, "Lucro após participações".
  */
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const GRUPOS_DESPESA = [
@@ -42,7 +45,16 @@ export default function DREPlanilha({ config, onVoltar }) {
   const [mesSel, setMesSel] = useState(parseInt(hoje.slice(5, 7), 10) - 1);
   const [contaML, setContaML] = useState("todas");
   const [dados, setDados] = useState(null);
+  const [participacoes, setParticipacoes] = useState([]);
+  const [erroPart, setErroPart] = useState(false);
   const baseFixas = useBaseFixas();
+
+  // 08/10/2026: participação nos lucros. Erro na leitura NÃO vira "sem participação" calado: aparece o aviso no rodapé.
+  useEffect(() => {
+    base44.entities.DreParticipacao.list("ordem", 100)
+      .then((r) => setParticipacoes(r || []))
+      .catch(() => setErroPart(true));
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -87,6 +99,7 @@ export default function DREPlanilha({ config, onVoltar }) {
     let itensSemCusto = 0;
     const temExtrato = Array(12).fill(false);
     const temCartao = Array(12).fill(false);
+    const fixasLancadas = zeros(); // fixas já lançadas no mês (para a estimativa de mês sem extrato não contar em dobro)
 
     for (let i = 0; i < 12; i++) {
       const mes = `${ano}-${String(i + 1).padStart(2, "0")}`;
@@ -152,7 +165,11 @@ export default function DREPlanilha({ config, onVoltar }) {
         if (e.reference_type === "extrato" && (e.reference_id || "").startsWith("fatura:")) {
           if (mesAnterior((e.due_date || "").slice(0, 7)) !== mes) continue;
           const c = cat[e.category];
-          if (c?.dre_grupo) { add(chaveDe(c, e), i, e.type === "payable" ? num(e.amount) : -num(e.amount)); temCartao[i] = true; }
+          if (c?.dre_grupo) {
+            const val = e.type === "payable" ? num(e.amount) : -num(e.amount);
+            add(chaveDe(c, e), i, val); temCartao[i] = true;
+            if (OPERACIONAIS.has(c.dre_grupo) && e.fixa) fixasLancadas[i] += val;
+          }
           continue;
         }
         const quando = e.payment_date || e.due_date || "";
@@ -164,14 +181,18 @@ export default function DREPlanilha({ config, onVoltar }) {
         if (e.reference_type === "extrato") temExtrato[i] = true;
         const c = cat[e.category];
         if (!c?.dre_grupo) continue;
-        if (c.dre_grupo === "receita_financeira" ? e.type === "receivable" : e.type === "payable") add(chaveDe(c, e), i, num(e.amount));
+        if (c.dre_grupo === "receita_financeira" ? e.type === "receivable" : e.type === "payable") {
+          add(chaveDe(c, e), i, num(e.amount));
+          if (OPERACIONAIS.has(c.dre_grupo) && e.fixa && e.type === "payable") fixasLancadas[i] += num(e.amount);
+        }
       }
 
       add("das", i, semCarimbo * aliqSemCarimbo);
       // mês já corrido e sem extrato lançado: despesas fixas pela MÉDIA REAL (marcadas no Financeiro) como estimativa
       // (só em mês que teve venda no sistema; mês sem movimento nenhum fica em branco)
       const teveVenda = (L.venda_pedidos?.[i] || 0) + (L.venda_ml?.[i] || 0) + (L.servicos?.[i] || 0) > 0;
-      if (!temExtrato[i] && teveVenda && mes <= hoje && mediaFixas > 0) add("fixas_media", i, mediaFixas);
+      // 08/10/2026: a estimativa cobre só o que falta — fixas já lançadas no mês (pró-labore, fatura) saem da média
+      if (!temExtrato[i] && teveVenda && mes <= hoje && mediaFixas > 0) add("fixas_media", i, Math.max(0, mediaFixas - fixasLancadas[i]));
     }
 
     const v = (k) => L[k] || zeros();
@@ -241,9 +262,27 @@ export default function DREPlanilha({ config, onVoltar }) {
     for (const l of linhasCat("imposto")) push("linha", l.label, l.vals, -1);
     push("resultado final", "(=) Resultado Líquido", liquido, 0);
 
+    // 08/10/2026: PARTICIPAÇÃO NOS LUCROS — % do resultado líquido positivo do mês (prejuízo = 0), só das linhas ligadas
+    // e a partir do mês "desde". Linha desligada aparece com traço, para lembrar que existe.
+    const mesDe = (i) => `${ano}-${String(i + 1).padStart(2, "0")}`;
+    const linhasPart = participacoes.map((p) => {
+      const pct = num(p.percentual);
+      const desde = (p.desde || "").slice(0, 7);
+      const vals = zeros().map((_, i) => (p.ativo && (!desde || mesDe(i) >= desde) && liquido[i] > 0 ? liquido[i] * pct / 100 : 0));
+      const fmtPct = pct.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+      const rotulo = `${p.nome} — ${fmtPct}% do lucro${p.ativo ? (desde ? ` (desde ${desde.split("-").reverse().join("/")})` : "") : " (desligada)"}`;
+      return { label: rotulo, vals };
+    });
+    if (linhasPart.length) {
+      const totalPart = soma(...linhasPart.map((l) => l.vals));
+      push("total", "(−) Participação nos lucros", totalPart, -1);
+      for (const l of linhasPart) push("linha", l.label, l.vals, -1);
+      push("resultado final", "(=) Lucro após participações", menos(liquido, totalPart), 0);
+    }
+
     const informativo = linhasCat("informativo");
-    return { linhas: R, informativo, itensSemCusto, temExtrato, temCartao, usaMedia: !!L.fixas_media };
-  }, [dados, ano, contaML, config, baseFixas]); // eslint-disable-line react-hooks/exhaustive-deps
+    return { linhas: R, informativo, itensSemCusto, temExtrato, temCartao, usaMedia: !!L.fixas_media, temPart: linhasPart.length > 0 };
+  }, [dados, ano, contaML, config, baseFixas, participacoes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!dre) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
@@ -326,6 +365,9 @@ export default function DREPlanilha({ config, onVoltar }) {
         <p>• Mês com ponto (•) no cabeçalho: despesas pagas de verdade, lançadas pelo extrato do banco. {dre.usaMedia && "Mês já corrido sem extrato usa a média real das despesas fixas como estimativa."} Despesa fixa é a marcada no Financeiro (o padrão vem da categoria){baseFixas?.meses_usados ? ` — hoje ${fmtPctFixo(baseFixas.pct)} do faturamento` : ""}.</p>
         <p>• Cartão de crédito: a fatura entra no mês anterior ao vencimento (a que vence em outubro são as compras de setembro), por categoria, já descontados os estornos. Mês sem fatura lançada fica sem as despesas do cartão.</p>
         <p>• Vendas do Mercado Livre são as pagas na conta; devolvida inteira sai da receita, da comissão e do custo.</p>
+        <p>• Pró-labore: despesa fixa (Despesas com pessoal), lançada todo mês no Financeiro, paga no último dia útil. A "Retirada de sócio" que sai do banco continua abaixo, fora do resultado.</p>
+        {dre.temPart && <p>• Participação nos lucros: percentual do Resultado Líquido do mês, só quando há lucro (mês com prejuízo = 0). Liga, desliga e muda o percentual em Financeiro → Categorias.</p>}
+        {erroPart && <p className="text-warning">⚠️ Não foi possível ler a participação nos lucros — o "Lucro após participações" não aparece até a próxima abertura da tela.</p>}
         {dre.itensSemCusto > 0 && <p className="text-warning">⚠️ {dre.itensSemCusto} item(ns) vendidos sem custo cadastrado no ano — o custo real é maior e o resultado, menor.</p>}
         {(config?.rbt12 || 0) <= 0 && (config?.regime || "simples") === "simples" && <p className="text-warning">⚠️ RBT12 zerado na Configuração — Simples calculado pela 1ª faixa (4%).</p>}
       </div>
