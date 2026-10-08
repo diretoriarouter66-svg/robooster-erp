@@ -20,9 +20,16 @@ import { useBaseFixas, fmtPctFixo } from "@/lib/despesasFixas";
  *    contribuição) e FIXAS (marcação "Despesa fixa" de cada lançamento, padrão da categoria). Mês já corrido sem
  *    extrato usa a média real das despesas fixas (base_despesas_fixas) como estimativa — 08/10/2026: só a parte que falta
  *    (média − fixas já lançadas no mês, ex.: o pró-labore), para não contar duas vezes.
- *  - 08/10/2026: PARTICIPAÇÃO NOS LUCROS (tabela dre_participacoes, liga/desliga em Financeiro → Categorias): % do
- *    Resultado Líquido POSITIVO do mês (prejuízo = 0), a partir do mês "desde"; abaixo, "Lucro após participações".
+ *  - 08/10/2026 (v2, decisão do dono: pró-labore R$ 2.000, o resto é distribuição de lucros): abaixo do Resultado Líquido,
+ *    DISTRIBUIÇÃO DE LUCROS — lucro do mês disponível, lucro acumulado disponível (soma dos resultados desde o 1º mês com
+ *    dado, ou desde o mês configurado, menos o já distribuído), retirada planejada do sócio (dre_distribuicao_config),
+ *    distribuído no mês (categoria slug retirada_de_socio, hoje "Distribuição de lucros", que sai do banco) e o saldo que
+ *    pode ser retirado com isenção; retirada planejada maior que o saldo = "lucro insuficiente" em vermelho.
+ *  - PARTICIPAÇÃO NOS LUCROS (tabela dre_participacoes, liga/desliga em Financeiro → Categorias): % do Resultado Líquido
+ *    POSITIVO do mês (prejuízo = 0), a partir do mês "desde". Ligada, sai do lucro disponível para distribuir.
  */
+// categoria cujos lançamentos são a distribuição de lucros ao sócio (era "Retirada de sócio"; o slug ficou o mesmo)
+export const SLUG_DISTRIBUICAO = "retirada_de_socio";
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const GRUPOS_DESPESA = [
   ["assistencia", "Despesa Assistência Técnica"],
@@ -47,12 +54,16 @@ export default function DREPlanilha({ config, onVoltar }) {
   const [dados, setDados] = useState(null);
   const [participacoes, setParticipacoes] = useState([]);
   const [erroPart, setErroPart] = useState(false);
+  const [distConfig, setDistConfig] = useState(null); // 08/10/2026: retirada planejada do sócio
   const baseFixas = useBaseFixas();
 
   // 08/10/2026: participação nos lucros. Erro na leitura NÃO vira "sem participação" calado: aparece o aviso no rodapé.
   useEffect(() => {
     base44.entities.DreParticipacao.list("ordem", 100)
       .then((r) => setParticipacoes(r || []))
+      .catch(() => setErroPart(true));
+    base44.entities.DreDistribuicaoConfig.list("-created_date", 10)
+      .then((r) => setDistConfig((r || []).find((c) => c.ativo) || null))
       .catch(() => setErroPart(true));
   }, []);
 
@@ -94,6 +105,8 @@ export default function DREPlanilha({ config, onVoltar }) {
     // chave da linha: operacional vai para "var:" ou "fix:" pela marcação do lançamento; o resto fica "cat:"
     const chaveDe = (c, e) => (OPERACIONAIS.has(c.dre_grupo) ? `${e.fixa ? "fix" : "var"}:${c.slug}` : `cat:${c.slug}`);
 
+    // 08/10/2026: o cálculo de UM ano virou função — o lucro acumulado para distribuição precisa dos anos anteriores
+    const calcular = (ano) => {
     const L = {}; // chave → 12 valores
     const add = (k, i, v) => { if (!v) return; (L[k] = L[k] || zeros())[i] += v; };
     let itensSemCusto = 0;
@@ -179,6 +192,8 @@ export default function DREPlanilha({ config, onVoltar }) {
         if (e.category === "despesas_viagem_os" && e.type === "payable") { add(`${e.fixa ? "fix" : "var"}:despesas_viagem_os`, i, num(e.amount)); continue; }
         if (e.status !== "paid" || !(e.payment_date || "").startsWith(mes)) continue;
         if (e.reference_type === "extrato") temExtrato[i] = true;
+        // distribuição de lucros ao sócio: sempre abaixo do resultado, no bloco próprio (nunca como despesa)
+        if (e.category === SLUG_DISTRIBUICAO) { if (e.type === "payable") add(`cat:${SLUG_DISTRIBUICAO}`, i, num(e.amount)); continue; }
         const c = cat[e.category];
         if (!c?.dre_grupo) continue;
         if (c.dre_grupo === "receita_financeira" ? e.type === "receivable" : e.type === "payable") {
@@ -231,7 +246,7 @@ export default function DREPlanilha({ config, onVoltar }) {
     const liquido = menos(antesImpostos, impostos);
 
     const R = [];
-    const push = (tipo, label, vals, sinal) => R.push({ tipo, label, vals, sinal });
+    const push = (tipo, label, vals, sinal, totalValor) => R.push({ tipo, label, vals, sinal, totalValor });
     push("total", "(+) Receita Operacional Bruta", receitaBruta, 1);
     push("linha", "Venda de produtos (pedidos faturados)", v("venda_pedidos"), 1);
     if (L.venda_ml) push("linha", "Venda de produtos (Mercado Livre)", v("venda_ml"), 1);
@@ -262,9 +277,25 @@ export default function DREPlanilha({ config, onVoltar }) {
     for (const l of linhasCat("imposto")) push("linha", l.label, l.vals, -1);
     push("resultado final", "(=) Resultado Líquido", liquido, 0);
 
-    // 08/10/2026: PARTICIPAÇÃO NOS LUCROS — % do resultado líquido positivo do mês (prejuízo = 0), só das linhas ligadas
-    // e a partir do mês "desde". Linha desligada aparece com traço, para lembrar que existe.
+    const temDado = zeros().map((_, i) => Object.values(L).some((arr) => Math.abs(arr[i]) >= 0.005));
+    const distribuido = v(`cat:${SLUG_DISTRIBUICAO}`);
+    // a distribuição tem bloco próprio; o resto do "informativo" continua na lista de baixo
+    const informativo = catsDoGrupo("informativo").filter((c) => c.slug !== SLUG_DISTRIBUICAO).map((c) => ({ label: c.nome, vals: v(`cat:${c.slug}`) }));
+    return { R, push, liquido, distribuido, temDado, informativo, itensSemCusto, temExtrato, temCartao, usaMedia: !!L.fixas_media };
+    };
+
+    const atual = calcular(ano);
+    const { R, push, liquido } = atual;
     const mesDe = (i) => `${ano}-${String(i + 1).padStart(2, "0")}`;
+    const mmaa = (ym) => { const [a, m] = ym.split("-"); return `${MESES[Number(m) - 1]}/${a}`; };
+    const ultimoAteHoje = (vals) => { let u = 0; vals.forEach((x, i) => { if (mesDe(i) <= hoje) u = x; }); return u; };
+
+    // PARTICIPAÇÃO NOS LUCROS — % do resultado líquido positivo do mês (prejuízo = 0), só das linhas ligadas e a partir do
+    // mês "desde". Linha desligada aparece com traço, para lembrar que existe. Ligada, sai do lucro disponível para distribuir.
+    const partDoMes = (lucro, ym) => participacoes.reduce((t, p) => {
+      const desde = (p.desde || "").slice(0, 7);
+      return t + (p.ativo && (!desde || ym >= desde) && lucro > 0 ? lucro * num(p.percentual) / 100 : 0);
+    }, 0);
     const linhasPart = participacoes.map((p) => {
       const pct = num(p.percentual);
       const desde = (p.desde || "").slice(0, 7);
@@ -273,16 +304,49 @@ export default function DREPlanilha({ config, onVoltar }) {
       const rotulo = `${p.nome} — ${fmtPct}% do lucro${p.ativo ? (desde ? ` (desde ${desde.split("-").reverse().join("/")})` : "") : " (desligada)"}`;
       return { label: rotulo, vals };
     });
+    const totalPart = zeros().map((_, i) => linhasPart.reduce((t, l) => t + l.vals[i], 0));
+
+    // DISTRIBUIÇÃO DE LUCROS (08/10/2026). Série mês a mês desde o ano mais antigo até o ano na tela.
+    const serie = [];
+    for (const a of anos.filter((x) => x < ano).sort()) {
+      const r = calcular(a);
+      r.liquido.forEach((x, i) => serie.push({ ym: `${a}-${String(i + 1).padStart(2, "0")}`, liq: x, dist: r.distribuido[i], dado: r.temDado[i] }));
+    }
+    atual.liquido.forEach((x, i) => serie.push({ ym: mesDe(i), liq: x, dist: atual.distribuido[i], dado: atual.temDado[i] }));
+    const inicio = (distConfig?.acumulado_desde || "").slice(0, 7) || (serie.find((m) => m.dado) || {}).ym || hoje;
+    const lucroDisp = zeros(), acumDisp = zeros(), saldo = zeros(), planejada = zeros(), falta = zeros();
+    let somaLucro = 0, somaDist = 0;
+    for (const m of serie) {
+      if (m.ym < inicio || m.ym > hoje) continue;
+      const lucroMes = m.liq - partDoMes(m.liq, m.ym); // depois das participações ligadas
+      const acum = somaLucro + lucroMes - somaDist;     // lucro acumulado até este mês, menos o distribuído ANTES dele
+      somaLucro += lucroMes; somaDist += m.dist;
+      if (!m.ym.startsWith(ano)) continue;
+      const i = Number(m.ym.slice(5, 7)) - 1;
+      lucroDisp[i] = Math.max(0, lucroMes);
+      acumDisp[i] = acum;
+      saldo[i] = acum - m.dist;
+      const desdeRet = (distConfig?.desde || "").slice(0, 7);
+      planejada[i] = distConfig && (!desdeRet || m.ym >= desdeRet) ? num(distConfig.retirada_mensal) : 0;
+      falta[i] = planejada[i] > 0 && planejada[i] > saldo[i] + 0.005 ? planejada[i] - saldo[i] : 0; // quanto lucro falta para a retirada planejada
+    }
+    push("total", "Distribuição de lucros (abaixo do resultado)", zeros(), 1, 0);
+    push("linha", "Lucro do mês disponível (prejuízo = 0)", lucroDisp, 1);
+    push("linha", `Lucro acumulado disponível para distribuição (desde ${mmaa(inicio)})`, acumDisp, 0, ultimoAteHoje(acumDisp));
+    push("linha", `Retirada planejada do sócio${distConfig?.nome ? ` (${distConfig.nome})` : ""}`, planejada, 1);
+    push("linha", "Distribuído no mês (saiu do banco)", atual.distribuido, 1);
+    push("resultado", "(=) Saldo que pode ser retirado com isenção", saldo, 0, ultimoAteHoje(saldo));
+    if (falta.some((x) => x > 0)) push("linha", "Lucro insuficiente para a retirada planejada", falta, -1, ultimoAteHoje(falta));
+
     if (linhasPart.length) {
-      const totalPart = soma(...linhasPart.map((l) => l.vals));
       push("total", "(−) Participação nos lucros", totalPart, -1);
       for (const l of linhasPart) push("linha", l.label, l.vals, -1);
-      push("resultado final", "(=) Lucro após participações", menos(liquido, totalPart), 0);
+      push("resultado final", "(=) Lucro após participações", liquido.map((x, i) => x - totalPart[i]), 0);
     }
 
-    const informativo = linhasCat("informativo");
-    return { linhas: R, informativo, itensSemCusto, temExtrato, temCartao, usaMedia: !!L.fixas_media, temPart: linhasPart.length > 0 };
-  }, [dados, ano, contaML, config, baseFixas, participacoes]); // eslint-disable-line react-hooks/exhaustive-deps
+    return { linhas: R, informativo: atual.informativo, itensSemCusto: atual.itensSemCusto, temExtrato: atual.temExtrato, temCartao: atual.temCartao,
+      usaMedia: atual.usaMedia, temPart: linhasPart.length > 0, falta, saldo, planejada, inicio, temDist: !!distConfig };
+  }, [dados, ano, anos, contaML, config, baseFixas, participacoes, distConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!dre) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
@@ -341,7 +405,7 @@ export default function DREPlanilha({ config, onVoltar }) {
                 <tr key={n} className={`border-b border-border/40 ${estilo[l.tipo]}`}>
                   <td className={`px-3 py-1.5 sticky left-0 ${l.tipo === "linha" || l.tipo === "grupo" ? "bg-card" : l.tipo === "total" ? "bg-muted" : "bg-muted"} ${recuo[l.tipo]}`}>{l.label}</td>
                   {l.vals.map((x, i) => <Celula key={i} valor={x} sinal={l.sinal} forte={l.tipo !== "linha"} sel={i === mesSel} />)}
-                  <Celula valor={total(l.vals)} sinal={l.sinal} forte />
+                  <Celula valor={l.totalValor ?? total(l.vals)} sinal={l.sinal} forte />
                 </tr>
               ))}
               {dre.informativo.length > 0 && (
@@ -365,7 +429,8 @@ export default function DREPlanilha({ config, onVoltar }) {
         <p>• Mês com ponto (•) no cabeçalho: despesas pagas de verdade, lançadas pelo extrato do banco. {dre.usaMedia && "Mês já corrido sem extrato usa a média real das despesas fixas como estimativa."} Despesa fixa é a marcada no Financeiro (o padrão vem da categoria){baseFixas?.meses_usados ? ` — hoje ${fmtPctFixo(baseFixas.pct)} do faturamento` : ""}.</p>
         <p>• Cartão de crédito: a fatura entra no mês anterior ao vencimento (a que vence em outubro são as compras de setembro), por categoria, já descontados os estornos. Mês sem fatura lançada fica sem as despesas do cartão.</p>
         <p>• Vendas do Mercado Livre são as pagas na conta; devolvida inteira sai da receita, da comissão e do custo.</p>
-        <p>• Pró-labore: despesa fixa (Despesas com pessoal), lançada todo mês no Financeiro, paga no último dia útil. A "Retirada de sócio" que sai do banco continua abaixo, fora do resultado.</p>
+        <p>• Pró-labore: despesa fixa (Despesas com pessoal), lançada todo mês no Financeiro. O que sai do banco para o sócio além do pró-labore é distribuição de lucros: aparece no bloco "Distribuição de lucros", fora do resultado. Na coluna Total, o lucro acumulado e o saldo são os do último mês até hoje.</p>
+        {dre.falta[mesSel] > 0 && <p className="text-destructive font-medium">⚠️ {MESES[mesSel]}/{ano}: lucro insuficiente: R$ {fmt(dre.falta[mesSel])} — a retirada planejada (R$ {fmt(dre.planejada[mesSel])}) é maior que o saldo que pode ser retirado com isenção (R$ {fmt(dre.saldo[mesSel])}).</p>}
         {dre.temPart && <p>• Participação nos lucros: percentual do Resultado Líquido do mês, só quando há lucro (mês com prejuízo = 0). Liga, desliga e muda o percentual em Financeiro → Categorias.</p>}
         {erroPart && <p className="text-warning">⚠️ Não foi possível ler a participação nos lucros — o "Lucro após participações" não aparece até a próxima abertura da tela.</p>}
         {dre.itensSemCusto > 0 && <p className="text-warning">⚠️ {dre.itensSemCusto} item(ns) vendidos sem custo cadastrado no ano — o custo real é maior e o resultado, menor.</p>}

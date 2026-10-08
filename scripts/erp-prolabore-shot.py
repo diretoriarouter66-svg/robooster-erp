@@ -62,7 +62,7 @@ try:
         esperar("[...document.querySelectorAll('[role=dialog]')].some(d=>/Participação nos lucros/.test(d.innerText))", 15)
         time.sleep(1.5)
         # rola a lista até o bloco de participações para a captura
-        ev("(()=>{const el=[...document.querySelectorAll('[role=dialog] *')].find(e=>/^Participação nos lucros/.test((e.innerText||'').trim()) && e.children.length<4); if(el) el.scrollIntoView({block:'start'}); return !!el})()")
+        ev("(()=>{const el=[...document.querySelectorAll('[role=dialog] *')].find(e=>/^Distribuição de lucros$/.test((e.innerText||'').trim()) && e.tagName==='H4'); if(el) el.scrollIntoView({block:'start'}); return !!el})()")
         time.sleep(1); shot("config")
         json.dump({"dialogo": ev("(document.querySelector('[role=dialog]')||{}).innerText||''")}, open(f"{PREF}-config.json", "w"), ensure_ascii=False, indent=1)
     print(json.dumps({"ok": True, "erro_na_tela": erro, "linhas": len(dados)}))

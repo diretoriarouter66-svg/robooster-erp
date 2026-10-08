@@ -31,6 +31,7 @@ export default function Financial() {
   // 08/10/2026: participação nos lucros na DRE (tabela dre_participacoes); null = erro ao ler (aviso na tela)
   const [participacoes, setParticipacoes] = useState([]);
   const [novaPart, setNovaPart] = useState({ nome: "", percentual: "" });
+  const [distConfig, setDistConfig] = useState(undefined); // 08/10/2026: retirada planejada do sócio; null = erro ao ler
   const [contas, setContas] = useState([]);
   const [contasOpen, setContasOpen] = useState(false);
   // Caixas e Bancos (Larissa 17/09): extrato por conta com saldo corrido + transferência entre contas
@@ -88,6 +89,13 @@ export default function Financial() {
       console.error("Falha ao carregar a participação nos lucros:", err);
       setParticipacoes(null);
     }
+    try {
+      const dc = await base44.entities.DreDistribuicaoConfig.list("-created_date", 10);
+      setDistConfig((dc || []).find(c => c.ativo) || (dc || [])[0] || undefined);
+    } catch (err) {
+      console.error("Falha ao carregar a retirada planejada:", err);
+      setDistConfig(null);
+    }
     setLoading(false);
   };
 
@@ -95,6 +103,11 @@ export default function Financial() {
   // % do lucro líquido positivo do mês. Ligar = passa a descontar a partir do mês "desde" (vazio = todos os meses).
   const salvarPart = async (p, campos) => {
     await base44.entities.DreParticipacao.update(p.id, campos);
+    loadData();
+  };
+  const salvarDist = async (campos) => {
+    if (!distConfig) return;
+    await base44.entities.DreDistribuicaoConfig.update(distConfig.id, campos);
     loadData();
   };
   const ligarPart = (p, ativo) => salvarPart(p, ativo && !p.desde ? { ativo, desde: new Date().toISOString().slice(0, 7) + "-01" } : { ativo });
@@ -120,7 +133,7 @@ export default function Financial() {
   };
   // Onde a categoria entra na DRE Realizada (02/10/2026). Padrão de categoria nova: entra ("Outras despesas").
   // Venda, serviços de OS, devolução e transferência são tratadas pela própria estrutura da DRE e não têm escolha.
-  const DRE_FIXAS = { sale: "receita (vendas)", servicos_os: "receita de serviços", despesas_viagem_os: "despesas comerciais", devolucao_venda: "devoluções", transferencia: "não é receita nem despesa", import: "custo da mercadoria (CMV)", supplier: "custo da mercadoria (CMV)" };
+  const DRE_FIXAS = { sale: "receita (vendas)", servicos_os: "receita de serviços", despesas_viagem_os: "despesas comerciais", devolucao_venda: "devoluções", transferencia: "não é receita nem despesa", retirada_de_socio: "distribuição de lucros — bloco abaixo do resultado", import: "custo da mercadoria (CMV)", supplier: "custo da mercadoria (CMV)" };
   const DRE_OPCOES = [
     ["outras", "Entra — outras despesas"], ["administrativa", "Entra — despesas administrativas"], ["pessoal", "Entra — despesas com pessoal"],
     ["comercial", "Entra — despesas comerciais"], ["assistencia", "Entra — assistência técnica"], ["financeira", "Entra — despesa financeira"],
@@ -604,6 +617,22 @@ export default function Financial() {
             ))}
           </div>
           <p className="text-[10px] text-muted-foreground mt-2">Renomear: clique no nome, edite e saia do campo. Desativar tira do seletor de novos lançamentos sem mexer no histórico. Categorias de sistema (Venda, Importação, Outro) são geradas automaticamente por pedidos e importações.</p>
+
+          {/* 08/10/2026: distribuição de lucros — retirada planejada do sócio (DRE Realizada, abaixo do Resultado Líquido) */}
+          <div className="border-t border-border pt-3 mt-1">
+            <h4 className="text-sm font-semibold">Distribuição de lucros</h4>
+            <p className="text-[11px] text-muted-foreground mb-2">O que sai do banco para o sócio além do pró-labore (categoria "Distribuição de lucros") não é despesa: a DRE mostra o lucro acumulado disponível, o que já saiu e o saldo que ainda pode ser retirado com isenção. A retirada planejada aparece ao lado; maior que o saldo = "lucro insuficiente" em vermelho.</p>
+            {distConfig === null ? <p className="text-[11px] text-destructive">Não foi possível ler a retirada planejada (erro no banco).</p>
+              : !distConfig ? <p className="text-[11px] text-muted-foreground">Sem retirada planejada cadastrada.</p>
+              : <div className="flex flex-wrap items-center gap-2 border border-border rounded-lg px-2 py-1.5">
+                  <span className="text-sm flex-1 min-w-[120px]">Retirada planejada{distConfig.nome ? ` — ${distConfig.nome}` : ""}</span>
+                  <span className="text-[11px] text-muted-foreground">R$</span>
+                  <Input type="number" min="0" step="100" defaultValue={distConfig.retirada_mensal} onBlur={e => { const v = parseFloat(e.target.value); if (v >= 0 && v !== parseFloat(distConfig.retirada_mensal)) salvarDist({ retirada_mensal: v }); }} className="h-7 w-28 text-sm text-right" />
+                  <span className="text-[11px] text-muted-foreground">/mês</span>
+                  <span className="text-[10px] text-muted-foreground ml-1" title="Mês a partir do qual o lucro acumulado é somado (vazio = 1º mês com dado no ERP)">acumular desde</span>
+                  <input type="month" defaultValue={(distConfig.acumulado_desde || "").slice(0, 7)} onBlur={e => { const v = e.target.value ? e.target.value + "-01" : null; if (v !== (distConfig.acumulado_desde || null)) salvarDist({ acumulado_desde: v }); }} className="h-7 text-[11px] rounded border border-border bg-background px-1 w-32" />
+                </div>}
+          </div>
 
           {/* 08/10/2026: participação nos lucros (DRE Realizada, abaixo do Resultado Líquido) */}
           <div className="border-t border-border pt-3 mt-1">

@@ -80,7 +80,7 @@ export default function Conciliacao() {
     const cx = contasCaixa.find((c) => conta.toLowerCase().startsWith(String(c.nome || "").toLowerCase()));
     if (!cx) return [];
     const ligados = new Set(movs.map((m) => m.financeiro_id).filter(Boolean));
-    return lancamentos.filter((e) => e.account_id === cx.id && e.status === "paid" && e.reference_type !== "extrato" && String(e.payment_date || "").startsWith(periodo) && !ligados.has(e.id));
+    return lancamentos.filter((e) => e.account_id === cx.id && e.status === "paid" && e.reference_type !== "extrato" && e.reference_type !== "prolabore" && String(e.payment_date || "").startsWith(periodo) && !ligados.has(e.id));
   }, [ehBanco, periodo, conta, contasCaixa, lancamentos, movs]);
   const entradas = doPeriodo.filter((m) => !ehTransferencia(m) && num(m.valor) > 0);
   const saidas = doPeriodo.filter((m) => !ehTransferencia(m) && num(m.valor) < 0);

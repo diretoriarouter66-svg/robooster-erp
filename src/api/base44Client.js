@@ -43,6 +43,7 @@ const TABLE = {
   CashAccount: 'cash_accounts',
   DRESalvo: 'dre_salvos',
   DreParticipacao: 'dre_participacoes', // 08/10/2026 — participação nos lucros na DRE Realizada (Larissa, Giovanni)
+  DreDistribuicaoConfig: 'dre_distribuicao_config', // 08/10/2026 — retirada planejada do sócio (bloco Distribuição de lucros)
   PurchaseOrder: 'purchase_orders',
   ServiceOrder: 'service_orders',
   // 16/09/2026 — devoluções de venda, transportadoras e histórico de custo (pedidos da Larissa)
