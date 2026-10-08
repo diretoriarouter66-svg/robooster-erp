@@ -23,6 +23,8 @@ try:
         except Exception: pass
         time.sleep(0.5)
     c = CDP(ws); c.call("Page.enable"); c.call("Runtime.enable")
+    # erros de console/JS da página ficam em window.__errs (o cliente CDP não guarda eventos)
+    c.call("Page.addScriptToEvaluateOnNewDocument", {"source": "window.__errs=[];const _oe=console.error;console.error=function(...a){window.__errs.push(a.map(x=>String(x&&x.message||x)).join(' '));_oe.apply(console,a)};window.addEventListener('error',e=>window.__errs.push('onerror '+e.message));window.addEventListener('unhandledrejection',e=>window.__errs.push('rejection '+String(e.reason&&e.reason.message||e.reason)))"})
     def ev(js):
         r = c.call("Runtime.evaluate", {"expression": js, "returnByValue": True})
         return r.get("result", {}).get("value")
@@ -48,7 +50,8 @@ try:
     iset = next((i for i, t in enumerate(cab) if t.lower().startswith("set")), 9); iout = next((i for i, t in enumerate(cab) if t.lower().startswith("out")), 10)
     dados = [{"rotulo": l[0], "set": l[iset] if len(l) > iset else "", "out": l[iout] if len(l) > iout else "", "total": l[-1]} for l in linhas if l]
     erro = ev("/Something went wrong|is not defined|Cannot read|before initialization/.test(document.body.innerText)")
-    json.dump({"cabecalho": cab, "linhas": dados, "erro_na_tela": erro, "rodape": ev("document.body.innerText.split('Cartão de crédito')[0].slice(-600)")}, open(f"{PREF}-dre.json", "w"), ensure_ascii=False, indent=1)
+    errs_dre = ev("window.__errs||[]")
+    json.dump({"cabecalho": cab, "linhas": dados, "erro_na_tela": erro, "console_erros": errs_dre, "rodape": ev("document.body.innerText.split('Cartão de crédito')[0].slice(-600)")}, open(f"{PREF}-dre.json", "w"), ensure_ascii=False, indent=1)
     alt = ev("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)") or H
     for nome, mes in (("dre-set", "Set"), ("dre-out", "Out")):
         ev("[...document.querySelectorAll('thead th')].find(t=>t.innerText.trim().toLowerCase().startsWith('%s')).click()" % mes.lower()); time.sleep(1)
@@ -64,7 +67,7 @@ try:
         # rola a lista até o bloco de participações para a captura
         ev("(()=>{const el=[...document.querySelectorAll('[role=dialog] *')].find(e=>/^Distribuição de lucros$/.test((e.innerText||'').trim()) && e.tagName==='H4'); if(el) el.scrollIntoView({block:'start'}); return !!el})()")
         time.sleep(1); shot("config")
-        json.dump({"dialogo": ev("(document.querySelector('[role=dialog]')||{}).innerText||''")}, open(f"{PREF}-config.json", "w"), ensure_ascii=False, indent=1)
-    print(json.dumps({"ok": True, "erro_na_tela": erro, "linhas": len(dados)}))
+        json.dump({"console_erros": ev("window.__errs||[]"), "dialogo": ev("(document.querySelector('[role=dialog]')||{}).innerText||''")}, open(f"{PREF}-config.json", "w"), ensure_ascii=False, indent=1)
+    print(json.dumps({"ok": True, "erro_na_tela": erro, "console_erros_dre": errs_dre, "linhas": len(dados)}))
 finally:
     proc.terminate()
