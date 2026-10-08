@@ -13,3 +13,14 @@ alter table public.config_tributaria drop column if exists acrescimo_parcelas;
 
 -- DESFAZER (só se nenhum pedido usar):
 -- alter table public.sale_orders drop column if exists acrescimo_parcelamento, drop column if exists simulacao_pagamento;
+
+-- ===== PUBLICADO 08/10/2026 ("PUBLICAR SIMULADOR", versão ccfca08) =====
+-- ERP: robooster-erp:simulador-20261008 em robooster_erp_erp.
+--   ROLLBACK do ERP: docker service update --image robooster-erp:sanfona-20261008 robooster_erp_erp
+-- emitir-nfe: patch aplicado em /root/supabase/docker/volumes/functions/emitir-nfe/index.ts + docker service update --force supabase_supabase_functions
+--   ROLLBACK da função: cp /root/supabase/docker/volumes/functions/emitir-nfe/index.ts.bak-20261008-simulador \
+--     /root/supabase/docker/volumes/functions/emitir-nfe/index.ts && docker service update --force supabase_supabase_functions
+--   (pedido sem acréscimo emite igual a antes: o rateio só roda com acrescimo_parcelamento > 0)
+-- Teste em HOMOLOGAÇÃO: pedido de teste (só SQL, sem estoque/financeiro) 24.000 + acréscimo 1.805 → NF-e nº 33 série 1 autorizada,
+--   XML vProd 24000.00, vOutro 1805.00, vNF 25805.00 = total do pedido, infCpl com a frase; nota cancelada e pedido apagado.
+--   XML guardado em /root/backups-erp/nfe-homolog-33-simulador-20261008.xml
